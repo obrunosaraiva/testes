@@ -1735,3 +1735,140 @@ function escapeAttr(str) {
 function escapeJs(str) {
   return String(str).replace(/\\/g, "\\\\").replace(/`/g, "\\`").replace(/\$/g, "\\$");
 }
+
+// ─── Global Search ────────────────────────────────────────────────────────────
+let _searchTimer = null;
+let _searchIndex = -1;
+
+function onSearchInput(value) {
+  clearTimeout(_searchTimer);
+  _searchIndex = -1;
+  const q = value.trim();
+  if (q.length < 2) { hideSearchDropdown(); return; }
+  _searchTimer = setTimeout(() => runSearch(q), 280);
+}
+
+async function runSearch(q) {
+  const dropdown = document.getElementById("search-dropdown");
+  dropdown.innerHTML = `<div class="search-loading">Buscando…</div>`;
+  showSearchDropdown();
+  try {
+    const data = await api(`/search/?q=${encodeURIComponent(q)}`);
+    renderSearchResults(data, q);
+  } catch {
+    dropdown.innerHTML = `<div class="search-empty">Erro ao buscar.</div>`;
+  }
+}
+
+function renderSearchResults(data, q) {
+  const dropdown = document.getElementById("search-dropdown");
+  const total = data.tasks.length + data.projects.length + data.inbox.length;
+
+  if (total === 0) {
+    dropdown.innerHTML = `<div class="search-empty">Nenhum resultado para "<strong>${escapeHtml(q)}</strong>"</div>`;
+    return;
+  }
+
+  const priIcon = { urgent: "🔴", high: "🟠", medium: "🟡", low: "🟢" };
+
+  let html = "";
+
+  if (data.tasks.length > 0) {
+    html += `<div class="search-group-label">Tarefas</div>`;
+    html += data.tasks.map((t) => `
+      <div class="search-item" tabindex="-1" onclick="goToSearchResult('task',${t.id},'${t.page}')">
+        <span class="search-item-icon">${priIcon[t.priority] || "📋"}</span>
+        <div class="search-item-body">
+          <div class="search-item-title">${highlight(escapeHtml(t.title), q)}</div>
+          <div class="search-item-meta">${t.list_label}${t.context ? ` · ${t.context}` : ""}</div>
+        </div>
+      </div>
+    `).join("");
+  }
+
+  if (data.projects.length > 0) {
+    html += `<div class="search-group-label">Projetos</div>`;
+    html += data.projects.map((p) => `
+      <div class="search-item" tabindex="-1" onclick="goToSearchResult('project',${p.id},'projects')">
+        <span class="search-item-icon">📂</span>
+        <div class="search-item-body">
+          <div class="search-item-title">${highlight(escapeHtml(p.title), q)}</div>
+          <div class="search-item-meta">${p.completion_pct}% concluído · ${p.status === "active" ? "Ativo" : "Concluído"}</div>
+        </div>
+      </div>
+    `).join("");
+  }
+
+  if (data.inbox.length > 0) {
+    html += `<div class="search-group-label">Caixa de Entrada</div>`;
+    html += data.inbox.map((i) => `
+      <div class="search-item" tabindex="-1" onclick="goToSearchResult('inbox',${i.id},'inbox')">
+        <span class="search-item-icon">📥</span>
+        <div class="search-item-body">
+          <div class="search-item-title">${highlight(escapeHtml(i.content), q)}</div>
+          <div class="search-item-meta">Inbox · ${escapeHtml(i.source || "manual")}</div>
+        </div>
+      </div>
+    `).join("");
+  }
+
+  dropdown.innerHTML = html;
+}
+
+function highlight(text, q) {
+  const escaped = q.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return text.replace(new RegExp(`(${escaped})`, "gi"), `<mark>$1</mark>`);
+}
+
+function goToSearchResult(type, id, page) {
+  hideSearchDropdown();
+  document.getElementById("global-search").value = "";
+  loadPage(page);
+  // After render, scroll to the element if it has an id
+  if (type === "task") {
+    setTimeout(() => {
+      const el = document.getElementById(`task-row-${id}`);
+      if (el) {
+        el.scrollIntoView({ behavior: "smooth", block: "center" });
+        el.classList.add("search-highlight");
+        setTimeout(() => el.classList.remove("search-highlight"), 2000);
+      }
+    }, 400);
+  }
+}
+
+function showSearchDropdown() {
+  document.getElementById("search-dropdown").style.display = "block";
+}
+
+function hideSearchDropdown() {
+  document.getElementById("search-dropdown").style.display = "none";
+  _searchIndex = -1;
+}
+
+function onSearchKeydown(e) {
+  const dropdown = document.getElementById("search-dropdown");
+  const items = dropdown.querySelectorAll(".search-item");
+  if (!items.length) return;
+
+  if (e.key === "ArrowDown") {
+    e.preventDefault();
+    _searchIndex = Math.min(_searchIndex + 1, items.length - 1);
+    items[_searchIndex]?.focus();
+  } else if (e.key === "ArrowUp") {
+    e.preventDefault();
+    _searchIndex = Math.max(_searchIndex - 1, 0);
+    items[_searchIndex]?.focus();
+  } else if (e.key === "Escape") {
+    hideSearchDropdown();
+    document.getElementById("global-search").blur();
+  } else if (e.key === "Enter" && _searchIndex >= 0) {
+    items[_searchIndex]?.click();
+  }
+}
+
+// Close dropdown when clicking outside
+document.addEventListener("click", (e) => {
+  const wrapper = document.getElementById("search-wrapper");
+  if (wrapper && !wrapper.contains(e.target)) hideSearchDropdown();
+});
