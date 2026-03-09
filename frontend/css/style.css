@@ -455,3 +455,153 @@ select.form-control option { background: var(--surface); }
 ::-webkit-scrollbar { width: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 999px; }
+
+/* ── Capture tabs ─────────────────────────────────────────────────────────── */
+.capture-tabs {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  overflow: hidden;
+  margin-bottom: 24px;
+}
+
+.capture-tab-bar {
+  display: flex;
+  border-bottom: 1px solid var(--border);
+}
+
+.capture-tab {
+  flex: 1;
+  padding: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-muted);
+  border-bottom: 2px solid transparent;
+  transition: all 0.15s;
+  user-select: none;
+}
+.capture-tab:hover { color: var(--text); background: var(--surface2); }
+.capture-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+.capture-tab .tab-icon { font-size: 18px; }
+
+.capture-panel { display: none; padding: 20px; }
+.capture-panel.active { display: block; }
+
+/* Drop zone */
+.drop-zone {
+  border: 2px dashed var(--border);
+  border-radius: 12px;
+  padding: 40px 20px;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.2s;
+  color: var(--text-muted);
+}
+.drop-zone:hover, .drop-zone.drag-over {
+  border-color: var(--accent);
+  background: rgba(108,99,255,0.05);
+  color: var(--text);
+}
+.drop-zone .drop-icon { font-size: 40px; margin-bottom: 12px; }
+.drop-zone p { font-size: 13px; }
+.drop-zone .drop-hint { font-size: 12px; margin-top: 8px; color: var(--text-muted); }
+
+/* Image preview grid */
+.image-preview-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: 10px;
+  margin-top: 16px;
+}
+.image-thumb {
+  aspect-ratio: 1;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  position: relative;
+}
+.image-thumb img { width: 100%; height: 100%; object-fit: cover; }
+.image-thumb .remove-thumb {
+  position: absolute;
+  top: 4px; right: 4px;
+  background: rgba(0,0,0,0.7);
+  border: none;
+  color: #fff;
+  border-radius: 50%;
+  width: 20px; height: 20px;
+  cursor: pointer;
+  font-size: 11px;
+  display: flex; align-items: center; justify-content: center;
+}
+
+/* Analysis results */
+.analysis-result {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 16px;
+  margin-top: 16px;
+}
+.analysis-result .result-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+  font-weight: 600;
+}
+.analysis-item {
+  padding: 10px 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  margin-bottom: 8px;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+.analysis-item .ai-label { font-size: 11px; color: var(--text-muted); }
+.analysis-item .ai-content { font-size: 13px; font-weight: 500; }
+
+/* WhatsApp status */
+.wa-status-card {
+  border-radius: 12px;
+  padding: 20px;
+  border: 1px solid var(--border);
+  background: var(--surface2);
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+.wa-status-dot {
+  width: 12px; height: 12px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.wa-status-dot.connected { background: var(--green); box-shadow: 0 0 8px var(--green); }
+.wa-status-dot.disconnected { background: var(--red); }
+.wa-status-dot.pending { background: var(--yellow); animation: pulse 1s infinite; }
+@keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
+
+.wa-groups-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 12px;
+}
+.wa-group-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.wa-group-item label { flex: 1; cursor: pointer; font-size: 13px; }
+.wa-group-item input[type=checkbox] { accent-color: var(--accent); width: 16px; height: 16px; }

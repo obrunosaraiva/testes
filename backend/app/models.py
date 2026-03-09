@@ -32,7 +32,8 @@ class InboxItem(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     content = Column(Text, nullable=False)
-    source = Column(String(100), default="manual")  # manual, email, slack, etc.
+    source = Column(String(100), default="manual")  # manual, image:whatsapp, whatsapp:GroupName, etc.
+    gtd_data = Column(Text, nullable=True)  # JSON pre-filled by Vision/WhatsApp bot
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     status = Column(String(20), default="pending")  # pending, clarified, processed
 

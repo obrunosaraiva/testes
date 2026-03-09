@@ -217,11 +217,65 @@ async function renderInbox() {
   const el = document.getElementById("page-inbox");
 
   el.innerHTML = `
-    <div class="capture-box">
-      <input type="text" class="capture-input" id="capture-input" placeholder="Capture qualquer coisa... (Enter para adicionar)" />
-      <button class="btn btn-primary" onclick="captureItem()">+ Capturar</button>
+    <!-- Capture Tabs -->
+    <div class="capture-tabs">
+      <div class="capture-tab-bar">
+        <div class="capture-tab active" data-tab="text" onclick="switchCaptureTab('text')">
+          <span class="tab-icon">✏️</span> Texto
+        </div>
+        <div class="capture-tab" data-tab="image" onclick="switchCaptureTab('image')">
+          <span class="tab-icon">🖼️</span> Print / Imagem
+        </div>
+        <div class="capture-tab" data-tab="whatsapp" onclick="switchCaptureTab('whatsapp')">
+          <span class="tab-icon">💬</span> WhatsApp Bot
+        </div>
+      </div>
+
+      <!-- Panel: Text -->
+      <div class="capture-panel active" id="panel-text">
+        <div style="display:flex;gap:10px">
+          <input type="text" class="capture-input" id="capture-input"
+            placeholder="Capture qualquer coisa... pressione Enter" />
+          <button class="btn btn-primary" onclick="captureItem()">+ Capturar</button>
+        </div>
+        <p style="font-size:12px;color:var(--text-muted);margin-top:8px">
+          Sem filtro, sem julgamento — capture tudo agora, classifique depois.
+        </p>
+      </div>
+
+      <!-- Panel: Image -->
+      <div class="capture-panel" id="panel-image">
+        <div class="drop-zone" id="drop-zone"
+          onclick="document.getElementById('file-input').click()"
+          ondragover="onDragOver(event)"
+          ondragleave="onDragLeave(event)"
+          ondrop="onDrop(event)">
+          <div class="drop-icon">📸</div>
+          <p><strong>Clique ou arraste prints aqui</strong></p>
+          <p class="drop-hint">WhatsApp, Slack, e-mail, reunião, qualquer screenshot — Claude extrai as demandas</p>
+        </div>
+        <input type="file" id="file-input" accept="image/*" multiple style="display:none"
+          onchange="onFileSelect(event)" />
+        <div id="image-preview-grid" class="image-preview-grid"></div>
+        <div id="image-analysis-result"></div>
+        <div id="upload-actions" style="margin-top:12px;display:none">
+          <button class="btn btn-primary" onclick="analyzeImages()">🤖 Analisar com Claude</button>
+          <button class="btn btn-secondary" onclick="clearImages()" style="margin-left:8px">Limpar</button>
+        </div>
+      </div>
+
+      <!-- Panel: WhatsApp -->
+      <div class="capture-panel" id="panel-whatsapp">
+        <div id="wa-status-area">
+          <div class="ai-loading">
+            <div class="spinner"></div>
+            <span>Verificando status do bot...</span>
+          </div>
+        </div>
+      </div>
     </div>
 
+    <!-- Inbox list -->
     <div class="section">
       <div class="section-title">
         📥 Caixa de entrada
@@ -237,26 +291,289 @@ async function renderInbox() {
   document.getElementById("capture-input").addEventListener("keydown", (e) => {
     if (e.key === "Enter") captureItem();
   });
+
+  // Load WhatsApp status when tab becomes active
+  loadWhatsAppStatus();
 }
 
+// ─── Capture Tab switching ────────────────────────────────────────────────────
+function switchCaptureTab(tab) {
+  document.querySelectorAll(".capture-tab").forEach((el) =>
+    el.classList.toggle("active", el.dataset.tab === tab)
+  );
+  document.querySelectorAll(".capture-panel").forEach((el) =>
+    el.classList.toggle("active", el.id === `panel-${tab}`)
+  );
+}
+
+// ─── Image capture ────────────────────────────────────────────────────────────
+let pendingImages = []; // { file, previewUrl }
+
+function onDragOver(e) {
+  e.preventDefault();
+  document.getElementById("drop-zone").classList.add("drag-over");
+}
+
+function onDragLeave(e) {
+  document.getElementById("drop-zone").classList.remove("drag-over");
+}
+
+function onDrop(e) {
+  e.preventDefault();
+  document.getElementById("drop-zone").classList.remove("drag-over");
+  const files = Array.from(e.dataTransfer.files).filter((f) => f.type.startsWith("image/"));
+  addImageFiles(files);
+}
+
+function onFileSelect(e) {
+  const files = Array.from(e.target.files);
+  addImageFiles(files);
+  e.target.value = "";
+}
+
+function addImageFiles(files) {
+  files.forEach((file) => {
+    const url = URL.createObjectURL(file);
+    pendingImages.push({ file, previewUrl: url });
+  });
+  renderImagePreviews();
+}
+
+function renderImagePreviews() {
+  const grid = document.getElementById("image-preview-grid");
+  const actions = document.getElementById("upload-actions");
+
+  if (pendingImages.length === 0) {
+    grid.innerHTML = "";
+    actions.style.display = "none";
+    return;
+  }
+
+  grid.innerHTML = pendingImages.map((img, i) => `
+    <div class="image-thumb">
+      <img src="${img.previewUrl}" alt="preview" />
+      <button class="remove-thumb" onclick="removeImage(${i})">✕</button>
+    </div>
+  `).join("");
+
+  actions.style.display = "flex";
+}
+
+function removeImage(index) {
+  pendingImages.splice(index, 1);
+  renderImagePreviews();
+}
+
+function clearImages() {
+  pendingImages = [];
+  renderImagePreviews();
+  document.getElementById("image-analysis-result").innerHTML = "";
+}
+
+async function analyzeImages() {
+  if (pendingImages.length === 0) return;
+
+  document.getElementById("image-analysis-result").innerHTML = `
+    <div class="ai-loading" style="margin-top:16px">
+      <div class="spinner"></div>
+      <span>Claude está lendo os prints e extraindo demandas...</span>
+    </div>
+  `;
+  document.getElementById("upload-actions").style.display = "none";
+
+  let totalAdded = 0;
+  const allResults = [];
+
+  for (const img of pendingImages) {
+    const formData = new FormData();
+    formData.append("file", img.file);
+
+    const res = await fetch(`${API}/capture/image`, { method: "POST", body: formData });
+    if (!res.ok) continue;
+    const result = await res.json();
+    totalAdded += result.added || 0;
+    if (result.items?.length > 0) allResults.push(result);
+  }
+
+  // Render results
+  if (allResults.length === 0 || totalAdded === 0) {
+    document.getElementById("image-analysis-result").innerHTML = `
+      <div class="analysis-result">
+        <div class="result-header">📭 Nenhuma demanda encontrada nos prints.</div>
+      </div>
+    `;
+  } else {
+    document.getElementById("image-analysis-result").innerHTML = `
+      <div class="analysis-result">
+        <div class="result-header">
+          ✅ ${totalAdded} ${totalAdded === 1 ? "demanda encontrada" : "demandas encontradas"} e adicionadas à inbox
+        </div>
+        ${allResults.map((r) => `
+          <div style="margin-bottom:8px">
+            <div style="font-size:11px;color:var(--text-muted);margin-bottom:6px">
+              ${sourceIcon(r.source_type)} ${r.summary}
+            </div>
+            ${r.items.slice(0, 3).map((item) => `
+              <div class="analysis-item">
+                <span class="tag tag-${item.clarification?.priority || "medium"}" style="flex-shrink:0">
+                  ${(item.clarification?.priority || "medium")}
+                </span>
+                <div>
+                  <div class="ai-label">${item.clarification?.next_action || ""}</div>
+                  <div class="ai-content">${item.content}</div>
+                </div>
+              </div>
+            `).join("")}
+            ${r.items.length > 3 ? `<p style="font-size:12px;color:var(--text-muted);padding-left:12px">+${r.items.length - 3} mais...</p>` : ""}
+          </div>
+        `).join("")}
+        <button class="btn btn-secondary btn-sm" onclick="clearImages();renderInbox()">
+          Ver inbox →
+        </button>
+      </div>
+    `;
+  }
+
+  pendingImages = [];
+  await renderInbox();
+}
+
+function sourceIcon(type) {
+  return { whatsapp: "💬", slack: "💼", email: "📧", meeting: "📅", document: "📄" }[type] || "🖼️";
+}
+
+// ─── WhatsApp Status ──────────────────────────────────────────────────────────
+async function loadWhatsAppStatus() {
+  const area = document.getElementById("wa-status-area");
+  if (!area) return;
+
+  let status = { status: "disconnected" };
+  let groups = [];
+
+  try {
+    const res = await fetch("http://localhost:3001/status");
+    if (res.ok) status = await res.json();
+  } catch {
+    // Bot not running
+  }
+
+  if (status.status === "connected") {
+    try {
+      const gRes = await fetch("http://localhost:3001/groups", { method: "POST" });
+      if (gRes.ok) {
+        const gData = await gRes.json();
+        groups = gData.groups || [];
+      }
+    } catch {}
+  }
+
+  const dotClass = { connected: "connected", qr_pending: "pending" }[status.status] || "disconnected";
+  const statusLabel = {
+    connected: "Conectado",
+    qr_pending: "Aguardando QR code",
+    initializing: "Iniciando...",
+    disconnected: "Desconectado",
+  }[status.status] || "Desconectado";
+
+  area.innerHTML = `
+    <div class="wa-status-card">
+      <div class="wa-status-dot ${dotClass}"></div>
+      <div style="flex:1">
+        <div style="font-weight:600">Bot WhatsApp — ${statusLabel}</div>
+        <div style="font-size:12px;color:var(--text-muted)">
+          ${status.stats ? `${status.stats.added} demandas capturadas · ${status.stats.processed} mensagens lidas` : "Bot não iniciado"}
+        </div>
+      </div>
+      <button class="btn btn-secondary btn-sm" onclick="loadWhatsAppStatus()">↻</button>
+    </div>
+
+    ${status.status === "disconnected" || !status.status ? `
+      <div style="background:var(--surface2);border-radius:10px;padding:16px;font-size:13px">
+        <p style="font-weight:600;margin-bottom:8px">Como iniciar o bot:</p>
+        <pre style="background:var(--bg);padding:10px;border-radius:6px;font-size:12px;overflow-x:auto">cd whatsapp-bot
+npm install
+node index.js</pre>
+        <p style="color:var(--text-muted);margin-top:8px">Escaneie o QR code com o WhatsApp do celular. O bot ficará monitorando os grupos automaticamente.</p>
+      </div>
+    ` : ""}
+
+    ${status.status === "qr_pending" ? `
+      <div style="background:var(--surface2);border-radius:10px;padding:16px;text-align:center">
+        <p style="margin-bottom:12px">Abra o WhatsApp no celular e escaneie o QR code no terminal do bot.</p>
+        <p style="font-size:12px;color:var(--text-muted)">O QR code aparece no terminal onde você executou <code>node index.js</code></p>
+      </div>
+    ` : ""}
+
+    ${status.status === "connected" && groups.length > 0 ? `
+      <div>
+        <p style="font-size:13px;font-weight:600;margin-bottom:10px">Selecione os grupos a monitorar:</p>
+        <div class="wa-groups-list">
+          ${groups.map((g) => `
+            <div class="wa-group-item">
+              <input type="checkbox" id="group-${g.id}"
+                ${status.monitored_groups?.includes(g.name) || status.monitored_groups?.length === 0 ? "checked" : ""}
+                onchange="updateMonitoredGroups()" />
+              <label for="group-${g.id}">
+                💬 ${g.name}
+                <span style="color:var(--text-muted);font-size:11px"> · ${g.participants} participantes</span>
+              </label>
+            </div>
+          `).join("")}
+        </div>
+        <button class="btn btn-primary btn-sm" onclick="saveMonitoredGroups()" style="margin-top:12px">
+          Salvar configuração
+        </button>
+      </div>
+    ` : ""}
+  `;
+}
+
+async function saveMonitoredGroups() {
+  const checkboxes = document.querySelectorAll(".wa-group-item input[type=checkbox]:checked");
+  const selected = Array.from(checkboxes).map((cb) => {
+    const label = cb.nextElementSibling.textContent.trim().replace(/·.*$/, "").replace("💬", "").trim();
+    return label;
+  });
+  try {
+    await fetch("http://localhost:3001/monitor", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ groups: selected }),
+    });
+    alert(`✅ Monitorando: ${selected.length > 0 ? selected.join(", ") : "todos os grupos"}`);
+  } catch {
+    alert("Erro ao salvar. Verifique se o bot está rodando.");
+  }
+}
+
+// ─── Text capture ─────────────────────────────────────────────────────────────
 function inboxItemCard(item) {
+  const sourceTag = sourceTagHtml(item.source);
   return `
     <div class="task-item" id="inbox-${item.id}">
       <div class="task-body">
-        <div class="task-title">${item.content}</div>
+        <div class="task-title">${escapeHtml(item.content)}</div>
         <div class="task-meta">
           <span class="tag tag-low">${formatDate(item.created_at)}</span>
-          <span class="tag tag-low">${item.source}</span>
+          ${sourceTag}
+          ${item.status === "clarified" ? `<span class="tag tag-medium">✓ Pré-classificado</span>` : ""}
         </div>
       </div>
       <div class="task-actions">
         <button class="btn btn-sm btn-primary" onclick="openClarify(${item.id}, \`${escapeJs(item.content)}\`)">
-          🤖 Clarificar
+          🤖 ${item.status === "clarified" ? "Revisar" : "Clarificar"}
         </button>
         <button class="btn btn-sm btn-secondary" onclick="deleteInboxItem(${item.id})">🗑</button>
       </div>
     </div>
   `;
+}
+
+function sourceTagHtml(source) {
+  if (!source || source === "manual") return `<span class="tag tag-low">manual</span>`;
+  if (source.startsWith("whatsapp:")) return `<span class="tag tag-context">💬 ${source.replace("whatsapp:", "")}</span>`;
+  if (source.startsWith("image:")) return `<span class="tag tag-context">🖼️ ${source.replace("image:", "")}</span>`;
+  return `<span class="tag tag-low">${source}</span>`;
 }
 
 async function captureItem() {
@@ -266,7 +583,6 @@ async function captureItem() {
   await api("/inbox/", { method: "POST", body: JSON.stringify({ content }) });
   input.value = "";
   await renderInbox();
-  // Update badge
   document.getElementById("badge-inbox").textContent = state.inbox.length;
   document.getElementById("badge-inbox").style.display = state.inbox.length ? "inline" : "none";
 }

@@ -6,7 +6,7 @@ import os
 
 from .database import engine
 from .models import Base
-from .routes import inbox, tasks, projects, dashboard
+from .routes import inbox, tasks, projects, dashboard, capture
 
 # Create tables
 Base.metadata.create_all(bind=engine)
@@ -30,6 +30,7 @@ app.include_router(inbox.router, prefix="/api")
 app.include_router(tasks.router, prefix="/api")
 app.include_router(projects.router, prefix="/api")
 app.include_router(dashboard.router, prefix="/api")
+app.include_router(capture.router, prefix="/api")
 
 # Serve frontend static files
 frontend_path = os.path.join(os.path.dirname(__file__), "../../frontend")
