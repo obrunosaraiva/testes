@@ -6,6 +6,7 @@ from typing import Optional
 
 from ..database import get_db
 from ..models import Task, Project, TaskStatus
+from ..services.claude_service import draft_followup_message
 
 router = APIRouter(prefix="/tasks", tags=["tasks"])
 
@@ -93,6 +94,28 @@ def complete_task(task_id: int, db: Session = Depends(get_db)):
 
     db.commit()
     return {"message": "Tarefa concluída"}
+
+
+@router.post("/{task_id}/draft-followup")
+def draft_task_followup(task_id: int, db: Session = Depends(get_db)):
+    task = db.query(Task).filter(Task.id == task_id).first()
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+    if task.list_type != "waiting":
+        raise HTTPException(status_code=400, detail="Tarefa não está na lista Aguardando")
+
+    days_waiting = 0
+    if task.waiting_since:
+        days_waiting = (datetime.now(timezone.utc) - task.waiting_since.replace(tzinfo=timezone.utc)).days
+
+    message = draft_followup_message(
+        task_title=task.title,
+        assigned_to=task.assigned_to or "a pessoa",
+        days_waiting=days_waiting,
+        due_date=task.due_date.strftime("%d/%m/%Y") if task.due_date else None,
+        context=task.context,
+    )
+    return {"message": message, "task_id": task_id}
 
 
 @router.delete("/{task_id}")

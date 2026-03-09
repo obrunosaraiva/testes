@@ -171,3 +171,284 @@ def suggest_next_action_for_project(project_title: str, project_description: str
             return block.text
 
     return "Revisar o projeto e definir próximo passo."
+
+
+# ─── Batch clarification ──────────────────────────────────────────────────────
+
+def batch_clarify_inbox_items(
+    items: list[dict],
+    existing_projects: list[str],
+    user_context: dict | None = None,
+) -> list[dict]:
+    """
+    Clarifies multiple inbox items in a single Claude call.
+    items: [{"id": int, "content": str}, ...]
+    Returns: [{"id": int, "clarification": dict}, ...]
+    """
+    context_block = ""
+    if existing_projects:
+        context_block += f"\nProjetos ativos: {', '.join(existing_projects)}"
+    if user_context:
+        if user_context.get("top_people"):
+            context_block += f"\nPessoas recorrentes: {', '.join(user_context['top_people'])}"
+        if user_context.get("top_contexts"):
+            context_block += f"\nContextos mais usados: {', '.join(user_context['top_contexts'])}"
+
+    items_block = "\n\n".join(
+        f"ITEM {i + 1} (id={item['id']}):\n{item['content']}"
+        for i, item in enumerate(items)
+    )
+
+    user_message = f"""Analise os itens abaixo da caixa de entrada usando o método GTD.{context_block}
+
+{items_block}
+
+Retorne SOMENTE um array JSON — um objeto por item, na mesma ordem — com esta estrutura exata para cada:
+[
+  {{
+    "id": <id do item>,
+    "is_actionable": boolean,
+    "takes_less_than_2min": boolean,
+    "can_delegate": boolean,
+    "list_type": "next_action"|"waiting"|"someday"|"reference"|"trash"|"calendar",
+    "next_action": "verbo + ação concreta",
+    "context": "@reunião"|"@email"|"@decisão"|"@leitura"|"@telefone"|"@computador"|null,
+    "priority": "urgent"|"high"|"medium"|"low",
+    "project_suggestion": "nome do projeto ou null",
+    "delegate_to": "pessoa ou null",
+    "waiting_deadline": "ISO date ou null",
+    "due_date": "ISO date ou null",
+    "clarification": "explicação em português, máx 2 frases",
+    "do_now": boolean,
+    "additional_actions": []
+  }}
+]
+Sem texto antes ou depois do array."""
+
+    with client.messages.stream(
+        model="claude-opus-4-6",
+        max_tokens=4096,
+        thinking={"type": "adaptive"},
+        system=GTD_SYSTEM_PROMPT,
+        messages=[{"role": "user", "content": user_message}],
+    ) as stream:
+        final_message = stream.get_final_message()
+
+    text_content = ""
+    for block in final_message.content:
+        if block.type == "text":
+            text_content = block.text
+            break
+
+    text_content = text_content.strip()
+    if text_content.startswith("```"):
+        text_content = text_content.split("```")[1]
+        if text_content.startswith("json"):
+            text_content = text_content[4:]
+
+    try:
+        results = json.loads(text_content)
+        return [{"id": r["id"], "clarification": r} for r in results]
+    except (json.JSONDecodeError, KeyError):
+        # Fallback: return empty clarification per item
+        return [
+            {
+                "id": item["id"],
+                "clarification": {
+                    "is_actionable": True,
+                    "takes_less_than_2min": False,
+                    "can_delegate": False,
+                    "list_type": "next_action",
+                    "next_action": item["content"],
+                    "context": "@computador",
+                    "priority": "medium",
+                    "project_suggestion": None,
+                    "delegate_to": None,
+                    "waiting_deadline": None,
+                    "due_date": None,
+                    "clarification": "Não foi possível clarificar. Revise manualmente.",
+                    "do_now": False,
+                    "additional_actions": [],
+                },
+            }
+            for item in items
+        ]
+
+
+# ─── User context profile ─────────────────────────────────────────────────────
+
+def build_user_context_profile(tasks: list[dict], projects: list[str]) -> dict:
+    """
+    Derives the manager's behavioral patterns from task history.
+    Returns a dict with top_people, top_contexts, top_projects, style_notes.
+    """
+    if not tasks:
+        return {}
+
+    tasks_json = json.dumps(tasks[:80], ensure_ascii=False)  # cap to avoid huge prompt
+    projects_json = ", ".join(projects[:20])
+
+    user_message = f"""Analise o histórico de tarefas deste gestor e extraia o perfil de trabalho dele.
+
+Projetos ativos: {projects_json}
+
+Histórico de tarefas (JSON):
+{tasks_json}
+
+Retorne APENAS JSON com este formato:
+{{
+  "top_people": ["lista das 5 pessoas mais recorrentes em tarefas delegadas/aguardando"],
+  "top_contexts": ["contextos GTD mais usados, em ordem de frequência"],
+  "top_projects": ["projetos mais ativos"],
+  "work_style": "1 frase descrevendo o padrão de trabalho do gestor",
+  "common_patterns": ["até 3 padrões recorrentes observados nas tarefas"]
+}}"""
+
+    with client.messages.stream(
+        model="claude-opus-4-6",
+        max_tokens=512,
+        system="Você é um analista de produtividade. Extraia padrões de comportamento a partir do histórico GTD. Responda apenas JSON.",
+        messages=[{"role": "user", "content": user_message}],
+    ) as stream:
+        final_message = stream.get_final_message()
+
+    text = ""
+    for block in final_message.content:
+        if block.type == "text":
+            text = block.text
+            break
+
+    text = text.strip()
+    if text.startswith("```"):
+        text = text.split("```")[1]
+        if text.startswith("json"):
+            text = text[4:]
+
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        return {}
+
+
+# ─── WhatsApp follow-up drafter ───────────────────────────────────────────────
+
+def draft_followup_message(
+    task_title: str,
+    assigned_to: str,
+    days_waiting: int,
+    due_date: str | None,
+    context: str | None,
+) -> str:
+    """
+    Drafts a WhatsApp follow-up message for a waiting item.
+    Returns: plain text message ready to send.
+    """
+    due_info = f"O prazo era {due_date}." if due_date else ""
+    days_info = f"Estou aguardando há {days_waiting} dias." if days_waiting else ""
+
+    user_message = f"""Preciso de uma mensagem de cobrança para o WhatsApp.
+
+Tarefa: {task_title}
+Aguardando retorno de: {assigned_to}
+{days_info} {due_info}
+
+Escreva uma mensagem direta, profissional e cordial para o WhatsApp, de 2 a 4 linhas.
+- Não use formalidades excessivas
+- Comece pelo nome da pessoa
+- Mencione o assunto brevemente
+- Peça atualização ou confirmação
+- Mantenha o tom de colega de trabalho, não de chefe cobrando
+Retorne APENAS o texto da mensagem, pronto para copiar e colar."""
+
+    with client.messages.stream(
+        model="claude-opus-4-6",
+        max_tokens=256,
+        system="Você escreve mensagens de WhatsApp profissionais e cordiais para acompanhamento de tarefas. Seja direto e humano.",
+        messages=[{"role": "user", "content": user_message}],
+    ) as stream:
+        final_message = stream.get_final_message()
+
+    for block in final_message.content:
+        if block.type == "text":
+            return block.text.strip()
+
+    return f"{assigned_to}, tudo bem? Passando para perguntar sobre: {task_title}. Consegue me dar uma atualização?"
+
+
+# ─── Project decomposition ────────────────────────────────────────────────────
+
+def decompose_project(
+    project_title: str,
+    project_description: str,
+    deadline: str | None,
+    existing_projects: list[str],
+    user_context: dict | None = None,
+) -> list[dict]:
+    """
+    Breaks a project into concrete GTD tasks.
+    Returns list of task dicts ready for DB insertion.
+    """
+    context_block = ""
+    if user_context:
+        if user_context.get("top_contexts"):
+            context_block = f"\nContextos preferidos do gestor: {', '.join(user_context['top_contexts'])}"
+        if user_context.get("top_people"):
+            context_block += f"\nEquipe disponível: {', '.join(user_context['top_people'])}"
+
+    deadline_info = f"\nDeadline do projeto: {deadline}" if deadline else ""
+
+    user_message = f"""Decomponha este projeto em tarefas concretas usando o método GTD.
+
+Projeto: {project_title}
+Descrição: {project_description}{deadline_info}{context_block}
+
+Crie de 5 a 8 tarefas que cubram o projeto do início ao fim. A PRIMEIRA deve ser list_type="next_action".
+As demais podem ser next_action (em sequência) ou waiting (se dependem de terceiros).
+
+Retorne APENAS um array JSON:
+[
+  {{
+    "title": "verbo + ação concreta e específica",
+    "list_type": "next_action"|"waiting",
+    "context": "@reunião"|"@email"|"@decisão"|"@leitura"|"@telefone"|"@computador"|null,
+    "priority": "urgent"|"high"|"medium"|"low",
+    "assigned_to": "pessoa responsável ou null",
+    "notes": "observação curta sobre esta etapa ou null"
+  }}
+]
+Sem texto antes ou depois."""
+
+    with client.messages.stream(
+        model="claude-opus-4-6",
+        max_tokens=2048,
+        thinking={"type": "adaptive"},
+        system=GTD_SYSTEM_PROMPT,
+        messages=[{"role": "user", "content": user_message}],
+    ) as stream:
+        final_message = stream.get_final_message()
+
+    text = ""
+    for block in final_message.content:
+        if block.type == "text":
+            text = block.text
+            break
+
+    text = text.strip()
+    if text.startswith("```"):
+        text = text.split("```")[1]
+        if text.startswith("json"):
+            text = text[4:]
+
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        return [
+            {
+                "title": f"Definir próxima ação para: {project_title}",
+                "list_type": "next_action",
+                "context": "@reunião",
+                "priority": "high",
+                "assigned_to": None,
+                "notes": None,
+            }
+        ]

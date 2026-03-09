@@ -6,7 +6,7 @@ from typing import Optional
 
 from ..database import get_db
 from ..models import Project, Task
-from ..services.claude_service import suggest_next_action_for_project
+from ..services.claude_service import suggest_next_action_for_project, decompose_project
 
 router = APIRouter(prefix="/projects", tags=["projects"])
 
@@ -130,3 +130,50 @@ def suggest_next_action(project_id: int, db: Session = Depends(get_db)):
         project.title, project.description or "", tasks_data
     )
     return {"suggestion": suggestion}
+
+
+@router.post("/{project_id}/decompose")
+def decompose(project_id: int, db: Session = Depends(get_db)):
+    project = db.query(Project).filter(Project.id == project_id).first()
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    other_projects = db.query(Project).filter(
+        Project.status == "active", Project.id != project_id
+    ).all()
+    existing_project_names = [p.title for p in other_projects]
+
+    deadline_str = project.deadline.strftime("%d/%m/%Y") if project.deadline else None
+
+    task_dicts = decompose_project(
+        project_title=project.title,
+        project_description=project.description or "",
+        deadline=deadline_str,
+        existing_projects=existing_project_names,
+    )
+
+    created = []
+    for i, td in enumerate(task_dicts):
+        task = Task(
+            title=td.get("title", "Tarefa sem título"),
+            description=td.get("notes"),
+            list_type=td.get("list_type", "next_action"),
+            context=td.get("context"),
+            priority=td.get("priority", "medium"),
+            project_id=project_id,
+            assigned_to=td.get("assigned_to"),
+            waiting_since=datetime.now() if td.get("list_type") == "waiting" else None,
+        )
+        db.add(task)
+        db.flush()
+        created.append({
+            "id": task.id,
+            "title": task.title,
+            "list_type": task.list_type,
+            "context": task.context,
+            "priority": task.priority,
+            "assigned_to": task.assigned_to,
+        })
+
+    db.commit()
+    return {"project_id": project_id, "tasks_created": len(created), "tasks": created}

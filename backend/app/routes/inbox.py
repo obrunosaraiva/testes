@@ -6,7 +6,7 @@ from typing import Optional
 
 from ..database import get_db
 from ..models import InboxItem, Project, Task
-from ..services.claude_service import clarify_inbox_item
+from ..services.claude_service import clarify_inbox_item, batch_clarify_inbox_items
 
 router = APIRouter(prefix="/inbox", tags=["inbox"])
 
@@ -124,6 +124,39 @@ def process_item(item_id: int, request: ProcessItemRequest, db: Session = Depend
     db.refresh(task)
 
     return {"task_id": task.id, "message": "Item processado com sucesso"}
+
+
+class BatchClarifyRequest(BaseModel):
+    item_ids: list[int]
+
+
+@router.post("/batch-clarify")
+def batch_clarify(req: BatchClarifyRequest, db: Session = Depends(get_db)):
+    if not req.item_ids:
+        raise HTTPException(status_code=400, detail="Nenhum item selecionado")
+    if len(req.item_ids) > 20:
+        raise HTTPException(status_code=400, detail="Máximo 20 itens por lote")
+
+    items = db.query(InboxItem).filter(
+        InboxItem.id.in_(req.item_ids),
+        InboxItem.status != "processed",
+    ).all()
+
+    if not items:
+        raise HTTPException(status_code=404, detail="Nenhum item encontrado")
+
+    projects = db.query(Project).filter(Project.status == "active").all()
+    project_names = [p.title for p in projects]
+
+    payload = [{"id": item.id, "content": item.content} for item in items]
+    results = batch_clarify_inbox_items(payload, project_names)
+
+    # Mark all as clarified
+    for item in items:
+        item.status = "clarified"
+    db.commit()
+
+    return {"count": len(results), "results": results}
 
 
 @router.delete("/{item_id}")

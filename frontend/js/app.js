@@ -496,9 +496,16 @@ async function renderInbox() {
 
     <!-- Inbox list -->
     <div class="section">
-      <div class="section-title">
-        📥 Caixa de entrada
-        <span class="tag tag-urgent">${state.inbox.length} ${state.inbox.length === 1 ? "item" : "itens"}</span>
+      <div class="section-title" style="display:flex;align-items:center;justify-content:space-between">
+        <span>📥 Caixa de entrada
+          <span class="tag tag-urgent">${state.inbox.length} ${state.inbox.length === 1 ? "item" : "itens"}</span>
+        </span>
+        <div style="display:flex;gap:8px;align-items:center">
+          <button class="btn btn-sm btn-secondary" onclick="toggleSelectAll()">Selecionar tudo</button>
+          <button id="batch-clarify-btn" class="btn btn-sm btn-primary" style="display:none" onclick="batchClarifySelected()">
+            🤖 Clarificar selecionados (<span id="batch-count">0</span>)
+          </button>
+        </div>
       </div>
       ${state.inbox.length === 0
         ? `<div class="empty-state"><div class="empty-icon">✅</div><p>Caixa de entrada vazia! Ótimo trabalho.</p></div>`
@@ -770,6 +777,9 @@ function inboxItemCard(item) {
   const sourceTag = sourceTagHtml(item.source);
   return `
     <div class="task-item" id="inbox-${item.id}">
+      <input type="checkbox" class="inbox-check" data-id="${item.id}"
+        style="margin-right:10px;flex-shrink:0;width:16px;height:16px;cursor:pointer"
+        onchange="updateBatchCount()" />
       <div class="task-body">
         <div class="task-title">${escapeHtml(item.content)}</div>
         <div class="task-meta">
@@ -786,6 +796,158 @@ function inboxItemCard(item) {
       </div>
     </div>
   `;
+}
+
+function updateBatchCount() {
+  const checked = document.querySelectorAll(".inbox-check:checked");
+  const btn = document.getElementById("batch-clarify-btn");
+  const count = document.getElementById("batch-count");
+  if (!btn) return;
+  if (checked.length > 0) {
+    btn.style.display = "inline-flex";
+    count.textContent = checked.length;
+  } else {
+    btn.style.display = "none";
+  }
+}
+
+function toggleSelectAll() {
+  const boxes = document.querySelectorAll(".inbox-check");
+  const allChecked = Array.from(boxes).every((b) => b.checked);
+  boxes.forEach((b) => (b.checked = !allChecked));
+  updateBatchCount();
+}
+
+async function batchClarifySelected() {
+  const checked = document.querySelectorAll(".inbox-check:checked");
+  const ids = Array.from(checked).map((b) => parseInt(b.dataset.id));
+  if (!ids.length) return;
+
+  const btn = document.getElementById("batch-clarify-btn");
+  btn.disabled = true;
+  btn.textContent = `⏳ Processando ${ids.length} itens com Claude…`;
+
+  try {
+    const data = await api("/inbox/batch-clarify", {
+      method: "POST",
+      body: JSON.stringify({ item_ids: ids }),
+    });
+
+    // Show batch result in a modal for sequential review
+    openBatchResultModal(data.results);
+  } catch (err) {
+    showToast("Erro ao processar em lote: " + err.message, "error");
+  } finally {
+    btn.disabled = false;
+    updateBatchCount();
+  }
+}
+
+function openBatchResultModal(results) {
+  let current = 0;
+
+  function renderStep() {
+    if (current >= results.length) {
+      closeModal();
+      renderInbox();
+      showToast(`✅ ${results.length} itens clarificados!`, "success");
+      return;
+    }
+    const item = results[current];
+    const cl = item.clarification;
+    const remaining = results.length - current;
+
+    const listOptions = ["next_action","waiting","someday","reference","calendar","trash"]
+      .map((v) => `<option value="${v}" ${cl.list_type === v ? "selected" : ""}>${v.replace("_", " ")}</option>`)
+      .join("");
+    const ctxOptions = [null,"@reunião","@email","@decisão","@leitura","@telefone","@computador"]
+      .map((v) => `<option value="${v || ""}" ${cl.context === v ? "selected" : ""}>${v || "(sem contexto)"}</option>`)
+      .join("");
+    const priOptions = ["urgent","high","medium","low"]
+      .map((v) => `<option value="${v}" ${cl.priority === v ? "selected" : ""}>${v}</option>`)
+      .join("");
+
+    showModal(`
+      <div style="min-width:560px;max-width:660px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+          <h3 style="margin:0">🤖 Lote — item ${current + 1} de ${results.length}</h3>
+          <span class="tag tag-medium">${remaining - 1} restantes</span>
+        </div>
+
+        <div style="background:var(--surface2);border-radius:10px;padding:12px 16px;font-size:13px;margin-bottom:14px;color:var(--text-muted)">
+          ${escapeHtml(cl.next_action || "—")}
+        </div>
+
+        <div class="ai-decision">
+          <div class="ai-decision-text">${cl.clarification || ""}</div>
+        </div>
+
+        <div class="form-row" style="margin-top:14px">
+          <div class="form-group">
+            <label>Lista</label>
+            <select class="form-control" id="bl-list">${listOptions}</select>
+          </div>
+          <div class="form-group">
+            <label>Prioridade</label>
+            <select class="form-control" id="bl-priority">${priOptions}</select>
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Contexto</label>
+            <select class="form-control" id="bl-context">${ctxOptions}</select>
+          </div>
+          <div class="form-group">
+            <label>Projeto</label>
+            <input type="text" class="form-control" id="bl-project" value="${cl.project_suggestion || ""}" />
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Delegar a</label>
+            <input type="text" class="form-control" id="bl-delegate" value="${cl.delegate_to || ""}" />
+          </div>
+          <div class="form-group">
+            <label>Prazo</label>
+            <input type="date" class="form-control" id="bl-due" value="${cl.due_date ? cl.due_date.substring(0,10) : ""}" />
+          </div>
+        </div>
+
+        <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px">
+          <button class="btn btn-secondary" onclick="skipBatchItem(${item.id})">Pular →</button>
+          <button class="btn btn-primary" onclick="confirmBatchItem(${item.id})">✓ Confirmar e próximo</button>
+        </div>
+      </div>
+    `);
+  }
+
+  // Make available to inner functions
+  window._batchResults = results;
+  window._batchCurrent = () => current;
+  window._batchNext = () => { current++; renderStep(); };
+
+  renderStep();
+}
+
+async function confirmBatchItem(itemId) {
+  const list_type = document.getElementById("bl-list").value;
+  const priority = document.getElementById("bl-priority").value;
+  const context = document.getElementById("bl-context").value || null;
+  const project_name = document.getElementById("bl-project").value.trim() || null;
+  const assigned_to = document.getElementById("bl-delegate").value.trim() || null;
+  const due_date = document.getElementById("bl-due").value || null;
+  const action = document.getElementById("bl-action")?.value.trim() ||
+    window._batchResults[window._batchCurrent()]?.clarification?.next_action || "Verificar item";
+
+  await api(`/inbox/${itemId}/process`, {
+    method: "POST",
+    body: JSON.stringify({ list_type, next_action: action, context, priority, project_name, assigned_to, due_date }),
+  });
+  window._batchNext();
+}
+
+function skipBatchItem(itemId) {
+  window._batchNext();
 }
 
 function sourceTagHtml(source) {
@@ -1023,13 +1185,50 @@ async function renderWaiting() {
                     ${overdue ? " · <span style='color:var(--red)'>⚠️ Cobrar</span>" : ""}
                   </div>
                 </div>
-                <button class="btn btn-sm btn-success" onclick="completeTask(${t.id})">Recebido ✓</button>
+                <div style="display:flex;gap:6px">
+                  <button class="btn btn-sm btn-secondary" onclick="openFollowupDraft(${t.id})" title="Redigir cobrança no WhatsApp">
+                    💬 Cobrar
+                  </button>
+                  <button class="btn btn-sm btn-success" onclick="completeTask(${t.id})">Recebido ✓</button>
+                </div>
               </div>
             `;
           }).join("")
       }
     </div>
   `;
+}
+
+async function openFollowupDraft(taskId) {
+  showModal(`
+    <div style="min-width:460px">
+      <h3 style="margin:0 0 16px">💬 Redigindo cobrança com IA…</h3>
+      <div class="ai-loading"><div class="spinner"></div><span>Claude está escrevendo a mensagem…</span></div>
+    </div>
+  `);
+
+  try {
+    const data = await api(`/tasks/${taskId}/draft-followup`, { method: "POST" });
+    showModal(`
+      <div style="min-width:460px">
+        <h3 style="margin:0 0 16px">💬 Mensagem de cobrança</h3>
+        <div style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:16px;font-size:14px;line-height:1.6;white-space:pre-wrap;color:var(--text)">${escapeHtml(data.message)}</div>
+        <div style="display:flex;gap:8px;margin-top:16px;justify-content:flex-end">
+          <button class="btn btn-secondary" onclick="closeModal()">Fechar</button>
+          <button class="btn btn-primary" onclick="copyFollowup(\`${escapeJs(data.message)}\`)">📋 Copiar mensagem</button>
+        </div>
+      </div>
+    `);
+  } catch (err) {
+    showModal(`<div style="min-width:400px"><p style="color:var(--red)">Erro: ${err.message}</p><button class="btn btn-secondary" onclick="closeModal()">Fechar</button></div>`);
+  }
+}
+
+function copyFollowup(text) {
+  navigator.clipboard.writeText(text).then(() => {
+    showToast("✅ Mensagem copiada!", "success");
+    closeModal();
+  });
 }
 
 // ─── Projects ─────────────────────────────────────────────────────────────────
@@ -1073,8 +1272,96 @@ function projectDetailCard(p) {
         <span>${p.task_count} tarefas</span>
         ${p.deadline ? `<span>📅 ${formatDate(p.deadline)}</span>` : ""}
       </div>
+      ${p.status === "active" ? `
+        <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">
+          ${p.task_count === 0 ? `
+            <button class="btn btn-sm btn-primary" onclick="decomposeProject(${p.id}, \`${escapeJs(p.title)}\`)">
+              🧠 Decompor com IA
+            </button>
+          ` : ""}
+          <button class="btn btn-sm btn-secondary" onclick="suggestNextAction(${p.id})">
+            💡 Sugerir ação
+          </button>
+        </div>
+      ` : ""}
     </div>
   `;
+}
+
+async function suggestNextAction(projectId) {
+  showModal(`
+    <div style="min-width:400px">
+      <h3 style="margin:0 0 16px">💡 Sugerindo próxima ação…</h3>
+      <div class="ai-loading"><div class="spinner"></div><span>Claude está pensando…</span></div>
+    </div>
+  `);
+  try {
+    const data = await api(`/projects/${projectId}/suggest-next-action`);
+    showModal(`
+      <div style="min-width:420px">
+        <h3 style="margin:0 0 16px">💡 Próxima ação sugerida</h3>
+        <div style="background:var(--surface2);border-radius:10px;padding:16px;font-size:14px;line-height:1.6">
+          ${escapeHtml(data.suggestion)}
+        </div>
+        <div style="text-align:right;margin-top:16px">
+          <button class="btn btn-primary" onclick="closeModal()">OK</button>
+        </div>
+      </div>
+    `);
+  } catch (err) {
+    showModal(`<div><p style="color:var(--red)">${err.message}</p><button class="btn btn-secondary" onclick="closeModal()">Fechar</button></div>`);
+  }
+}
+
+async function decomposeProject(projectId, projectTitle) {
+  showModal(`
+    <div style="min-width:480px">
+      <h3 style="margin:0 0 16px">🧠 Decompondo "${projectTitle}"…</h3>
+      <div class="ai-loading">
+        <div class="spinner"></div>
+        <span>Claude está criando as tarefas do projeto…</span>
+      </div>
+    </div>
+  `);
+
+  try {
+    const data = await api(`/projects/${projectId}/decompose`, { method: "POST" });
+    const listIcon = { next_action: "⚡", waiting: "⏳", someday: "🌙" };
+    const priTag = { urgent: "tag-urgent", high: "tag-high", medium: "tag-medium", low: "tag-low" };
+
+    showModal(`
+      <div style="min-width:540px;max-width:680px">
+        <h3 style="margin:0 0 8px">🧠 Projeto decomposto — ${data.tasks_created} tarefas criadas</h3>
+        <p style="color:var(--text-muted);font-size:13px;margin-bottom:16px">
+          As tarefas já foram adicionadas ao sistema. Revise e ajuste conforme necessário.
+        </p>
+        <div style="display:flex;flex-direction:column;gap:8px;max-height:360px;overflow-y:auto">
+          ${data.tasks.map((t, i) => `
+            <div style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:var(--surface2);border-radius:8px">
+              <span style="color:var(--text-muted);font-size:12px;min-width:20px">${i + 1}</span>
+              <span>${listIcon[t.list_type] || "•"}</span>
+              <div style="flex:1">
+                <div style="font-size:13px;font-weight:500">${escapeHtml(t.title)}</div>
+                ${t.assigned_to ? `<div style="font-size:12px;color:var(--text-muted)">→ ${t.assigned_to}</div>` : ""}
+              </div>
+              ${t.context ? `<span class="tag tag-context">${t.context}</span>` : ""}
+              <span class="tag ${priTag[t.priority] || "tag-medium"}">${t.priority}</span>
+            </div>
+          `).join("")}
+        </div>
+        <div style="text-align:right;margin-top:16px">
+          <button class="btn btn-primary" onclick="closeModal();renderProjects()">✓ Fechar</button>
+        </div>
+      </div>
+    `);
+  } catch (err) {
+    showModal(`
+      <div style="min-width:400px">
+        <p style="color:var(--red)">Erro ao decompor projeto: ${err.message}</p>
+        <button class="btn btn-secondary" onclick="closeModal()">Fechar</button>
+      </div>
+    `);
+  }
 }
 
 function openNewProject() {
@@ -1293,6 +1580,21 @@ function showModal(html) {
 function closeModal() {
   const overlay = document.getElementById("modal-overlay");
   if (overlay) overlay.style.display = "none";
+}
+
+function showToast(message, type = "info") {
+  const existing = document.getElementById("toast-container");
+  if (existing) existing.remove();
+  const colors = { success: "var(--green)", error: "var(--red)", info: "var(--accent)" };
+  const toast = document.createElement("div");
+  toast.id = "toast-container";
+  toast.style.cssText = `position:fixed;bottom:24px;right:24px;z-index:9999;background:var(--surface);
+    border:1px solid ${colors[type] || colors.info};border-radius:10px;padding:12px 18px;
+    font-size:14px;color:var(--text);box-shadow:0 4px 20px rgba(0,0,0,0.3);
+    animation:slideIn 0.2s ease`;
+  toast.textContent = message;
+  document.body.appendChild(toast);
+  setTimeout(() => toast.remove(), 3500);
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
