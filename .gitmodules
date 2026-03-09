@@ -1,0 +1,9 @@
+[submodule "get-shit-done"]
+	path = get-shit-done
+	url = https://github.com/gsd-build/get-shit-done.git
+[submodule "superpowers"]
+	path = superpowers
+	url = https://github.com/obra/superpowers.git
+[submodule "awesome-claude-code"]
+	path = awesome-claude-code
+	url = https://github.com/hesreallyhim/awesome-claude-code.git
