@@ -934,6 +934,70 @@ select.form-control option { background: var(--surface); color: var(--text); }
   20%, 60% { background: rgba(139, 92, 246, 0.12); border-color: var(--accent); }
 }
 
+/* ═══ Project Detail ══════════════════════════════════════════════════════ */
+.pd-header {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 24px;
+  margin-bottom: 20px;
+}
+.pd-title-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 6px;
+}
+.pd-title { font-size: 20px; font-weight: 700; margin: 0; }
+.pd-desc { color: var(--text-muted); font-size: 13px; margin: 0 0 14px; }
+.pd-progress-wrap {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 14px 0 12px;
+}
+.pd-progress-bar-bg {
+  flex: 1;
+  height: 8px;
+  background: var(--surface2);
+  border-radius: 99px;
+  overflow: hidden;
+}
+.pd-progress-bar-fill {
+  height: 100%;
+  background: var(--accent);
+  border-radius: 99px;
+  transition: width 0.4s ease;
+}
+.pd-progress-label { font-size: 12px; font-weight: 600; color: var(--accent); min-width: 36px; }
+.pd-stats {
+  display: flex;
+  gap: 20px;
+  flex-wrap: wrap;
+}
+.pd-stat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  font-size: 11px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.pd-stat-n { font-size: 22px; font-weight: 700; color: var(--text); line-height: 1; }
+.pd-add-task { margin-bottom: 4px; }
+.pd-add-form {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+  margin-top: 10px;
+}
+.pd-add-form .task-edit-title { flex: 1; min-width: 200px; }
+.pd-done-list { margin-top: 4px; }
+
 /* ═══ Inline Edit ═════════════════════════════════════════════════════════ */
 .task-item.editing {
   background: var(--surface2);

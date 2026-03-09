@@ -71,7 +71,7 @@ def get_project(project_id: int, db: Session = Depends(get_db)):
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
 
-    tasks = db.query(Task).filter(Task.project_id == project_id).all()
+    tasks = db.query(Task).filter(Task.project_id == project_id).order_by(Task.created_at.asc()).all()
     return {
         "id": project.id,
         "title": project.title,
@@ -88,10 +88,44 @@ def get_project(project_id: int, db: Session = Depends(get_db)):
                 "status": t.status,
                 "priority": t.priority,
                 "context": t.context,
+                "assigned_to": t.assigned_to,
+                "due_date": t.due_date.isoformat() if t.due_date else None,
+                "waiting_since": t.waiting_since.isoformat() if t.waiting_since else None,
+                "completed_at": t.completed_at.isoformat() if t.completed_at else None,
             }
             for t in tasks
         ],
     }
+
+
+class QuickTaskCreate(BaseModel):
+    title: str
+    list_type: str = "next_action"
+    context: Optional[str] = None
+    priority: str = "medium"
+    assigned_to: Optional[str] = None
+
+
+@router.post("/{project_id}/tasks")
+def add_task_to_project(project_id: int, task: QuickTaskCreate, db: Session = Depends(get_db)):
+    project = db.query(Project).filter(Project.id == project_id).first()
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    from datetime import timezone
+    new_task = Task(
+        title=task.title,
+        list_type=task.list_type,
+        context=task.context,
+        priority=task.priority,
+        project_id=project_id,
+        assigned_to=task.assigned_to,
+        waiting_since=datetime.now(timezone.utc) if task.list_type == "waiting" else None,
+    )
+    db.add(new_task)
+    db.commit()
+    db.refresh(new_task)
+    return {"id": new_task.id, "title": new_task.title, "list_type": new_task.list_type}
 
 
 @router.patch("/{project_id}")

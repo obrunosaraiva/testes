@@ -237,8 +237,12 @@ async function loadPage(page) {
   document.querySelectorAll(".nav-item").forEach((el) => {
     el.classList.toggle("active", el.dataset.page === page);
   });
+  // Handle dynamic project detail route
+  const projectMatch = page.match(/^project-(\d+)$/);
+  const activeDomPage = projectMatch ? "project-detail" : page;
+
   document.querySelectorAll(".page").forEach((el) => {
-    el.classList.toggle("active", el.id === `page-${page}`);
+    el.classList.toggle("active", el.id === `page-${activeDomPage}`);
   });
 
   document.getElementById("page-title").textContent = {
@@ -249,7 +253,7 @@ async function loadPage(page) {
     projects: "Projetos",
     someday: "Algum Dia / Talvez",
     review: "Revisão Semanal",
-  }[page] || page;
+  }[page] || (projectMatch ? "Projeto" : page);
 
   switch (page) {
     case "dashboard": await renderDashboard(); break;
@@ -259,6 +263,8 @@ async function loadPage(page) {
     case "projects": await renderProjects(); break;
     case "someday": await renderSomeday(); break;
     case "review": await renderReview(); break;
+    default:
+      if (projectMatch) await renderProjectDetail(Number(projectMatch[1]));
   }
 }
 
@@ -1242,6 +1248,212 @@ function copyFollowup(text) {
   });
 }
 
+// ─── Project Detail ───────────────────────────────────────────────────────────
+async function renderProjectDetail(id) {
+  const el = document.getElementById("page-project-detail");
+  el.innerHTML = `<div class="section"><div class="ai-loading"><div class="spinner"></div><span>Carregando projeto…</span></div></div>`;
+
+  const p = await api(`/projects/${id}`);
+  document.getElementById("page-title").textContent = p.title;
+
+  const pending = p.tasks.filter((t) => t.status === "pending");
+  const done = p.tasks.filter((t) => t.status === "done");
+  const byList = { next_action: [], waiting: [], someday: [], reference: [] };
+  pending.forEach((t) => { if (byList[t.list_type]) byList[t.list_type].push(t); });
+
+  const listLabel = { next_action: "⚡ Próximas Ações", waiting: "⏳ Aguardando", someday: "🌙 Algum Dia", reference: "📎 Referência" };
+  const priIcon = { urgent: "🔴", high: "🟠", medium: "🟡", low: "🟢" };
+  const statusBadge = { active: `<span class="tag tag-medium">Ativo</span>`, completed: `<span class="tag tag-low">Concluído</span>`, on_hold: `<span class="tag tag-urgent">Em espera</span>` };
+
+  const daysToDeadline = p.deadline
+    ? Math.ceil((new Date(p.deadline) - new Date()) / 86400000)
+    : null;
+  const deadlineHtml = daysToDeadline !== null
+    ? daysToDeadline < 0
+      ? `<span style="color:var(--red)">📅 Vencido há ${Math.abs(daysToDeadline)} dias</span>`
+      : `<span style="color:${daysToDeadline <= 7 ? "var(--orange)" : "var(--text-muted)"}">📅 ${daysToDeadline} dias restantes</span>`
+    : "";
+
+  el.innerHTML = `
+    <!-- Header -->
+    <div class="pd-header">
+      <button class="btn btn-secondary btn-sm" onclick="loadPage('projects')">← Projetos</button>
+      <div class="pd-title-row">
+        <h2 class="pd-title">${escapeHtml(p.title)}</h2>
+        ${statusBadge[p.status] || ""}
+        ${deadlineHtml}
+      </div>
+      ${p.description ? `<p class="pd-desc">${escapeHtml(p.description)}</p>` : ""}
+
+      <!-- Progress -->
+      <div class="pd-progress-wrap">
+        <div class="pd-progress-bar-bg">
+          <div class="pd-progress-bar-fill" style="width:${p.completion_pct}%"></div>
+        </div>
+        <span class="pd-progress-label">${p.completion_pct}%</span>
+      </div>
+
+      <!-- Stats row -->
+      <div class="pd-stats">
+        <div class="pd-stat"><span class="pd-stat-n">${pending.length}</span><span>pendentes</span></div>
+        <div class="pd-stat"><span class="pd-stat-n" style="color:var(--green)">${done.length}</span><span>concluídas</span></div>
+        <div class="pd-stat"><span class="pd-stat-n" style="color:${byList.next_action.length ? "var(--accent)" : "var(--red)"}">${byList.next_action.length}</span><span>próx. ações</span></div>
+      </div>
+
+      <!-- AI actions -->
+      <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">
+        ${pending.length === 0 ? `<button class="btn btn-sm btn-primary" onclick="decomposeProjectDetail(${p.id}, \`${escapeJs(p.title)}\`)">🧠 Decompor com IA</button>` : ""}
+        <button class="btn btn-sm btn-secondary" onclick="suggestNextActionDetail(${p.id})">💡 Sugerir próxima ação</button>
+        ${p.status === "active" ? `<button class="btn btn-sm btn-secondary" onclick="markProjectDone(${p.id})">✓ Concluir projeto</button>` : ""}
+      </div>
+    </div>
+
+    <!-- Add task inline -->
+    <div class="section pd-add-task" id="pd-add-area">
+      <div class="section-title">+ Nova tarefa</div>
+      <div class="pd-add-form">
+        <input type="text" class="task-edit-title" id="pd-new-title" placeholder="Título da tarefa…"
+          onkeydown="if(event.key==='Enter')addProjectTask(${p.id})" />
+        <select class="task-edit-priority" id="pd-new-list">
+          <option value="next_action">⚡ Próxima Ação</option>
+          <option value="waiting">⏳ Aguardando</option>
+          <option value="someday">🌙 Algum Dia</option>
+        </select>
+        <input type="text" class="task-edit-context" list="pd-ctx-list" id="pd-new-ctx" placeholder="@contexto" style="width:120px" />
+        <datalist id="pd-ctx-list">
+          ${CONTEXT_OPTIONS.map((c) => `<option value="${c}"></option>`).join("")}
+        </datalist>
+        <select class="task-edit-priority" id="pd-new-pri">
+          <option value="medium">🟡 Média</option>
+          <option value="urgent">🔴 Urgente</option>
+          <option value="high">🟠 Alta</option>
+          <option value="low">🟢 Baixa</option>
+        </select>
+        <button class="btn btn-sm btn-primary" onclick="addProjectTask(${p.id})">Adicionar</button>
+      </div>
+    </div>
+
+    <!-- Task lists -->
+    ${Object.entries(byList).map(([lt, tasks]) => tasks.length === 0 ? "" : `
+      <div class="section">
+        <div class="section-title">${listLabel[lt]}</div>
+        ${tasks.map((t) => `
+          <div class="task-item" id="task-row-${t.id}"
+            data-title="${escapeAttr(t.title)}"
+            data-context="${escapeAttr(t.context || "")}"
+            data-priority="${t.priority || "medium"}"
+            data-due="${t.due_date ? t.due_date.slice(0, 10) : ""}"
+            data-list="${t.list_type}">
+            <div class="task-check" onclick="completeTaskInProject(${t.id}, ${p.id})"></div>
+            <div class="task-body">
+              <div class="task-title">${escapeHtml(t.title)}</div>
+              <div class="task-meta">
+                <span class="tag tag-${t.priority}">${{urgent:"Urgente",high:"Alta",medium:"Média",low:"Baixa"}[t.priority]}</span>
+                ${t.context ? `<span class="tag tag-context">${escapeHtml(t.context)}</span>` : ""}
+                ${t.due_date ? `<span class="tag tag-low">📅 ${formatDate(t.due_date)}</span>` : ""}
+                ${t.assigned_to ? `<span class="tag tag-low">→ ${escapeHtml(t.assigned_to)}</span>` : ""}
+              </div>
+            </div>
+            <div class="task-actions">
+              <button class="btn-ghost" onclick="editTaskRow(${t.id})" title="Editar">✎</button>
+              <button class="btn btn-sm btn-success" onclick="completeTaskInProject(${t.id}, ${p.id})">✓</button>
+            </div>
+          </div>
+        `).join("")}
+      </div>
+    `).join("")}
+
+    <!-- Done tasks -->
+    ${done.length > 0 ? `
+      <div class="section">
+        <div class="section-title" style="color:var(--text-muted)">
+          ✓ Concluídas (${done.length})
+          <button class="btn-ghost" style="font-size:12px;margin-left:8px"
+            onclick="toggleDoneTasks(this)">mostrar</button>
+        </div>
+        <div class="pd-done-list" style="display:none">
+          ${done.map((t) => `
+            <div style="display:flex;align-items:center;gap:8px;padding:8px 12px;opacity:0.6">
+              <span style="color:var(--green)">✓</span>
+              <span style="text-decoration:line-through;font-size:13px">${escapeHtml(t.title)}</span>
+            </div>
+          `).join("")}
+        </div>
+      </div>
+    ` : ""}
+  `;
+}
+
+async function addProjectTask(projectId) {
+  const title = document.getElementById("pd-new-title").value.trim();
+  if (!title) { document.getElementById("pd-new-title").focus(); return; }
+  const list_type = document.getElementById("pd-new-list").value;
+  const context = document.getElementById("pd-new-ctx").value.trim();
+  const priority = document.getElementById("pd-new-pri").value;
+  try {
+    await api(`/projects/${projectId}/tasks`, {
+      method: "POST",
+      body: JSON.stringify({ title, list_type, context: context || null, priority }),
+    });
+    showToast("Tarefa adicionada", "success");
+    await renderProjectDetail(projectId);
+  } catch (err) {
+    showToast("Erro: " + err.message, "error");
+  }
+}
+
+async function completeTaskInProject(taskId, projectId) {
+  await api(`/tasks/${taskId}/complete`, { method: "POST" });
+  await renderProjectDetail(projectId);
+}
+
+function toggleDoneTasks(btn) {
+  const list = btn.closest(".section").querySelector(".pd-done-list");
+  const hidden = list.style.display === "none";
+  list.style.display = hidden ? "block" : "none";
+  btn.textContent = hidden ? "ocultar" : "mostrar";
+}
+
+async function markProjectDone(projectId) {
+  await api(`/projects/${projectId}`, {
+    method: "PATCH",
+    body: JSON.stringify({ status: "completed" }),
+  });
+  showToast("Projeto concluído!", "success");
+  await renderProjectDetail(projectId);
+}
+
+async function suggestNextActionDetail(projectId) {
+  showModal(`<div style="min-width:400px"><h3 style="margin:0 0 16px">💡 Sugerindo próxima ação…</h3><div class="ai-loading"><div class="spinner"></div><span>Claude está pensando…</span></div></div>`);
+  try {
+    const data = await api(`/projects/${projectId}/suggest-next-action`);
+    showModal(`
+      <div style="min-width:420px">
+        <h3 style="margin:0 0 16px">💡 Próxima ação sugerida</h3>
+        <div style="background:var(--surface2);border-radius:10px;padding:16px;font-size:14px;line-height:1.6">${escapeHtml(data.suggestion)}</div>
+        <div style="display:flex;gap:8px;margin-top:16px;justify-content:flex-end">
+          <button class="btn btn-secondary" onclick="closeModal()">Fechar</button>
+          <button class="btn btn-primary" onclick="closeModal();document.getElementById('pd-new-title').value=\`${escapeJs(data.suggestion)}\`;document.getElementById('pd-new-title').focus()">Usar como tarefa</button>
+        </div>
+      </div>
+    `);
+  } catch (err) {
+    showModal(`<div><p style="color:var(--red)">${err.message}</p><button class="btn btn-secondary" onclick="closeModal()">Fechar</button></div>`);
+  }
+}
+
+async function decomposeProjectDetail(projectId, projectTitle) {
+  showModal(`<div style="min-width:480px"><h3 style="margin:0 0 16px">🧠 Decompondo "${projectTitle}"…</h3><div class="ai-loading"><div class="spinner"></div><span>Claude está criando as tarefas…</span></div></div>`);
+  try {
+    const data = await api(`/projects/${projectId}/decompose`, { method: "POST" });
+    closeModal();
+    showToast(`${data.tasks_created} tarefas criadas!`, "success");
+    await renderProjectDetail(projectId);
+  } catch (err) {
+    showModal(`<div><p style="color:var(--red)">Erro: ${err.message}</p><button class="btn btn-secondary" onclick="closeModal()">Fechar</button></div>`);
+  }
+}
+
 // ─── Projects ─────────────────────────────────────────────────────────────────
 async function renderProjects() {
   state.projects = await api("/projects/");
@@ -1268,9 +1480,9 @@ async function renderProjects() {
 
 function projectDetailCard(p) {
   return `
-    <div class="project-card ${!p.has_next_action && p.status === "active" ? "alert" : ""}">
+    <div class="project-card ${!p.has_next_action && p.status === "active" ? "alert" : ""}" style="cursor:pointer" onclick="loadPage('project-${p.id}')">
       <div class="project-header">
-        <span class="project-title">${p.title}</span>
+        <span class="project-title">${escapeHtml(p.title)}</span>
         ${!p.has_next_action && p.status === "active"
           ? `<span class="tag tag-urgent">⚠️ Sem próxima ação</span>`
           : `<span class="tag tag-medium">✓ Próxima ação</span>`}
@@ -1286,11 +1498,11 @@ function projectDetailCard(p) {
       ${p.status === "active" ? `
         <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">
           ${p.task_count === 0 ? `
-            <button class="btn btn-sm btn-primary" onclick="decomposeProject(${p.id}, \`${escapeJs(p.title)}\`)">
+            <button class="btn btn-sm btn-primary" onclick="event.stopPropagation();decomposeProject(${p.id}, \`${escapeJs(p.title)}\`)">
               🧠 Decompor com IA
             </button>
           ` : ""}
-          <button class="btn btn-sm btn-secondary" onclick="suggestNextAction(${p.id})">
+          <button class="btn btn-sm btn-secondary" onclick="event.stopPropagation();suggestNextAction(${p.id})">
             💡 Sugerir ação
           </button>
         </div>
