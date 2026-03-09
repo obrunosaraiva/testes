@@ -6,7 +6,7 @@ import os
 
 from .database import engine
 from .models import Base
-from .routes import inbox, tasks, projects, dashboard, capture
+from .routes import inbox, tasks, projects, dashboard, capture, auth, notifications
 
 # Create tables
 Base.metadata.create_all(bind=engine)
@@ -31,6 +31,8 @@ app.include_router(tasks.router, prefix="/api")
 app.include_router(projects.router, prefix="/api")
 app.include_router(dashboard.router, prefix="/api")
 app.include_router(capture.router, prefix="/api")
+app.include_router(auth.router, prefix="/api")
+app.include_router(notifications.router, prefix="/api")
 
 # Serve frontend static files
 frontend_path = os.path.join(os.path.dirname(__file__), "../../frontend")
@@ -41,6 +43,14 @@ if os.path.exists(frontend_path):
     @app.get("/")
     def serve_frontend():
         return FileResponse(os.path.join(frontend_path, "index.html"))
+
+    @app.get("/sw.js")
+    def serve_sw():
+        return FileResponse(
+            os.path.join(frontend_path, "sw.js"),
+            media_type="application/javascript",
+            headers={"Service-Worker-Allowed": "/"},
+        )
 
 
 @app.get("/api/health")

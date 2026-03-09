@@ -10,77 +10,129 @@
 </head>
 <body>
 
-  <!-- Sidebar -->
-  <aside class="sidebar">
-    <div class="sidebar-logo">
-      <h1>GTD Manager</h1>
-      <span>Gestão com IA · Claude</span>
+  <!-- Login Screen (shown when not authenticated) -->
+  <div id="login-screen" style="display:none; position:fixed; inset:0; background:var(--bg); z-index:200; display:flex; align-items:center; justify-content:center;">
+    <div style="width:100%;max-width:400px;padding:20px">
+      <div style="text-align:center;margin-bottom:32px">
+        <div style="font-size:40px;margin-bottom:8px">📋</div>
+        <h1 style="font-size:22px;font-weight:700;color:var(--accent)">GTD Manager</h1>
+        <p style="color:var(--text-muted);font-size:13px">Gestão de projetos com IA · Claude</p>
+      </div>
+
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:28px">
+        <div style="display:flex;gap:0;margin-bottom:24px;background:var(--surface2);border-radius:8px;padding:4px">
+          <button id="tab-login" onclick="switchAuthTab('login')"
+            style="flex:1;padding:8px;border:none;border-radius:6px;background:var(--accent);color:#fff;font-size:13px;font-weight:600;cursor:pointer">
+            Entrar
+          </button>
+          <button id="tab-register" onclick="switchAuthTab('register')"
+            style="flex:1;padding:8px;border:none;border-radius:6px;background:transparent;color:var(--text-muted);font-size:13px;font-weight:500;cursor:pointer">
+            Criar conta
+          </button>
+        </div>
+
+        <div id="auth-error" style="display:none;background:rgba(255,77,109,0.1);border:1px solid rgba(255,77,109,0.3);border-radius:8px;padding:10px 14px;font-size:13px;color:var(--red);margin-bottom:16px"></div>
+
+        <form id="auth-form" onsubmit="submitAuth(event)">
+          <div id="field-name" style="display:none;margin-bottom:12px">
+            <label style="display:block;font-size:12px;color:var(--text-muted);margin-bottom:6px">Nome</label>
+            <input type="text" id="auth-name" class="form-control" placeholder="Seu nome completo" />
+          </div>
+          <div style="margin-bottom:12px">
+            <label style="display:block;font-size:12px;color:var(--text-muted);margin-bottom:6px">E-mail</label>
+            <input type="email" id="auth-email" class="form-control" placeholder="seu@email.com" required />
+          </div>
+          <div style="margin-bottom:20px">
+            <label style="display:block;font-size:12px;color:var(--text-muted);margin-bottom:6px">Senha</label>
+            <input type="password" id="auth-password" class="form-control" placeholder="Mínimo 6 caracteres" required />
+          </div>
+          <button type="submit" class="btn btn-primary" style="width:100%;padding:12px" id="auth-submit">Entrar</button>
+        </form>
+      </div>
     </div>
+  </div>
 
-    <nav class="sidebar-nav">
-      <div class="nav-item active" data-page="dashboard">
-        <span class="icon">📊</span>
-        <span>Dashboard</span>
-      </div>
-      <div class="nav-item" data-page="inbox">
-        <span class="icon">📥</span>
-        <span>Caixa de Entrada</span>
-        <span class="badge" id="badge-inbox" style="display:none">0</span>
-      </div>
-      <div class="nav-item" data-page="next-actions">
-        <span class="icon">⚡</span>
-        <span>Próximas Ações</span>
-      </div>
-      <div class="nav-item" data-page="waiting">
-        <span class="icon">⏳</span>
-        <span>Aguardando</span>
-      </div>
-      <div class="nav-item" data-page="projects">
-        <span class="icon">📂</span>
-        <span>Projetos</span>
-      </div>
-      <div class="nav-item" data-page="someday">
-        <span class="icon">🌙</span>
-        <span>Algum Dia</span>
+  <!-- App (shown when authenticated) -->
+  <div id="app" style="display:none; height:100vh; display:none; overflow:hidden; flex-direction:row;">
+
+    <!-- Sidebar -->
+    <aside class="sidebar">
+      <div class="sidebar-logo">
+        <h1>GTD Manager</h1>
+        <span id="user-name-label">Gestão com IA · Claude</span>
       </div>
 
-      <div style="margin: 12px 0; border-top: 1px solid var(--border);"></div>
+      <nav class="sidebar-nav">
+        <div class="nav-item active" data-page="dashboard">
+          <span class="icon">📊</span>
+          <span>Dashboard</span>
+        </div>
+        <div class="nav-item" data-page="inbox">
+          <span class="icon">📥</span>
+          <span>Caixa de Entrada</span>
+          <span class="badge" id="badge-inbox" style="display:none">0</span>
+        </div>
+        <div class="nav-item" data-page="next-actions">
+          <span class="icon">⚡</span>
+          <span>Próximas Ações</span>
+        </div>
+        <div class="nav-item" data-page="waiting">
+          <span class="icon">⏳</span>
+          <span>Aguardando</span>
+        </div>
+        <div class="nav-item" data-page="projects">
+          <span class="icon">📂</span>
+          <span>Projetos</span>
+        </div>
+        <div class="nav-item" data-page="someday">
+          <span class="icon">🌙</span>
+          <span>Algum Dia</span>
+        </div>
 
-      <div class="nav-item" data-page="review">
-        <span class="icon">📅</span>
-        <span>Revisão Semanal</span>
+        <div style="margin: 12px 0; border-top: 1px solid var(--border);"></div>
+
+        <div class="nav-item" data-page="review">
+          <span class="icon">📅</span>
+          <span>Revisão Semanal</span>
+        </div>
+      </nav>
+
+      <!-- Logout -->
+      <div style="padding:16px 20px;border-top:1px solid var(--border)">
+        <button class="btn btn-secondary" style="width:100%;font-size:12px" onclick="logout()">Sair</button>
       </div>
-    </nav>
-  </aside>
+    </aside>
 
-  <!-- Main -->
-  <div class="main">
-    <div class="topbar">
-      <h2 id="page-title">Dashboard</h2>
-      <button class="btn btn-secondary btn-sm" onclick="loadPage(state.currentPage)">↻ Atualizar</button>
-    </div>
+    <!-- Main -->
+    <div class="main">
+      <div class="topbar">
+        <h2 id="page-title">Dashboard</h2>
 
-    <div class="content">
-      <!-- Dashboard -->
-      <div class="page active" id="page-dashboard"></div>
+        <!-- Offline indicator -->
+        <div id="offline-badge" style="display:none;background:rgba(255,159,67,0.15);color:var(--orange);border:1px solid rgba(255,159,67,0.3);border-radius:6px;padding:4px 10px;font-size:12px;font-weight:500">
+          📡 Offline — dados em cache
+        </div>
 
-      <!-- Inbox -->
-      <div class="page" id="page-inbox"></div>
+        <!-- Notification bell -->
+        <div style="position:relative">
+          <button class="btn btn-secondary btn-sm" onclick="toggleNotifications()" id="notif-btn" style="position:relative">
+            🔔 <span id="notif-badge" style="display:none;position:absolute;top:-4px;right:-4px;background:var(--red);color:#fff;border-radius:50%;width:16px;height:16px;font-size:10px;font-weight:700;display:none;align-items:center;justify-content:center">0</span>
+          </button>
+          <div id="notif-dropdown" style="display:none;position:absolute;right:0;top:calc(100% + 8px);width:340px;background:var(--surface);border:1px solid var(--border);border-radius:12px;z-index:50;max-height:400px;overflow-y:auto;box-shadow:0 8px 24px rgba(0,0,0,0.3)"></div>
+        </div>
 
-      <!-- Next Actions -->
-      <div class="page" id="page-next-actions"></div>
+        <button class="btn btn-secondary btn-sm" onclick="loadPage(state.currentPage)">↻</button>
+      </div>
 
-      <!-- Waiting -->
-      <div class="page" id="page-waiting"></div>
-
-      <!-- Projects -->
-      <div class="page" id="page-projects"></div>
-
-      <!-- Someday -->
-      <div class="page" id="page-someday"></div>
-
-      <!-- Weekly Review -->
-      <div class="page" id="page-review"></div>
+      <div class="content">
+        <div class="page active" id="page-dashboard"></div>
+        <div class="page" id="page-inbox"></div>
+        <div class="page" id="page-next-actions"></div>
+        <div class="page" id="page-waiting"></div>
+        <div class="page" id="page-projects"></div>
+        <div class="page" id="page-someday"></div>
+        <div class="page" id="page-review"></div>
+      </div>
     </div>
   </div>
 

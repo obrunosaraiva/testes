@@ -10,13 +10,218 @@ let state = {
   clarifyTarget: null,
   clarifyResult: null,
   contextFilter: null,
+  authMode: "login",   // "login" | "register"
+  user: null,
+  isOffline: false,
+  notifications: [],
+  notifOpen: false,
 };
 
 // ─── Init ─────────────────────────────────────────────────────────────────────
-document.addEventListener("DOMContentLoaded", () => {
+document.addEventListener("DOMContentLoaded", async () => {
+  registerServiceWorker();
+  watchOfflineStatus();
+
+  // Check auth
+  const token = localStorage.getItem("gtd_token");
+  if (!token) {
+    showLoginScreen();
+    return;
+  }
+  // Verify token is still valid
+  try {
+    const res = await fetch(`${API}/auth/me`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!res.ok) throw new Error("invalid");
+    const user = await res.json();
+    loginSuccess({ token, user });
+  } catch {
+    localStorage.removeItem("gtd_token");
+    showLoginScreen();
+  }
+});
+
+// ─── Service Worker ───────────────────────────────────────────────────────────
+function registerServiceWorker() {
+  if ("serviceWorker" in navigator) {
+    navigator.serviceWorker.register("/sw.js").catch(() => {});
+    // Listen for navigate messages from SW notification clicks
+    navigator.serviceWorker.addEventListener("message", (e) => {
+      if (e.data?.type === "navigate") loadPage(e.data.page);
+    });
+  }
+}
+
+// ─── Offline detection ────────────────────────────────────────────────────────
+function watchOfflineStatus() {
+  const update = () => {
+    state.isOffline = !navigator.onLine;
+    const badge = document.getElementById("offline-badge");
+    if (badge) badge.style.display = state.isOffline ? "block" : "none";
+  };
+  window.addEventListener("online", update);
+  window.addEventListener("offline", update);
+  update();
+}
+
+// ─── Auth ─────────────────────────────────────────────────────────────────────
+function showLoginScreen() {
+  document.getElementById("login-screen").style.display = "flex";
+  document.getElementById("app").style.display = "none";
+}
+
+function showApp() {
+  document.getElementById("login-screen").style.display = "none";
+  const app = document.getElementById("app");
+  app.style.display = "flex";
   setupNav();
   loadPage("dashboard");
-});
+  // Start notification polling every 3 minutes
+  pollNotifications();
+  setInterval(pollNotifications, 3 * 60 * 1000);
+  // Request browser notification permission
+  if ("Notification" in window && Notification.permission === "default") {
+    Notification.requestPermission();
+  }
+}
+
+function loginSuccess({ token, user }) {
+  localStorage.setItem("gtd_token", token);
+  state.user = user;
+  const label = document.getElementById("user-name-label");
+  if (label) label.textContent = user.name;
+  showApp();
+}
+
+function logout() {
+  localStorage.removeItem("gtd_token");
+  state.user = null;
+  showLoginScreen();
+}
+
+function switchAuthTab(tab) {
+  state.authMode = tab;
+  const isRegister = tab === "register";
+  document.getElementById("field-name").style.display = isRegister ? "block" : "none";
+  document.getElementById("auth-submit").textContent = isRegister ? "Criar conta" : "Entrar";
+  document.getElementById("tab-login").style.background = isRegister ? "transparent" : "var(--accent)";
+  document.getElementById("tab-login").style.color = isRegister ? "var(--text-muted)" : "#fff";
+  document.getElementById("tab-register").style.background = isRegister ? "var(--accent)" : "transparent";
+  document.getElementById("tab-register").style.color = isRegister ? "#fff" : "var(--text-muted)";
+  document.getElementById("auth-error").style.display = "none";
+}
+
+async function submitAuth(e) {
+  e.preventDefault();
+  const errEl = document.getElementById("auth-error");
+  errEl.style.display = "none";
+
+  const email = document.getElementById("auth-email").value.trim();
+  const password = document.getElementById("auth-password").value;
+  const name = document.getElementById("auth-name")?.value.trim();
+  const isRegister = state.authMode === "register";
+
+  const body = isRegister ? { name, email, password } : { email, password };
+  const endpoint = isRegister ? "/auth/register" : "/auth/login";
+
+  try {
+    const res = await fetch(`${API}${endpoint}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      errEl.textContent = data.detail || "Erro ao autenticar";
+      errEl.style.display = "block";
+      return;
+    }
+    loginSuccess(data);
+  } catch {
+    errEl.textContent = "Erro de conexão. Verifique se o servidor está rodando.";
+    errEl.style.display = "block";
+  }
+}
+
+// ─── Notifications ────────────────────────────────────────────────────────────
+async function pollNotifications() {
+  try {
+    const data = await api("/notifications/");
+    state.notifications = data.alerts || [];
+    renderNotifBadge();
+  } catch {}
+}
+
+function renderNotifBadge() {
+  const badge = document.getElementById("notif-badge");
+  const count = state.notifications.length;
+  if (!badge) return;
+  if (count > 0) {
+    badge.style.display = "flex";
+    badge.textContent = count > 9 ? "9+" : count;
+    // Browser notification for urgent items (only if new)
+    const urgent = state.notifications.filter((n) => n.severity === "urgent");
+    if (urgent.length > 0 && Notification.permission === "granted") {
+      new Notification("GTD Manager — Atenção necessária", {
+        body: urgent[0].title,
+        tag: "gtd-urgent",
+      });
+    }
+  } else {
+    badge.style.display = "none";
+  }
+}
+
+function toggleNotifications() {
+  state.notifOpen = !state.notifOpen;
+  const dropdown = document.getElementById("notif-dropdown");
+  dropdown.style.display = state.notifOpen ? "block" : "none";
+  if (state.notifOpen) renderNotifDropdown();
+
+  // Close when clicking outside
+  if (state.notifOpen) {
+    setTimeout(() => {
+      document.addEventListener("click", closeNotifOnOutsideClick, { once: true });
+    }, 10);
+  }
+}
+
+function closeNotifOnOutsideClick(e) {
+  const dropdown = document.getElementById("notif-dropdown");
+  const btn = document.getElementById("notif-btn");
+  if (dropdown && !dropdown.contains(e.target) && !btn.contains(e.target)) {
+    dropdown.style.display = "none";
+    state.notifOpen = false;
+  }
+}
+
+function renderNotifDropdown() {
+  const dropdown = document.getElementById("notif-dropdown");
+  const severityIcon = { urgent: "🔴", high: "🟠", medium: "🟡", low: "⚪" };
+
+  if (state.notifications.length === 0) {
+    dropdown.innerHTML = `<div style="padding:20px;text-align:center;color:var(--text-muted);font-size:13px">✅ Nenhum alerta no momento</div>`;
+    return;
+  }
+
+  dropdown.innerHTML = `
+    <div style="padding:12px 16px;border-bottom:1px solid var(--border);font-size:12px;font-weight:600;color:var(--text-muted)">
+      ALERTAS (${state.notifications.length})
+    </div>
+    ${state.notifications.map((n) => `
+      <div style="padding:12px 16px;border-bottom:1px solid var(--border);cursor:pointer;transition:background 0.1s"
+        onmouseover="this.style.background='var(--surface2)'" onmouseout="this.style.background=''"
+        onclick="dropdown.style.display='none';state.notifOpen=false;loadPage('${n.action}')">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
+          <span>${severityIcon[n.severity] || "⚪"}</span>
+          <span style="font-size:13px;font-weight:600">${n.title}</span>
+        </div>
+        <div style="font-size:12px;color:var(--text-muted);padding-left:20px">${n.body}</div>
+      </div>
+    `).join("")}
+  `;
+}
 
 function setupNav() {
   document.querySelectorAll(".nav-item").forEach((el) => {
@@ -59,12 +264,26 @@ async function loadPage(page) {
 
 // ─── API helpers ──────────────────────────────────────────────────────────────
 async function api(path, options = {}) {
-  const res = await fetch(`${API}${path}`, {
-    headers: { "Content-Type": "application/json" },
-    ...options,
-  });
-  if (!res.ok) throw new Error(`API error ${res.status}`);
-  return res.json();
+  const token = localStorage.getItem("gtd_token");
+  const headers = { "Content-Type": "application/json", ...options.headers };
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+
+  const res = await fetch(`${API}${path}`, { ...options, headers });
+
+  if (res.status === 401) {
+    localStorage.removeItem("gtd_token");
+    showLoginScreen();
+    throw new Error("Sessão expirada");
+  }
+
+  const data = await res.json();
+  if (data?.offline) {
+    state.isOffline = true;
+    const badge = document.getElementById("offline-badge");
+    if (badge) badge.style.display = "block";
+  }
+  if (!res.ok) throw new Error(data?.detail || `API error ${res.status}`);
+  return data;
 }
 
 // ─── Dashboard ────────────────────────────────────────────────────────────────
