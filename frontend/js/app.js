@@ -251,6 +251,7 @@ async function loadPage(page) {
     "next-actions": "Próximas Ações",
     waiting: "Aguardando",
     projects: "Projetos",
+    kanban: "Kanban",
     someday: "Algum Dia / Talvez",
     review: "Revisão Semanal",
   }[page] || (projectMatch ? "Projeto" : page);
@@ -261,6 +262,7 @@ async function loadPage(page) {
     case "next-actions": await renderNextActions(); break;
     case "waiting": await renderWaiting(); break;
     case "projects": await renderProjects(); break;
+    case "kanban": await renderKanban(); break;
     case "someday": await renderSomeday(); break;
     case "review": await renderReview(); break;
     default:
@@ -1246,6 +1248,188 @@ function copyFollowup(text) {
     showToast("✅ Mensagem copiada!", "success");
     closeModal();
   });
+}
+
+// ─── Kanban ───────────────────────────────────────────────────────────────────
+const KANBAN_COLS = [
+  { id: "next_action", label: "⚡ Próximas Ações", accent: "var(--accent)" },
+  { id: "waiting",     label: "⏳ Aguardando",     accent: "var(--orange)" },
+  { id: "someday",     label: "🌙 Algum Dia",       accent: "var(--text-muted)" },
+  { id: "reference",   label: "📎 Referência",      accent: "var(--text-muted)" },
+];
+
+let _dragTaskId = null;
+let _dragFromList = null;
+
+async function renderKanban() {
+  const el = document.getElementById("page-kanban");
+  el.innerHTML = `<div class="kanban-loading"><div class="spinner"></div></div>`;
+
+  // Fetch all list types in parallel
+  const [nextActions, waiting, someday, reference] = await Promise.all([
+    api("/tasks/?list_type=next_action"),
+    api("/tasks/?list_type=waiting"),
+    api("/tasks/?list_type=someday"),
+    api("/tasks/?list_type=reference"),
+  ]);
+
+  const byList = {
+    next_action: nextActions,
+    waiting: waiting,
+    someday: someday,
+    reference: reference,
+  };
+
+  const priIcon = { urgent: "🔴", high: "🟠", medium: "🟡", low: "🟢" };
+
+  el.innerHTML = `
+    <div class="kanban-board" id="kanban-board">
+      ${KANBAN_COLS.map((col) => `
+        <div class="kanban-column" id="kanban-col-${col.id}"
+          data-list="${col.id}"
+          ondragover="onKanbanDragOver(event)"
+          ondragleave="onKanbanDragLeave(event)"
+          ondrop="onKanbanDrop(event, '${col.id}')">
+          <div class="kanban-col-header" style="border-top-color:${col.accent}">
+            <span class="kanban-col-title">${col.label}</span>
+            <span class="kanban-col-count">${byList[col.id].length}</span>
+          </div>
+          <div class="kanban-col-body" id="kanban-body-${col.id}">
+            ${byList[col.id].length === 0
+              ? `<div class="kanban-empty" data-list="${col.id}">Nenhuma tarefa</div>`
+              : byList[col.id].map((t) => `
+                <div class="kanban-task"
+                  id="ktask-${t.id}"
+                  draggable="true"
+                  data-id="${t.id}"
+                  data-list="${col.id}"
+                  ondragstart="onKanbanDragStart(event, ${t.id}, '${col.id}')"
+                  ondragend="onKanbanDragEnd(event)">
+                  <div class="kanban-task-title">${escapeHtml(t.title)}</div>
+                  <div class="kanban-task-meta">
+                    <span>${priIcon[t.priority] || "🟡"}</span>
+                    ${t.context ? `<span class="tag tag-context" style="font-size:10px;padding:1px 6px">${escapeHtml(t.context)}</span>` : ""}
+                    ${t.due_date ? `<span style="font-size:10px;color:var(--text-muted)">📅 ${formatDate(t.due_date)}</span>` : ""}
+                  </div>
+                  <div class="kanban-task-actions">
+                    <button class="btn-ghost" style="font-size:11px;padding:2px 6px"
+                      onclick="completeKanbanTask(${t.id})">✓ Feito</button>
+                  </div>
+                </div>
+              `).join("")
+            }
+          </div>
+        </div>
+      `).join("")}
+    </div>
+  `;
+}
+
+function onKanbanDragStart(event, taskId, fromList) {
+  _dragTaskId = taskId;
+  _dragFromList = fromList;
+  event.dataTransfer.effectAllowed = "move";
+  event.dataTransfer.setData("text/plain", taskId);
+  setTimeout(() => {
+    const el = document.getElementById(`ktask-${taskId}`);
+    if (el) el.classList.add("dragging");
+  }, 0);
+}
+
+function onKanbanDragEnd(event) {
+  document.querySelectorAll(".kanban-task.dragging").forEach((el) => el.classList.remove("dragging"));
+  document.querySelectorAll(".kanban-column.drag-over").forEach((el) => el.classList.remove("drag-over"));
+}
+
+function onKanbanDragOver(event) {
+  event.preventDefault();
+  event.dataTransfer.dropEffect = "move";
+  const col = event.currentTarget;
+  col.classList.add("drag-over");
+}
+
+function onKanbanDragLeave(event) {
+  // Only remove if leaving the column itself (not a child)
+  if (!event.currentTarget.contains(event.relatedTarget)) {
+    event.currentTarget.classList.remove("drag-over");
+  }
+}
+
+async function onKanbanDrop(event, toList) {
+  event.preventDefault();
+  const col = event.currentTarget;
+  col.classList.remove("drag-over");
+
+  if (!_dragTaskId || _dragFromList === toList) {
+    _dragTaskId = null;
+    _dragFromList = null;
+    return;
+  }
+
+  const taskId = _dragTaskId;
+  const fromList = _dragFromList;
+  _dragTaskId = null;
+  _dragFromList = null;
+
+  // Optimistic UI: move the card immediately
+  const card = document.getElementById(`ktask-${taskId}`);
+  const targetBody = document.getElementById(`kanban-body-${toList}`);
+  const fromBody = document.getElementById(`kanban-body-${fromList}`);
+
+  if (card && targetBody) {
+    // Remove empty placeholder if present
+    const emptyEl = targetBody.querySelector(".kanban-empty");
+    if (emptyEl) emptyEl.remove();
+
+    card.dataset.list = toList;
+    targetBody.appendChild(card);
+
+    // Update from-column count / empty state
+    const remaining = fromBody.querySelectorAll(".kanban-task");
+    if (remaining.length === 0) {
+      fromBody.innerHTML = `<div class="kanban-empty" data-list="${fromList}">Nenhuma tarefa</div>`;
+    }
+    // Update column counts
+    updateKanbanCount(fromList);
+    updateKanbanCount(toList);
+  }
+
+  try {
+    await api(`/tasks/${taskId}`, {
+      method: "PATCH",
+      body: JSON.stringify({ list_type: toList }),
+    });
+  } catch (err) {
+    showToast("Erro ao mover tarefa: " + err.message, "error");
+    await renderKanban(); // revert on failure
+  }
+}
+
+function updateKanbanCount(listId) {
+  const col = document.getElementById(`kanban-col-${listId}`);
+  if (!col) return;
+  const count = col.querySelectorAll(".kanban-task").length;
+  const badge = col.querySelector(".kanban-col-count");
+  if (badge) badge.textContent = count;
+}
+
+async function completeKanbanTask(taskId) {
+  await api(`/tasks/${taskId}/complete`, { method: "POST" });
+  const card = document.getElementById(`ktask-${taskId}`);
+  if (card) {
+    const list = card.dataset.list;
+    card.style.transition = "opacity 0.3s, transform 0.3s";
+    card.style.opacity = "0";
+    card.style.transform = "scale(0.9)";
+    setTimeout(() => {
+      card.remove();
+      updateKanbanCount(list);
+      const body = document.getElementById(`kanban-body-${list}`);
+      if (body && body.querySelectorAll(".kanban-task").length === 0) {
+        body.innerHTML = `<div class="kanban-empty" data-list="${list}">Nenhuma tarefa</div>`;
+      }
+    }, 300);
+  }
 }
 
 // ─── Project Detail ───────────────────────────────────────────────────────────
