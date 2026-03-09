@@ -1143,17 +1143,23 @@ function filterContext(ctx) {
 function renderTaskList(tasks) {
   if (tasks.length === 0) return emptyState("Nenhuma tarefa nesta lista.");
   return tasks.map((t) => `
-    <div class="task-item">
+    <div class="task-item" id="task-row-${t.id}"
+      data-title="${escapeAttr(t.title)}"
+      data-context="${escapeAttr(t.context || "")}"
+      data-priority="${t.priority || "medium"}"
+      data-due="${t.due_date ? t.due_date.slice(0, 10) : ""}"
+      data-list="${t.list_type}">
       <div class="task-check" onclick="completeTask(${t.id})"></div>
       <div class="task-body">
-        <div class="task-title">${t.title}</div>
+        <div class="task-title">${escapeHtml(t.title)}</div>
         <div class="task-meta">
           <span class="tag tag-${t.priority}">${{urgent:"Urgente",high:"Alta",medium:"Média",low:"Baixa"}[t.priority]}</span>
-          ${t.context ? `<span class="tag tag-context">${t.context}</span>` : ""}
+          ${t.context ? `<span class="tag tag-context">${escapeHtml(t.context)}</span>` : ""}
           ${t.due_date ? `<span class="tag tag-low">📅 ${formatDate(t.due_date)}</span>` : ""}
         </div>
       </div>
       <div class="task-actions">
+        <button class="btn-ghost" onclick="editTaskRow(${t.id})" title="Editar">✎</button>
         <button class="btn btn-sm btn-success" onclick="completeTask(${t.id})">✓ Feito</button>
       </div>
     </div>
@@ -1176,16 +1182,21 @@ async function renderWaiting() {
             const days = since ? Math.floor((now - since) / 86400000) : 0;
             const overdue = days >= 5;
             return `
-              <div class="waiting-item ${overdue ? "overdue" : ""}">
+              <div class="waiting-item ${overdue ? "overdue" : ""}" id="task-row-${t.id}"
+                data-title="${escapeAttr(t.title)}"
+                data-assigned="${escapeAttr(t.assigned_to || "")}"
+                data-due="${t.due_date ? t.due_date.slice(0, 10) : ""}"
+                data-list="waiting">
                 <div class="waiting-person">${(t.assigned_to || "?")[0].toUpperCase()}</div>
                 <div class="waiting-body">
-                  <div class="waiting-title">${t.title}</div>
+                  <div class="waiting-title">${escapeHtml(t.title)}</div>
                   <div class="waiting-meta">
-                    ${t.assigned_to || "Sem responsável"} · ${days} dias
+                    ${escapeHtml(t.assigned_to || "Sem responsável")} · ${days} dias
                     ${overdue ? " · <span style='color:var(--red)'>⚠️ Cobrar</span>" : ""}
                   </div>
                 </div>
                 <div style="display:flex;gap:6px">
+                  <button class="btn-ghost" onclick="editWaitingRow(${t.id})" title="Editar">✎</button>
                   <button class="btn btn-sm btn-secondary" onclick="openFollowupDraft(${t.id})" title="Redigir cobrança no WhatsApp">
                     💬 Cobrar
                   </button>
@@ -1418,14 +1429,17 @@ async function renderSomeday() {
       ${tasks.length === 0
         ? emptyState("Nenhum item aqui ainda.")
         : tasks.map((t) => `
-            <div class="task-item">
+            <div class="task-item" id="task-row-${t.id}"
+              data-title="${escapeAttr(t.title)}"
+              data-list="someday">
               <div class="task-body">
-                <div class="task-title">${t.title}</div>
+                <div class="task-title">${escapeHtml(t.title)}</div>
                 <div class="task-meta">
                   <span class="tag tag-low">Adicionado ${formatDate(t.created_at)}</span>
                 </div>
               </div>
               <div class="task-actions">
+                <button class="btn-ghost" onclick="editTaskRow(${t.id})" title="Editar">✎</button>
                 <button class="btn btn-sm btn-primary" onclick="promoteTask(${t.id})">Promover ↑</button>
                 <button class="btn btn-sm btn-secondary" onclick="completeTask(${t.id})">Arquivar</button>
               </div>
@@ -1563,6 +1577,109 @@ async function completeTask(id) {
   await loadPage(state.currentPage);
 }
 
+// ─── Inline edit ──────────────────────────────────────────────────────────────
+const CONTEXT_OPTIONS = ["@reuniao", "@email", "@telefone", "@computador", "@compras", "@leitura", "@decisao"];
+
+function editTaskRow(id) {
+  const el = document.getElementById(`task-row-${id}`);
+  if (!el) return;
+  const { title, context, priority, due } = el.dataset;
+  el.classList.add("editing");
+  el.innerHTML = `
+    <div class="task-edit-form">
+      <input class="task-edit-title" type="text" value="${escapeAttr(title)}" placeholder="Título"
+        onkeydown="if(event.key==='Enter')saveTaskRow(${id});if(event.key==='Escape')cancelTaskRow(${id})" />
+      <div class="task-edit-meta">
+        <input class="task-edit-context" type="text" list="ctx-list-${id}"
+          value="${escapeAttr(context)}" placeholder="@contexto" style="width:130px" />
+        <datalist id="ctx-list-${id}">
+          ${CONTEXT_OPTIONS.map((c) => `<option value="${c}"></option>`).join("")}
+        </datalist>
+        <select class="task-edit-priority">
+          <option value="urgent" ${priority === "urgent" ? "selected" : ""}>Urgente</option>
+          <option value="high" ${priority === "high" ? "selected" : ""}>Alta</option>
+          <option value="medium" ${priority === "medium" ? "selected" : ""}>Média</option>
+          <option value="low" ${priority === "low" ? "selected" : ""}>Baixa</option>
+        </select>
+        <input class="task-edit-due" type="date" value="${due || ""}" />
+      </div>
+    </div>
+    <div class="task-edit-actions">
+      <button class="btn btn-sm btn-primary" onclick="saveTaskRow(${id})">Salvar</button>
+      <button class="btn btn-sm btn-secondary" onclick="cancelTaskRow(${id})">✕</button>
+    </div>
+  `;
+  el.querySelector(".task-edit-title").focus();
+  el.querySelector(".task-edit-title").select();
+}
+
+async function saveTaskRow(id) {
+  const el = document.getElementById(`task-row-${id}`);
+  if (!el) return;
+  const title = el.querySelector(".task-edit-title").value.trim();
+  if (!title) { el.querySelector(".task-edit-title").focus(); return; }
+  const context = el.querySelector(".task-edit-context").value.trim();
+  const priority = el.querySelector(".task-edit-priority").value;
+  const due_date = el.querySelector(".task-edit-due").value || null;
+  try {
+    await api(`/tasks/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ title, context: context || null, priority, due_date }),
+    });
+    showToast("Tarefa atualizada", "success");
+    await loadPage(state.currentPage);
+  } catch (err) {
+    showToast("Erro ao salvar: " + err.message, "error");
+  }
+}
+
+function cancelTaskRow(id) {
+  loadPage(state.currentPage);
+}
+
+function editWaitingRow(id) {
+  const el = document.getElementById(`task-row-${id}`);
+  if (!el) return;
+  const { title, assigned, due } = el.dataset;
+  el.classList.add("editing");
+  el.innerHTML = `
+    <div class="task-edit-form">
+      <input class="task-edit-title" type="text" value="${escapeAttr(title)}" placeholder="Título"
+        onkeydown="if(event.key==='Enter')saveWaitingRow(${id});if(event.key==='Escape')cancelTaskRow(${id})" />
+      <div class="task-edit-meta">
+        <input class="task-edit-assigned" type="text" value="${escapeAttr(assigned)}"
+          placeholder="Responsável" style="width:160px" />
+        <input class="task-edit-due" type="date" value="${due || ""}" />
+      </div>
+    </div>
+    <div class="task-edit-actions">
+      <button class="btn btn-sm btn-primary" onclick="saveWaitingRow(${id})">Salvar</button>
+      <button class="btn btn-sm btn-secondary" onclick="cancelTaskRow(${id})">✕</button>
+    </div>
+  `;
+  el.querySelector(".task-edit-title").focus();
+  el.querySelector(".task-edit-title").select();
+}
+
+async function saveWaitingRow(id) {
+  const el = document.getElementById(`task-row-${id}`);
+  if (!el) return;
+  const title = el.querySelector(".task-edit-title").value.trim();
+  if (!title) { el.querySelector(".task-edit-title").focus(); return; }
+  const assigned_to = el.querySelector(".task-edit-assigned").value.trim();
+  const due_date = el.querySelector(".task-edit-due").value || null;
+  try {
+    await api(`/tasks/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ title, assigned_to: assigned_to || null, due_date }),
+    });
+    showToast("Tarefa atualizada", "success");
+    await loadPage(state.currentPage);
+  } catch (err) {
+    showToast("Erro ao salvar: " + err.message, "error");
+  }
+}
+
 // ─── Modal ────────────────────────────────────────────────────────────────────
 function showModal(html) {
   let overlay = document.getElementById("modal-overlay");
@@ -1609,6 +1726,10 @@ function emptyState(msg) {
 
 function escapeHtml(str) {
   return String(str).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
+function escapeAttr(str) {
+  return String(str).replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/'/g, "&#39;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
 function escapeJs(str) {

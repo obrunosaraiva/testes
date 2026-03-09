@@ -846,6 +846,70 @@ select.form-control option { background: var(--surface); color: var(--text); }
   .task-actions { width: 100%; justify-content: flex-end; }
 }
 
+/* ═══ Inline Edit ═════════════════════════════════════════════════════════ */
+.task-item.editing {
+  background: var(--surface2);
+  border-color: var(--accent);
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: flex-start;
+}
+.task-edit-form {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+.task-edit-title {
+  width: 100%;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 500;
+  padding: 6px 10px;
+  outline: none;
+  box-sizing: border-box;
+}
+.task-edit-title:focus { border-color: var(--accent); }
+.task-edit-meta {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.task-edit-meta input,
+.task-edit-meta select {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  font-size: 12px;
+  padding: 4px 8px;
+  outline: none;
+}
+.task-edit-meta input:focus,
+.task-edit-meta select:focus { border-color: var(--accent); }
+.task-edit-actions {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  padding-top: 2px;
+}
+.btn-ghost {
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--text-muted);
+  padding: 4px 8px;
+  border-radius: 6px;
+  font-size: 15px;
+  cursor: pointer;
+  line-height: 1;
+  transition: background 0.15s, color 0.15s;
+}
+.btn-ghost:hover { background: var(--surface2); color: var(--text); }
+
 /* ═══ Reduced Motion ══════════════════════════════════════════════════════ */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
