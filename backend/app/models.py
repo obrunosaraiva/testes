@@ -96,3 +96,16 @@ class WeeklyReview(Base):
     someday_reviewed = Column(Boolean, default=False)
     notes = Column(Text)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+
+class PositioningStrategy(Base):
+    __tablename__ = "positioning_strategies"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    target_audience = Column(Text, nullable=False)   # Who are your clients?
+    competitors = Column(Text, nullable=True)         # Who are the competitors?
+    value_proposition = Column(Text, nullable=False)  # What intelligent systems do you build?
+    ai_analysis = Column(Text, nullable=True)         # JSON with Al Ries-style analysis
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))

@@ -452,3 +452,79 @@ Sem texto antes ou depois."""
                 "notes": None,
             }
         ]
+
+
+# ─── Positioning strategy analysis ───────────────────────────────────────────
+
+def analyze_positioning_strategy(
+    target_audience: str,
+    competitors: str | None,
+    value_proposition: str,
+) -> dict:
+    """
+    Generates an Al Ries-style positioning strategy analysis.
+    Returns a structured dict with category, word_to_own, positioning_statement, etc.
+    """
+    competitors_block = competitors if competitors and competitors.strip() else "Não informado"
+
+    user_message = f"""Analise esta estratégia de posicionamento usando os princípios de Al Ries e Jack Trout.
+
+Público-alvo: {target_audience}
+Concorrentes: {competitors_block}
+Proposta de valor: {value_proposition}
+
+Retorne APENAS JSON com esta estrutura:
+{{
+  "category": "nome da categoria onde esta marca compete",
+  "open_position": "posição disponível no mercado que pode ser ownable",
+  "word_to_own": "a palavra ou conceito central para ownar na mente do público",
+  "positioning_statement": "declaração de posicionamento em 1-2 frases diretas",
+  "verbal_nail": "frase de 5-8 palavras impactante e memorável",
+  "competitive_advantage": "principal vantagem versus os concorrentes citados",
+  "risk_alert": "principal risco ou ameaça ao posicionamento",
+  "recommended_actions": ["ação 1", "ação 2", "ação 3"],
+  "brand_archetype": "arquétipo de marca mais adequado (ex: Herói, Sábio, Criador...)",
+  "summary": "resumo executivo do posicionamento em 3-4 frases"
+}}"""
+
+    with client.messages.stream(
+        model="claude-opus-4-6",
+        max_tokens=1024,
+        system="""Você é Al Ries, o lendário estrategista de posicionamento de marca. 
+Aplique rigorosamente as leis do posicionamento: lei da liderança, lei da categoria, lei da mente, lei da percepção.
+Seja direto, incisivo e prático. Responda sempre em português, apenas JSON.""",
+        messages=[{"role": "user", "content": user_message}],
+    ) as stream:
+        final_message = stream.get_final_message()
+
+    text = ""
+    for block in final_message.content:
+        if block.type == "text":
+            text = block.text
+            break
+
+    text = text.strip()
+    if text.startswith("```"):
+        text = text.split("```")[1]
+        if text.startswith("json"):
+            text = text[4:]
+
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        return {
+            "category": "Tecnologia para negócios",
+            "open_position": "Sistemas inteligentes para empresários",
+            "word_to_own": "Inteligência Operacional",
+            "positioning_statement": "Sistemas inteligentes que resolvem os problemas reais do seu negócio.",
+            "verbal_nail": "Sistemas inteligentes. Problemas resolvidos.",
+            "competitive_advantage": "Foco no resultado do empresário, não na tecnologia.",
+            "risk_alert": "O termo 'AI' está se tornando commodity.",
+            "recommended_actions": [
+                "Ownar o termo 'Inteligência Operacional' no mercado",
+                "Criar conteúdo educativo para empresários",
+                "Documentar casos de sucesso com resultados mensuráveis",
+            ],
+            "brand_archetype": "Sábio",
+            "summary": "Não foi possível gerar análise automática. Use os dados acima como base.",
+        }

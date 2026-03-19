@@ -254,6 +254,7 @@ async function loadPage(page) {
     kanban: "Kanban",
     someday: "Algum Dia / Talvez",
     review: "Revisão Semanal",
+    positioning: "Posicionamento Estratégico",
   }[page] || (projectMatch ? "Projeto" : page);
 
   switch (page) {
@@ -265,6 +266,7 @@ async function loadPage(page) {
     case "kanban": await renderKanban(); break;
     case "someday": await renderSomeday(); break;
     case "review": await renderReview(); break;
+    case "positioning": await renderPositioning(); break;
     default:
       if (projectMatch) await renderProjectDetail(Number(projectMatch[1]));
   }
@@ -2268,3 +2270,236 @@ document.addEventListener("click", (e) => {
   const wrapper = document.getElementById("search-wrapper");
   if (wrapper && !wrapper.contains(e.target)) hideSearchDropdown();
 });
+
+// ─── Positioning Strategy ─────────────────────────────────────────────────────
+
+async function renderPositioning() {
+  const el = document.getElementById("page-positioning");
+  el.innerHTML = `<div style="display:flex;align-items:center;gap:10px;padding:24px 0 8px">
+    <div class="spinner"></div><span style="color:var(--text-muted);font-size:14px">Carregando estratégia...</span>
+  </div>`;
+
+  let strategy = null;
+  try {
+    strategy = await api("/positioning/");
+  } catch (e) {
+    if (!e.message.includes("404")) {
+      el.innerHTML = `<div class="empty-state"><p style="color:var(--red)">${e.message}</p></div>`;
+      return;
+    }
+  }
+
+  if (!strategy) {
+    renderPositioningWizard(el);
+    return;
+  }
+
+  renderPositioningDashboard(el, strategy);
+}
+
+function renderPositioningWizard(el) {
+  let step = 0;
+  const answers = { target_audience: "", competitors: "", value_proposition: "" };
+
+  const steps = [
+    {
+      key: "target_audience",
+      icon: "👥",
+      title: "Quem são seus clientes?",
+      hint: "Descreva seu público-alvo ideal. Ex: empresários de médias empresas, CTOs de startups...",
+      placeholder: "Ex: empresários que buscam automatizar operações",
+    },
+    {
+      key: "competitors",
+      icon: "⚔️",
+      title: "Quem são seus concorrentes?",
+      hint: "Liste os principais ou diga 'não conheço' se ainda não mapeou.",
+      placeholder: "Ex: consultorias tradicionais de TI, agências de automação",
+    },
+    {
+      key: "value_proposition",
+      icon: "💡",
+      title: "O que você entrega de valor?",
+      hint: "Descreva o problema que você resolve e como seus sistemas inteligentes fazem isso.",
+      placeholder: "Ex: sistemas inteligentes que resolvem problemas operacionais dos empresários",
+    },
+  ];
+
+  function renderStep() {
+    const s = steps[step];
+    el.innerHTML = `
+      <div style="max-width:600px;margin:0 auto;padding:24px 0">
+        <div style="margin-bottom:32px">
+          <div style="display:flex;gap:8px;margin-bottom:24px">
+            ${steps.map((_, i) => `<div style="height:4px;flex:1;border-radius:2px;background:${i <= step ? 'var(--accent)' : 'var(--border)'}"></div>`).join("")}
+          </div>
+          <p style="font-size:12px;color:var(--text-muted)">Pergunta ${step + 1} de ${steps.length}</p>
+        </div>
+
+        <div style="background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:32px">
+          <div style="font-size:36px;margin-bottom:16px">${s.icon}</div>
+          <h2 style="font-size:20px;font-weight:700;color:var(--text);margin-bottom:8px">${s.title}</h2>
+          <p style="font-size:13px;color:var(--text-muted);margin-bottom:24px">${s.hint}</p>
+
+          <textarea id="pos-input" rows="3" class="form-control"
+            placeholder="${s.placeholder}"
+            style="resize:vertical">${answers[s.key]}</textarea>
+
+          <div style="display:flex;gap:12px;margin-top:20px;justify-content:flex-end">
+            ${step > 0 ? `<button class="btn btn-secondary" onclick="posBack()">← Voltar</button>` : ""}
+            ${step < steps.length - 1
+              ? `<button class="btn btn-primary" onclick="posNext()">Próximo →</button>`
+              : `<button class="btn btn-primary" id="pos-submit-btn" onclick="posSubmit()">Analisar com IA 🧠</button>`
+            }
+          </div>
+        </div>
+      </div>`;
+  }
+
+  window.posNext = function() {
+    const val = document.getElementById("pos-input").value.trim();
+    answers[steps[step].key] = val;
+    step++;
+    renderStep();
+  };
+
+  window.posBack = function() {
+    const val = document.getElementById("pos-input").value.trim();
+    answers[steps[step].key] = val;
+    step--;
+    renderStep();
+  };
+
+  window.posSubmit = async function() {
+    const val = document.getElementById("pos-input").value.trim();
+    answers[steps[step].key] = val;
+
+    const btn = document.getElementById("pos-submit-btn");
+    btn.disabled = true;
+    btn.textContent = "Analisando...";
+
+    try {
+      const result = await api("/positioning/", {
+        method: "POST",
+        body: JSON.stringify(answers),
+      });
+      renderPositioningDashboard(el, result);
+    } catch (e) {
+      btn.disabled = false;
+      btn.textContent = "Analisar com IA 🧠";
+      alert("Erro ao salvar: " + e.message);
+    }
+  };
+
+  renderStep();
+}
+
+function renderPositioningDashboard(el, data) {
+  const a = data.analysis || {};
+  const updatedAt = data.updated_at ? new Date(data.updated_at).toLocaleDateString("pt-BR") : "";
+
+  el.innerHTML = `
+    <div style="max-width:800px;margin:0 auto;padding:24px 0">
+
+      <!-- Header -->
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:24px">
+        <div>
+          <h2 style="font-size:18px;font-weight:700;color:var(--text);margin-bottom:4px">Estratégia de Posicionamento</h2>
+          ${updatedAt ? `<p style="font-size:12px;color:var(--text-muted)">Última atualização: ${updatedAt}</p>` : ""}
+        </div>
+        <button class="btn btn-secondary btn-sm" onclick="posReset()">Redefinir estratégia</button>
+      </div>
+
+      <!-- Verbal Nail -->
+      ${a.verbal_nail ? `
+      <div style="background:linear-gradient(135deg,var(--accent),#7c3aed);border-radius:16px;padding:28px 32px;margin-bottom:20px;text-align:center">
+        <p style="font-size:11px;font-weight:600;color:rgba(255,255,255,0.7);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px">Verbal Nail</p>
+        <p style="font-size:22px;font-weight:800;color:#fff;line-height:1.3">"${a.verbal_nail}"</p>
+      </div>` : ""}
+
+      <!-- Cards row -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px">
+
+        <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:20px">
+          <p style="font-size:11px;color:var(--text-muted);font-weight:600;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px">Palavra a Ownar</p>
+          <p style="font-size:18px;font-weight:700;color:var(--accent)">${a.word_to_own || "—"}</p>
+        </div>
+
+        <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:20px">
+          <p style="font-size:11px;color:var(--text-muted);font-weight:600;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px">Categoria</p>
+          <p style="font-size:16px;font-weight:600;color:var(--text)">${a.category || "—"}</p>
+        </div>
+
+        <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:20px">
+          <p style="font-size:11px;color:var(--text-muted);font-weight:600;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px">Arquétipo de Marca</p>
+          <p style="font-size:16px;font-weight:600;color:var(--text)">${a.brand_archetype || "—"}</p>
+        </div>
+
+        <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:20px">
+          <p style="font-size:11px;color:var(--text-muted);font-weight:600;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px">Posição Disponível</p>
+          <p style="font-size:14px;font-weight:500;color:var(--text)">${a.open_position || "—"}</p>
+        </div>
+      </div>
+
+      <!-- Positioning statement -->
+      ${a.positioning_statement ? `
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:20px;margin-bottom:20px">
+        <p style="font-size:11px;color:var(--text-muted);font-weight:600;text-transform:uppercase;letter-spacing:1px;margin-bottom:10px">Declaração de Posicionamento</p>
+        <p style="font-size:15px;color:var(--text);line-height:1.6;font-style:italic">"${a.positioning_statement}"</p>
+      </div>` : ""}
+
+      <!-- Summary -->
+      ${a.summary ? `
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:20px;margin-bottom:20px">
+        <p style="font-size:11px;color:var(--text-muted);font-weight:600;text-transform:uppercase;letter-spacing:1px;margin-bottom:10px">Resumo Executivo</p>
+        <p style="font-size:14px;color:var(--text);line-height:1.7">${a.summary}</p>
+      </div>` : ""}
+
+      <!-- Advantage & Risk -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px">
+        ${a.competitive_advantage ? `
+        <div style="background:rgba(52,211,153,0.08);border:1px solid rgba(52,211,153,0.25);border-radius:12px;padding:20px">
+          <p style="font-size:11px;color:var(--green);font-weight:600;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px">Vantagem Competitiva</p>
+          <p style="font-size:13px;color:var(--text);line-height:1.6">${a.competitive_advantage}</p>
+        </div>` : ""}
+        ${a.risk_alert ? `
+        <div style="background:rgba(255,77,109,0.08);border:1px solid rgba(255,77,109,0.25);border-radius:12px;padding:20px">
+          <p style="font-size:11px;color:var(--red);font-weight:600;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px">Alerta de Risco</p>
+          <p style="font-size:13px;color:var(--text);line-height:1.6">${a.risk_alert}</p>
+        </div>` : ""}
+      </div>
+
+      <!-- Recommended actions -->
+      ${a.recommended_actions?.length ? `
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:20px;margin-bottom:20px">
+        <p style="font-size:11px;color:var(--text-muted);font-weight:600;text-transform:uppercase;letter-spacing:1px;margin-bottom:12px">Ações Recomendadas</p>
+        <ul style="list-style:none;padding:0;margin:0;display:flex;flex-direction:column;gap:8px">
+          ${a.recommended_actions.map((action, i) => `
+          <li style="display:flex;gap:12px;align-items:flex-start">
+            <span style="background:var(--accent);color:#fff;border-radius:50%;width:20px;height:20px;min-width:20px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;margin-top:1px">${i + 1}</span>
+            <span style="font-size:13px;color:var(--text);line-height:1.5">${action}</span>
+          </li>`).join("")}
+        </ul>
+      </div>` : ""}
+
+      <!-- Raw inputs -->
+      <details style="margin-top:8px">
+        <summary style="font-size:12px;color:var(--text-muted);cursor:pointer;padding:8px 0">Ver respostas originais</summary>
+        <div style="background:var(--surface2);border-radius:8px;padding:16px;margin-top:8px;font-size:13px;line-height:1.7;color:var(--text-muted)">
+          <p><strong style="color:var(--text)">Público-alvo:</strong> ${data.target_audience}</p>
+          <p><strong style="color:var(--text)">Concorrentes:</strong> ${data.competitors || "Não informado"}</p>
+          <p><strong style="color:var(--text)">Proposta de valor:</strong> ${data.value_proposition}</p>
+        </div>
+      </details>
+    </div>`;
+
+  window.posReset = async function() {
+    if (!confirm("Redefinir a estratégia de posicionamento?")) return;
+    try {
+      await api("/positioning/", { method: "DELETE" });
+      renderPositioning();
+    } catch (e) {
+      alert("Erro: " + e.message);
+    }
+  };
+}
