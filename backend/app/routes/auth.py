@@ -55,3 +55,36 @@ def login(req: LoginRequest, db: Session = Depends(get_db)):
 @router.get("/me")
 def me(current_user: User = Depends(get_current_user)):
     return {"id": current_user.id, "name": current_user.name, "email": current_user.email}
+
+
+class UpdateProfileRequest(BaseModel):
+    name: str = None
+    current_password: str = None
+    new_password: str = None
+
+
+@router.patch("/me")
+def update_profile(
+    req: UpdateProfileRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    user = db.query(User).filter(User.id == current_user.id).first()
+
+    if req.name is not None:
+        if not req.name.strip():
+            raise HTTPException(status_code=400, detail="Nome não pode ser vazio")
+        user.name = req.name.strip()
+
+    if req.new_password is not None:
+        if not req.current_password:
+            raise HTTPException(status_code=400, detail="Informe a senha atual")
+        if not verify_password(req.current_password, user.hashed_password):
+            raise HTTPException(status_code=400, detail="Senha atual incorreta")
+        if len(req.new_password) < 6:
+            raise HTTPException(status_code=400, detail="Nova senha deve ter no mínimo 6 caracteres")
+        user.hashed_password = hash_password(req.new_password)
+
+    db.commit()
+    db.refresh(user)
+    return {"id": user.id, "name": user.name, "email": user.email}

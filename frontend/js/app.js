@@ -19,6 +19,13 @@ let state = {
 
 // ─── Init ─────────────────────────────────────────────────────────────────────
 document.addEventListener("DOMContentLoaded", async () => {
+  // Bootstrap theme + contexts before anything renders
+  const _storedTheme = localStorage.getItem("gtd_theme") || "dark";
+  document.body.classList.toggle("light-mode", _storedTheme === "light");
+  const _storedCtx = (() => { try { const r = localStorage.getItem("gtd_contexts"); return r ? JSON.parse(r) : null; } catch { return null; } })();
+  (_storedCtx || ["@reuniao", "@email", "@telefone", "@computador", "@compras", "@leitura", "@decisao"])
+    .forEach((c) => CONTEXT_OPTIONS.push(c));
+
   registerServiceWorker();
   watchOfflineStatus();
 
@@ -254,6 +261,7 @@ async function loadPage(page) {
     kanban: "Kanban",
     someday: "Algum Dia / Talvez",
     review: "Revisão Semanal",
+    settings: "Configurações",
   }[page] || (projectMatch ? "Projeto" : page);
 
   switch (page) {
@@ -265,6 +273,7 @@ async function loadPage(page) {
     case "kanban": await renderKanban(); break;
     case "someday": await renderSomeday(); break;
     case "review": await renderReview(); break;
+    case "settings": renderSettings(); break;
     default:
       if (projectMatch) await renderProjectDetail(Number(projectMatch[1]));
   }
@@ -1974,7 +1983,8 @@ async function completeTask(id) {
 }
 
 // ─── Inline edit ──────────────────────────────────────────────────────────────
-const CONTEXT_OPTIONS = ["@reuniao", "@email", "@telefone", "@computador", "@compras", "@leitura", "@decisao"];
+// Initialized from localStorage in the Settings section below; declared here for use across the file
+const CONTEXT_OPTIONS = [];
 
 function editTaskRow(id) {
   const el = document.getElementById(`task-row-${id}`);
@@ -2268,3 +2278,188 @@ document.addEventListener("click", (e) => {
   const wrapper = document.getElementById("search-wrapper");
   if (wrapper && !wrapper.contains(e.target)) hideSearchDropdown();
 });
+
+// ─── Settings ─────────────────────────────────────────────────────────────────
+function getStoredContexts() {
+  try {
+    const raw = localStorage.getItem("gtd_contexts");
+    if (raw) return JSON.parse(raw);
+  } catch {}
+  return ["@reuniao", "@email", "@telefone", "@computador", "@compras", "@leitura", "@decisao"];
+}
+
+function saveStoredContexts(list) {
+  localStorage.setItem("gtd_contexts", JSON.stringify(list));
+  // Keep the global CONTEXT_OPTIONS in sync
+  CONTEXT_OPTIONS.length = 0;
+  list.forEach((c) => CONTEXT_OPTIONS.push(c));
+}
+
+function applyTheme(theme) {
+  document.body.classList.toggle("light-mode", theme === "light");
+  localStorage.setItem("gtd_theme", theme);
+}
+
+function getTheme() {
+  return localStorage.getItem("gtd_theme") || "dark";
+}
+
+function renderSettings() {
+  const el = document.getElementById("page-settings");
+  const user = state.user || {};
+  const theme = getTheme();
+  const contexts = getStoredContexts();
+
+  el.innerHTML = `
+    <div style="max-width:600px;display:flex;flex-direction:column;gap:20px">
+
+      <!-- Perfil -->
+      <div class="settings-card">
+        <div class="settings-card-title">👤 Perfil</div>
+        <div class="form-group">
+          <label>Nome</label>
+          <input type="text" class="form-control" id="s-name" value="${escapeAttr(user.name || "")}" />
+        </div>
+        <div class="form-group">
+          <label>E-mail</label>
+          <input type="email" class="form-control" value="${escapeAttr(user.email || "")}" disabled
+            style="opacity:0.5;cursor:not-allowed" />
+        </div>
+        <button class="btn btn-primary btn-sm" onclick="saveProfileName()">Salvar nome</button>
+      </div>
+
+      <!-- Senha -->
+      <div class="settings-card">
+        <div class="settings-card-title">🔒 Trocar senha</div>
+        <div class="form-group">
+          <label>Senha atual</label>
+          <input type="password" class="form-control" id="s-cur-pw" placeholder="••••••" />
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Nova senha</label>
+            <input type="password" class="form-control" id="s-new-pw" placeholder="Mínimo 6 caracteres" />
+          </div>
+          <div class="form-group">
+            <label>Confirmar</label>
+            <input type="password" class="form-control" id="s-confirm-pw" placeholder="Repita a senha" />
+          </div>
+        </div>
+        <div id="s-pw-error" style="display:none;color:var(--red);font-size:12px;margin-bottom:8px"></div>
+        <button class="btn btn-primary btn-sm" onclick="savePassword()">Trocar senha</button>
+      </div>
+
+      <!-- Aparência -->
+      <div class="settings-card">
+        <div class="settings-card-title">🎨 Aparência</div>
+        <div class="settings-theme-row">
+          <div class="settings-theme-opt ${theme === "dark" ? "active" : ""}" onclick="switchTheme('dark')">
+            <div class="settings-theme-preview dark-preview">
+              <div></div><div></div><div></div>
+            </div>
+            <span>Escuro</span>
+          </div>
+          <div class="settings-theme-opt ${theme === "light" ? "active" : ""}" onclick="switchTheme('light')">
+            <div class="settings-theme-preview light-preview">
+              <div></div><div></div><div></div>
+            </div>
+            <span>Claro</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Contextos -->
+      <div class="settings-card">
+        <div class="settings-card-title">🏷️ Contextos (@tags)</div>
+        <p style="font-size:12px;color:var(--text-muted);margin-bottom:12px">
+          Aparecem como sugestão ao editar tarefas. Adicione os contextos que fazem sentido para o seu fluxo.
+        </p>
+        <div id="s-ctx-list" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px">
+          ${contexts.map((c) => `
+            <div class="settings-ctx-tag">
+              <span>${escapeHtml(c)}</span>
+              <button onclick="removeContext('${escapeAttr(c)}')" title="Remover">×</button>
+            </div>
+          `).join("")}
+        </div>
+        <div style="display:flex;gap:8px">
+          <input type="text" class="form-control" id="s-ctx-input"
+            placeholder="@novo-contexto"
+            onkeydown="if(event.key==='Enter')addContext()"
+            style="flex:1" />
+          <button class="btn btn-secondary btn-sm" onclick="addContext()">+ Adicionar</button>
+        </div>
+      </div>
+
+    </div>
+  `;
+}
+
+async function saveProfileName() {
+  const name = document.getElementById("s-name").value.trim();
+  if (!name) return;
+  try {
+    const data = await api("/auth/me", {
+      method: "PATCH",
+      body: JSON.stringify({ name }),
+    });
+    state.user = { ...state.user, name: data.name };
+    const label = document.getElementById("user-name-label");
+    if (label) label.textContent = data.name;
+    showToast("Nome atualizado!", "success");
+  } catch (err) {
+    showToast(err.message, "error");
+  }
+}
+
+async function savePassword() {
+  const errEl = document.getElementById("s-pw-error");
+  errEl.style.display = "none";
+
+  const current = document.getElementById("s-cur-pw").value;
+  const next = document.getElementById("s-new-pw").value;
+  const confirm = document.getElementById("s-confirm-pw").value;
+
+  if (!current || !next) { errEl.textContent = "Preencha todos os campos."; errEl.style.display = "block"; return; }
+  if (next !== confirm) { errEl.textContent = "As senhas não coincidem."; errEl.style.display = "block"; return; }
+  if (next.length < 6) { errEl.textContent = "Mínimo 6 caracteres."; errEl.style.display = "block"; return; }
+
+  try {
+    await api("/auth/me", {
+      method: "PATCH",
+      body: JSON.stringify({ current_password: current, new_password: next }),
+    });
+    document.getElementById("s-cur-pw").value = "";
+    document.getElementById("s-new-pw").value = "";
+    document.getElementById("s-confirm-pw").value = "";
+    showToast("Senha alterada com sucesso!", "success");
+  } catch (err) {
+    errEl.textContent = err.message;
+    errEl.style.display = "block";
+  }
+}
+
+function switchTheme(theme) {
+  applyTheme(theme);
+  // Re-render to update active state
+  renderSettings();
+}
+
+function addContext() {
+  const input = document.getElementById("s-ctx-input");
+  let val = input.value.trim();
+  if (!val) return;
+  if (!val.startsWith("@")) val = "@" + val;
+  const list = getStoredContexts();
+  if (list.includes(val)) { input.value = ""; return; }
+  list.push(val);
+  saveStoredContexts(list);
+  input.value = "";
+  renderSettings();
+}
+
+function removeContext(ctx) {
+  const list = getStoredContexts().filter((c) => c !== ctx);
+  saveStoredContexts(list);
+  renderSettings();
+}
