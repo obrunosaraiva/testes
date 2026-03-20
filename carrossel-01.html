@@ -1,0 +1,674 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Carrossel 01 — 5 coisas que IA já faz pela sua empresa</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:       #07070E;
+      --bg2:      #0E0E1A;
+      --blue:     #2563EB;
+      --blue-l:   #3B82F6;
+      --cyan:     #06B6D4;
+      --white:    #F8FAFC;
+      --muted:    #94A3B8;
+      --border:   rgba(255,255,255,0.08);
+      --slide-w:  540px;
+      --slide-h:  540px;
+    }
+
+    body {
+      background: #111;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: flex-start;
+      min-height: 100vh;
+      padding: 40px 20px;
+      font-family: 'Space Grotesk', sans-serif;
+      gap: 32px;
+    }
+
+    /* ── Controles ─────────────────────────────────── */
+    .controls {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      color: #fff;
+      font-family: 'Inter', sans-serif;
+      font-size: 14px;
+    }
+    .btn {
+      background: #1e1e2e;
+      border: 1px solid var(--border);
+      color: #fff;
+      padding: 8px 20px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 14px;
+      font-family: 'Inter', sans-serif;
+      transition: background 0.2s;
+    }
+    .btn:hover { background: #2a2a3e; }
+    .btn:disabled { opacity: 0.3; cursor: default; }
+
+    /* ── Dots ──────────────────────────────────────── */
+    .dots {
+      display: flex;
+      gap: 6px;
+    }
+    .dot {
+      width: 6px; height: 6px;
+      border-radius: 50%;
+      background: rgba(255,255,255,0.2);
+      transition: all 0.3s;
+      cursor: pointer;
+    }
+    .dot.active {
+      background: var(--blue-l);
+      width: 20px;
+      border-radius: 3px;
+    }
+
+    /* ── Viewport ──────────────────────────────────── */
+    .viewport {
+      width: var(--slide-w);
+      height: var(--slide-h);
+      overflow: hidden;
+      border-radius: 20px;
+      box-shadow: 0 0 0 1px rgba(255,255,255,0.05), 0 32px 80px rgba(0,0,0,0.7);
+      position: relative;
+    }
+
+    /* ── Track ─────────────────────────────────────── */
+    .track {
+      display: flex;
+      height: 100%;
+      transition: transform 0.45s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    /* ── Slide base ────────────────────────────────── */
+    .slide {
+      min-width: var(--slide-w);
+      height: var(--slide-h);
+      position: relative;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      padding: 40px;
+    }
+
+    /* ── Shared grid pattern ───────────────────────── */
+    .grid-bg {
+      position: absolute;
+      inset: 0;
+      background-image:
+        linear-gradient(rgba(37,99,235,0.07) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(37,99,235,0.07) 1px, transparent 1px);
+      background-size: 40px 40px;
+      pointer-events: none;
+    }
+
+    /* ── Logo mark ─────────────────────────────────── */
+    .logo-mark {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--muted);
+      position: relative;
+      z-index: 2;
+    }
+    .logo-mark svg { flex-shrink: 0; }
+
+    .slide-num {
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.06em;
+      color: var(--muted);
+      position: absolute;
+      bottom: 28px;
+      right: 40px;
+      z-index: 2;
+    }
+
+    /* ════════════════════════════════════════════════
+       SLIDE 1 — CAPA
+    ════════════════════════════════════════════════ */
+    .s1 { background: var(--bg); justify-content: flex-end; }
+
+    .s1 .blob {
+      position: absolute;
+      width: 420px; height: 420px;
+      border-radius: 50%;
+      top: -120px; right: -120px;
+      background: radial-gradient(circle, rgba(37,99,235,0.35) 0%, transparent 70%);
+      pointer-events: none;
+    }
+    .s1 .blob2 {
+      position: absolute;
+      width: 260px; height: 260px;
+      border-radius: 50%;
+      bottom: 20px; left: -80px;
+      background: radial-gradient(circle, rgba(6,182,212,0.2) 0%, transparent 70%);
+      pointer-events: none;
+    }
+
+    .s1 .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: rgba(37,99,235,0.15);
+      border: 1px solid rgba(37,99,235,0.35);
+      border-radius: 100px;
+      padding: 5px 14px;
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--blue-l);
+      margin-bottom: 20px;
+      position: relative;
+      z-index: 2;
+      width: fit-content;
+    }
+    .badge-dot {
+      width: 6px; height: 6px;
+      border-radius: 50%;
+      background: var(--cyan);
+      animation: pulse 2s infinite;
+    }
+    @keyframes pulse {
+      0%,100% { opacity:1; transform:scale(1); }
+      50%      { opacity:0.5; transform:scale(0.8); }
+    }
+
+    .s1 h1 {
+      font-size: 34px;
+      font-weight: 700;
+      line-height: 1.15;
+      color: var(--white);
+      position: relative;
+      z-index: 2;
+      margin-bottom: 20px;
+    }
+    .s1 h1 em {
+      font-style: normal;
+      background: linear-gradient(90deg, var(--blue-l), var(--cyan));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    .s1 .sub {
+      font-size: 14px;
+      color: var(--muted);
+      line-height: 1.6;
+      position: relative;
+      z-index: 2;
+      margin-bottom: 32px;
+      max-width: 360px;
+    }
+
+    .s1 .arrow-hint {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 12px;
+      color: var(--muted);
+      position: relative;
+      z-index: 2;
+    }
+
+    /* ════════════════════════════════════════════════
+       SLIDES 2–6 — ITENS
+    ════════════════════════════════════════════════ */
+    .s-item {
+      background: var(--bg2);
+      justify-content: center;
+    }
+
+    .s-item .accent-bar {
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 3px;
+    }
+
+    .s-item .item-num {
+      font-size: 72px;
+      font-weight: 700;
+      line-height: 1;
+      position: absolute;
+      top: 30px;
+      right: 36px;
+      opacity: 0.06;
+      color: var(--white);
+      pointer-events: none;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .icon-wrap {
+      width: 56px; height: 56px;
+      border-radius: 16px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 24px;
+      position: relative;
+      z-index: 2;
+    }
+
+    .s-item h2 {
+      font-size: 26px;
+      font-weight: 700;
+      color: var(--white);
+      line-height: 1.2;
+      margin-bottom: 14px;
+      position: relative;
+      z-index: 2;
+      max-width: 360px;
+    }
+
+    .s-item p {
+      font-size: 15px;
+      color: var(--muted);
+      line-height: 1.65;
+      position: relative;
+      z-index: 2;
+      max-width: 380px;
+    }
+
+    .s-item .tag {
+      display: inline-block;
+      margin-top: 20px;
+      background: rgba(255,255,255,0.05);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 4px 12px;
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      color: var(--muted);
+      position: relative;
+      z-index: 2;
+    }
+
+    /* ════════════════════════════════════════════════
+       SLIDE 7 — CTA
+    ════════════════════════════════════════════════ */
+    .s-cta {
+      background: var(--bg);
+      justify-content: center;
+      align-items: center;
+      text-align: center;
+    }
+
+    .s-cta .glow {
+      position: absolute;
+      width: 320px; height: 320px;
+      border-radius: 50%;
+      background: radial-gradient(circle, rgba(37,99,235,0.3) 0%, transparent 70%);
+      top: 50%; left: 50%;
+      transform: translate(-50%, -50%);
+      pointer-events: none;
+    }
+
+    .s-cta .question-mark {
+      font-size: 100px;
+      font-weight: 700;
+      line-height: 1;
+      background: linear-gradient(135deg, var(--blue-l), var(--cyan));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      margin-bottom: 24px;
+      position: relative;
+      z-index: 2;
+    }
+
+    .s-cta h2 {
+      font-size: 22px;
+      font-weight: 700;
+      color: var(--white);
+      line-height: 1.3;
+      margin-bottom: 12px;
+      position: relative;
+      z-index: 2;
+      max-width: 340px;
+    }
+
+    .s-cta p {
+      font-size: 14px;
+      color: var(--muted);
+      line-height: 1.6;
+      position: relative;
+      z-index: 2;
+      max-width: 300px;
+      margin-bottom: 28px;
+    }
+
+    .s-cta .cta-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: linear-gradient(135deg, var(--blue), #1d4ed8);
+      color: #fff;
+      font-size: 14px;
+      font-weight: 600;
+      padding: 12px 24px;
+      border-radius: 10px;
+      position: relative;
+      z-index: 2;
+      box-shadow: 0 4px 20px rgba(37,99,235,0.4);
+    }
+
+    .s-cta .handle {
+      font-size: 12px;
+      color: var(--muted);
+      position: relative;
+      z-index: 2;
+      margin-top: 20px;
+      font-weight: 500;
+    }
+
+    /* ── Color accents per slide ───────────────────── */
+    .accent-blue  { background: linear-gradient(90deg, #2563EB, #3B82F6); }
+    .accent-cyan  { background: linear-gradient(90deg, #06B6D4, #22D3EE); }
+    .accent-violet{ background: linear-gradient(90deg, #7C3AED, #A78BFA); }
+    .accent-green { background: linear-gradient(90deg, #059669, #34D399); }
+    .accent-orange{ background: linear-gradient(90deg, #EA580C, #FB923C); }
+
+    .bg-blue   { background: rgba(37,99,235,0.12); }
+    .bg-cyan   { background: rgba(6,182,212,0.12); }
+    .bg-violet { background: rgba(124,58,237,0.12); }
+    .bg-green  { background: rgba(5,150,105,0.12); }
+    .bg-orange { background: rgba(234,88,12,0.12); }
+
+    .cl-blue   { color: #60A5FA; }
+    .cl-cyan   { color: #22D3EE; }
+    .cl-violet { color: #A78BFA; }
+    .cl-green  { color: #34D399; }
+    .cl-orange { color: #FB923C; }
+
+    /* ── Export hint ───────────────────────────────── */
+    .hint {
+      font-family: 'Inter', sans-serif;
+      font-size: 12px;
+      color: rgba(255,255,255,0.3);
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Controles -->
+  <div class="controls">
+    <button class="btn" id="prev" onclick="move(-1)" disabled>← Anterior</button>
+    <div class="dots" id="dots"></div>
+    <button class="btn" id="next" onclick="move(1)">Próximo →</button>
+  </div>
+
+  <!-- Carrossel -->
+  <div class="viewport">
+    <div class="track" id="track">
+
+      <!-- ────────────────────────────── SLIDE 1 — CAPA -->
+      <div class="slide s1">
+        <div class="grid-bg"></div>
+        <div class="blob"></div>
+        <div class="blob2"></div>
+
+        <div class="logo-mark" style="position:relative;z-index:2;margin-bottom:auto;">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+            <rect x="2" y="2" width="9" height="9" rx="2" fill="#2563EB"/>
+            <rect x="13" y="2" width="9" height="9" rx="2" fill="#06B6D4" opacity="0.6"/>
+            <rect x="2" y="13" width="9" height="9" rx="2" fill="#06B6D4" opacity="0.6"/>
+            <rect x="13" y="13" width="9" height="9" rx="2" fill="#2563EB" opacity="0.3"/>
+          </svg>
+          Arquiteto de Soluções com IA
+        </div>
+
+        <div style="position:relative;z-index:2;">
+          <div class="badge">
+            <span class="badge-dot"></span>
+            Topo de Funil
+          </div>
+          <h1>5 coisas que a IA já faz pela sua empresa — <em>e você ainda não usa</em></h1>
+          <p class="sub">A maioria dos empresários acha que IA é complicada. Mas ela já está transformando negócios como o seu — agora mesmo.</p>
+          <div class="arrow-hint">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#64748B" stroke-width="2">
+              <path d="M5 12h14M12 5l7 7-7 7"/>
+            </svg>
+            Deslize para ver cada uma
+          </div>
+        </div>
+
+        <span class="slide-num">1 / 7</span>
+      </div>
+
+      <!-- ────────────────────────────── SLIDE 2 -->
+      <div class="slide s-item">
+        <div class="grid-bg"></div>
+        <div class="accent-bar accent-blue"></div>
+        <span class="item-num">01</span>
+
+        <div class="icon-wrap bg-blue" style="position:relative;z-index:2;">
+          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#60A5FA" stroke-width="1.8" stroke-linecap="round">
+            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+          </svg>
+        </div>
+
+        <h2>Atendimento automático <span class="cl-blue">24h</span>, 7 dias por semana</h2>
+        <p>Chatbots com IA respondem dúvidas, qualificam leads e agendam reuniões enquanto você dorme — sem contratar ninguém.</p>
+        <span class="tag cl-blue">Atendimento ao cliente</span>
+
+        <div class="logo-mark" style="position:absolute;bottom:28px;left:40px;z-index:2;">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+            <rect x="2" y="2" width="9" height="9" rx="2" fill="#2563EB"/>
+            <rect x="13" y="2" width="9" height="9" rx="2" fill="#06B6D4" opacity="0.6"/>
+            <rect x="2" y="13" width="9" height="9" rx="2" fill="#06B6D4" opacity="0.6"/>
+            <rect x="13" y="13" width="9" height="9" rx="2" fill="#2563EB" opacity="0.3"/>
+          </svg>
+          @seuhandle
+        </div>
+        <span class="slide-num">2 / 7</span>
+      </div>
+
+      <!-- ────────────────────────────── SLIDE 3 -->
+      <div class="slide s-item">
+        <div class="grid-bg"></div>
+        <div class="accent-bar accent-cyan"></div>
+        <span class="item-num">02</span>
+
+        <div class="icon-wrap bg-cyan" style="position:relative;z-index:2;">
+          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#22D3EE" stroke-width="1.8" stroke-linecap="round">
+            <path d="M12 20h9M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>
+          </svg>
+        </div>
+
+        <h2>Geração de conteúdo em <span class="cl-cyan">minutos</span></h2>
+        <p>E-mails, posts, propostas comerciais e roteiros de vídeo criados por IA — com a voz da sua marca — em fração do tempo.</p>
+        <span class="tag cl-cyan">Marketing & Conteúdo</span>
+
+        <div class="logo-mark" style="position:absolute;bottom:28px;left:40px;z-index:2;">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+            <rect x="2" y="2" width="9" height="9" rx="2" fill="#2563EB"/>
+            <rect x="13" y="2" width="9" height="9" rx="2" fill="#06B6D4" opacity="0.6"/>
+            <rect x="2" y="13" width="9" height="9" rx="2" fill="#06B6D4" opacity="0.6"/>
+            <rect x="13" y="13" width="9" height="9" rx="2" fill="#2563EB" opacity="0.3"/>
+          </svg>
+          @seuhandle
+        </div>
+        <span class="slide-num">3 / 7</span>
+      </div>
+
+      <!-- ────────────────────────────── SLIDE 4 -->
+      <div class="slide s-item">
+        <div class="grid-bg"></div>
+        <div class="accent-bar accent-violet"></div>
+        <span class="item-num">03</span>
+
+        <div class="icon-wrap bg-violet" style="position:relative;z-index:2;">
+          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#A78BFA" stroke-width="1.8" stroke-linecap="round">
+            <line x1="18" y1="20" x2="18" y2="10"/>
+            <line x1="12" y1="20" x2="12" y2="4"/>
+            <line x1="6"  y1="20" x2="6"  y2="14"/>
+          </svg>
+        </div>
+
+        <h2>Análise de dados que levaria <span class="cl-violet">horas</span> — em segundos</h2>
+        <p>IA lê planilhas, relatórios e dados de vendas e entrega insights claros: o que está funcionando, o que está drenando lucro.</p>
+        <span class="tag cl-violet">Dados & Decisões</span>
+
+        <div class="logo-mark" style="position:absolute;bottom:28px;left:40px;z-index:2;">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+            <rect x="2" y="2" width="9" height="9" rx="2" fill="#2563EB"/>
+            <rect x="13" y="2" width="9" height="9" rx="2" fill="#06B6D4" opacity="0.6"/>
+            <rect x="2" y="13" width="9" height="9" rx="2" fill="#06B6D4" opacity="0.6"/>
+            <rect x="13" y="13" width="9" height="9" rx="2" fill="#2563EB" opacity="0.3"/>
+          </svg>
+          @seuhandle
+        </div>
+        <span class="slide-num">4 / 7</span>
+      </div>
+
+      <!-- ────────────────────────────── SLIDE 5 -->
+      <div class="slide s-item">
+        <div class="grid-bg"></div>
+        <div class="accent-bar accent-green"></div>
+        <span class="item-num">04</span>
+
+        <div class="icon-wrap bg-green" style="position:relative;z-index:2;">
+          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#34D399" stroke-width="1.8" stroke-linecap="round">
+            <polyline points="9 11 12 14 22 4"/>
+            <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>
+          </svg>
+        </div>
+
+        <h2>Processos organizados <span class="cl-green">sem depender</span> de uma só pessoa</h2>
+        <p>IA mapeia, documenta e automatiza tarefas repetitivas — eliminando retrabalho, esquecimentos e gargalos operacionais.</p>
+        <span class="tag cl-green">Operação & Processos</span>
+
+        <div class="logo-mark" style="position:absolute;bottom:28px;left:40px;z-index:2;">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+            <rect x="2" y="2" width="9" height="9" rx="2" fill="#2563EB"/>
+            <rect x="13" y="2" width="9" height="9" rx="2" fill="#06B6D4" opacity="0.6"/>
+            <rect x="2" y="13" width="9" height="9" rx="2" fill="#06B6D4" opacity="0.6"/>
+            <rect x="13" y="13" width="9" height="9" rx="2" fill="#2563EB" opacity="0.3"/>
+          </svg>
+          @seuhandle
+        </div>
+        <span class="slide-num">5 / 7</span>
+      </div>
+
+      <!-- ────────────────────────────── SLIDE 6 -->
+      <div class="slide s-item">
+        <div class="grid-bg"></div>
+        <div class="accent-bar accent-orange"></div>
+        <span class="item-num">05</span>
+
+        <div class="icon-wrap bg-orange" style="position:relative;z-index:2;">
+          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#FB923C" stroke-width="1.8" stroke-linecap="round">
+            <circle cx="11" cy="11" r="8"/>
+            <path d="m21 21-4.35-4.35"/>
+          </svg>
+        </div>
+
+        <h2>Qualificação de leads <span class="cl-orange">automática</span> no seu funil</h2>
+        <p>IA identifica quais leads têm mais chance de comprar, prioriza o contato e evita que sua equipe perca tempo com quem não vai fechar.</p>
+        <span class="tag cl-orange">Vendas & CRM</span>
+
+        <div class="logo-mark" style="position:absolute;bottom:28px;left:40px;z-index:2;">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+            <rect x="2" y="2" width="9" height="9" rx="2" fill="#2563EB"/>
+            <rect x="13" y="2" width="9" height="9" rx="2" fill="#06B6D4" opacity="0.6"/>
+            <rect x="2" y="13" width="9" height="9" rx="2" fill="#06B6D4" opacity="0.6"/>
+            <rect x="13" y="13" width="9" height="9" rx="2" fill="#2563EB" opacity="0.3"/>
+          </svg>
+          @seuhandle
+        </div>
+        <span class="slide-num">6 / 7</span>
+      </div>
+
+      <!-- ────────────────────────────── SLIDE 7 — CTA -->
+      <div class="slide s-cta">
+        <div class="grid-bg"></div>
+        <div class="glow"></div>
+
+        <div class="question-mark">?</div>
+
+        <h2>Qual dessas faria mais diferença no seu negócio agora?</h2>
+        <p>Comenta aqui embaixo — ou me manda uma mensagem direta. Vou te dizer por onde começar.</p>
+
+        <div class="cta-btn">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round">
+            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+          </svg>
+          Comenta ou manda DM
+        </div>
+
+        <p class="handle">@seuhandle · Arquiteto de Soluções com IA</p>
+
+        <span class="slide-num" style="bottom:28px;right:40px;">7 / 7</span>
+      </div>
+
+    </div><!-- /track -->
+  </div><!-- /viewport -->
+
+  <p class="hint">Use ← → para navegar entre os slides · 540×540px (exportável para 1080×1080px)</p>
+
+  <script>
+    const TOTAL = 7;
+    let current = 0;
+    const track  = document.getElementById('track');
+    const prevBtn = document.getElementById('prev');
+    const nextBtn = document.getElementById('next');
+    const dotsEl  = document.getElementById('dots');
+
+    // Create dots
+    for (let i = 0; i < TOTAL; i++) {
+      const d = document.createElement('div');
+      d.className = 'dot' + (i === 0 ? ' active' : '');
+      d.addEventListener('click', () => goTo(i));
+      dotsEl.appendChild(d);
+    }
+
+    function goTo(n) {
+      current = Math.max(0, Math.min(TOTAL - 1, n));
+      track.style.transform = `translateX(-${current * 540}px)`;
+      prevBtn.disabled = current === 0;
+      nextBtn.disabled = current === TOTAL - 1;
+      document.querySelectorAll('.dot').forEach((d, i) => {
+        d.classList.toggle('active', i === current);
+      });
+    }
+
+    function move(dir) { goTo(current + dir); }
+
+    document.addEventListener('keydown', e => {
+      if (e.key === 'ArrowRight') move(1);
+      if (e.key === 'ArrowLeft')  move(-1);
+    });
+
+    // Touch/swipe support
+    let startX = 0;
+    const vp = document.querySelector('.viewport');
+    vp.addEventListener('touchstart', e => { startX = e.touches[0].clientX; }, { passive: true });
+    vp.addEventListener('touchend',   e => {
+      const diff = startX - e.changedTouches[0].clientX;
+      if (Math.abs(diff) > 40) move(diff > 0 ? 1 : -1);
+    });
+  </script>
+
+</body>
+</html>
