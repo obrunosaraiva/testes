@@ -2407,7 +2407,10 @@ function renderPositioningDashboard(el, data) {
           <h2 style="font-size:18px;font-weight:700;color:var(--text);margin-bottom:4px">Estratégia de Posicionamento</h2>
           ${updatedAt ? `<p style="font-size:12px;color:var(--text-muted)">Última atualização: ${updatedAt}</p>` : ""}
         </div>
-        <button class="btn btn-secondary btn-sm" onclick="posReset()">Redefinir estratégia</button>
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-secondary btn-sm" onclick="posExportMd()">⬇ Exportar .md</button>
+          <button class="btn btn-secondary btn-sm" onclick="posReset()">Redefinir estratégia</button>
+        </div>
       </div>
 
       <!-- Verbal Nail -->
@@ -2492,6 +2495,22 @@ function renderPositioningDashboard(el, data) {
         </div>
       </details>
     </div>`;
+
+  window.posExportMd = async function() {
+    const token = localStorage.getItem("gtd_token");
+    const res = await fetch(`${API}/positioning/export`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!res.ok) { alert("Erro ao exportar"); return; }
+    const blob = await res.blob();
+    const disposition = res.headers.get("Content-Disposition") || "";
+    const match = disposition.match(/filename="([^"]+)"/);
+    const filename = match ? match[1] : "posicionamento.md";
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = filename; a.click();
+    URL.revokeObjectURL(url);
+  };
 
   window.posReset = async function() {
     if (!confirm("Redefinir a estratégia de posicionamento?")) return;
