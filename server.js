@@ -4,14 +4,17 @@ const path = require('path');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
-const DATA_FILE = path.join(__dirname, 'data', 'tasks.json');
+// Use RAILWAY_VOLUME_MOUNT_PATH if available (Railway persistent volume)
+const dataDir = process.env.RAILWAY_VOLUME_MOUNT_PATH
+  ? path.join(process.env.RAILWAY_VOLUME_MOUNT_PATH)
+  : path.join(__dirname, 'data');
+const DATA_FILE = path.join(dataDir, 'tasks.json');
 
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
 // Ensure data directory and file exist
-const dataDir = path.join(__dirname, 'data');
-if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir);
+if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
 if (!fs.existsSync(DATA_FILE)) {
   fs.writeFileSync(DATA_FILE, JSON.stringify({ tasks: [], nextId: 1 }, null, 2));
 }
