@@ -1,0 +1,13 @@
+{
+  "name": "kanban-pro",
+  "version": "1.0.0",
+  "description": "Kanban Pro - Project Management Board",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2"
+  }
+}
