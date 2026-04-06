@@ -163,7 +163,8 @@ input[type=file].hidden-file { display:none; }
 .gantt-view.hidden { display:none; }
 .gantt-controls { display:flex; gap:10px; align-items:center; margin-bottom:16px; flex-wrap:wrap; }
 .gantt-controls select,.gantt-controls input { padding:7px 12px; background:var(--surface2); border:1px solid var(--border); border-radius:8px; color:var(--text); font-size:.84rem; font-family:inherit; outline:none; }
-.gantt-container { position:relative; min-width:800px; }
+.gantt-container { position:relative; overflow-x:auto; }
+.gantt-inner { min-width:100%; }
 .gantt-header { display:flex; position:sticky; top:0; z-index:10; background:var(--surface); border-bottom:2px solid var(--border); }
 .gantt-label-col { min-width:240px; width:240px; padding:10px 12px; font-weight:600; font-size:.82rem; color:var(--text-muted); border-right:1px solid var(--border); flex-shrink:0; }
 .gantt-timeline-header { display:flex; flex:1; }
@@ -760,7 +761,12 @@ function switchView(v){
   document.getElementById('ganttView').classList.toggle('hidden',v!=='gantt');
   document.getElementById('btnBoard').classList.toggle('active',v==='board');
   document.getElementById('btnGantt').classList.toggle('active',v==='gantt');
-  if(v==='gantt')renderGantt();
+  if(v==='gantt'){
+    // Reset inputs so range recalculates from tasks
+    document.getElementById('ganttStart').value='';
+    document.getElementById('ganttEnd').value='';
+    renderGantt();
+  }
 }
 
 // ===== DETAIL MODAL =====
@@ -842,7 +848,11 @@ function saveDetail(){
     saveTask(newTask);
   }
   closeDetail();render();
-  if(S.view==='gantt')renderGantt();
+  if(S.view==='gantt'){
+    document.getElementById('ganttStart').value='';
+    document.getElementById('ganttEnd').value='';
+    renderGantt();
+  }
 }
 
 function deleteFromDetail(){
@@ -934,28 +944,40 @@ function renderGantt(){
 
   if(!tasks.length){container.innerHTML='<div class="gantt-empty">Nenhuma tarefa com datas definidas.<br>Adicione datas de inicio e deadline nas tarefas para visualizar o Gantt.</div>';return;}
 
-  // Determine date range
+  // Determine date range — always auto from tasks, inputs are optional filters
   let inputStart=document.getElementById('ganttStart').value;
   let inputEnd=document.getElementById('ganttEnd').value;
 
   let allDates=[];
-  tasks.forEach(t=>{if(t.startDate)allDates.push(new Date(t.startDate+'T00:00:00'));if(t.deadline)allDates.push(new Date(t.deadline+'T00:00:00'));});
+  tasks.forEach(t=>{
+    if(t.startDate)allDates.push(new Date(t.startDate+'T00:00:00'));
+    if(t.deadline)allDates.push(new Date(t.deadline+'T00:00:00'));
+    if(t.isEvent&&t.eventStartDate)allDates.push(new Date(t.eventStartDate+'T00:00:00'));
+    if(t.isEvent&&t.eventEndDate)allDates.push(new Date(t.eventEndDate+'T00:00:00'));
+  });
   const minDate=new Date(Math.min(...allDates));
   const maxDate=new Date(Math.max(...allDates));
 
-  const rangeStart=inputStart?new Date(inputStart+'T00:00:00'):new Date(minDate.getTime()-3*86400000);
-  const rangeEnd=inputEnd?new Date(inputEnd+'T00:00:00'):new Date(maxDate.getTime()+7*86400000);
+  // Default: from earliest task date to latest date (no padding)
+  const autoStart=new Date(minDate); autoStart.setHours(0,0,0,0);
+  const autoEnd=new Date(maxDate); autoEnd.setHours(0,0,0,0);
 
-  if(!inputStart)document.getElementById('ganttStart').value=fmtISO(rangeStart);
-  if(!inputEnd)document.getElementById('ganttEnd').value=fmtISO(rangeEnd);
+  const rangeStart=inputStart?new Date(inputStart+'T00:00:00'):autoStart;
+  const rangeEnd=inputEnd?new Date(inputEnd+'T00:00:00'):autoEnd;
+
+  // Show auto-calculated dates in inputs as placeholder
+  document.getElementById('ganttStart').placeholder=fmtISO(autoStart);
+  document.getElementById('ganttEnd').placeholder=fmtISO(autoEnd);
 
   const days=[];
   const d=new Date(rangeStart);
   while(d<=rangeEnd){days.push(new Date(d));d.setDate(d.getDate()+1);}
+  if(!days.length){days.push(new Date(rangeStart));}
 
   const today=fmtISO(new Date());
+  const totalWidth=240+days.length*40;
 
-  let html='<div class="gantt-header"><div class="gantt-label-col">Tarefa</div><div class="gantt-timeline-header">';
+  let html=`<div class="gantt-inner" style="width:${totalWidth}px"><div class="gantt-header"><div class="gantt-label-col">Tarefa</div><div class="gantt-timeline-header">`;
   days.forEach(day=>{
     const iso=fmtISO(day);
     const wd=day.getDay();
@@ -973,7 +995,7 @@ function renderGantt(){
 
     html+=`<div class="gantt-row">`;
     html+=`<div class="gantt-row-label"><span class="gr-proj ${pc}">${esc(t.project)}</span><span class="gr-title" title="${esc(t.title)}">${esc(t.title)}</span></div>`;
-    html+=`<div class="gantt-row-timeline">`;
+    html+=`<div class="gantt-row-timeline" style="width:${days.length*40}px;flex-shrink:0">`;
 
     // Background cells
     days.forEach(day=>{
@@ -1029,6 +1051,7 @@ function renderGantt(){
     html+=`</div></div>`;
   });
 
+  html+=`</div>`; // close gantt-inner
   container.innerHTML=html;
 }
 
