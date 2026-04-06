@@ -13,20 +13,26 @@ const COLUMNS = [
 let tasks = [];
 let draggedId = null;
 let deleteTargetId = null;
+let currentView = 'board';
 
 // ---- DOM refs ----
-const board       = document.getElementById('board');
-const modalOverlay = document.getElementById('modal-overlay');
+const board         = document.getElementById('board');
+const viewBoard     = document.getElementById('view-board');
+const viewGantt     = document.getElementById('view-gantt');
+const ganttWrap     = document.getElementById('gantt-wrap');
+const modalOverlay  = document.getElementById('modal-overlay');
 const deleteOverlay = document.getElementById('delete-overlay');
-const taskForm    = document.getElementById('task-form');
-const btnOpenModal = document.getElementById('btn-open-modal');
-const btnCancel   = document.getElementById('btn-cancel');
-const btnSubmit   = document.getElementById('btn-submit');
-const modalClose  = document.getElementById('modal-close');
-const deleteClose = document.getElementById('delete-close');
-const deleteCancel = document.getElementById('delete-cancel');
+const taskForm      = document.getElementById('task-form');
+const btnOpenModal  = document.getElementById('btn-open-modal');
+const btnCancel     = document.getElementById('btn-cancel');
+const btnSubmit     = document.getElementById('btn-submit');
+const modalClose    = document.getElementById('modal-close');
+const deleteClose   = document.getElementById('delete-close');
+const deleteCancel  = document.getElementById('delete-cancel');
 const deleteConfirm = document.getElementById('delete-confirm');
-const modalTitle  = document.getElementById('modal-title');
+const modalTitle    = document.getElementById('modal-title');
+const btnViewBoard  = document.getElementById('btn-view-board');
+const btnViewGantt  = document.getElementById('btn-view-gantt');
 
 // ---- API ----
 async function api(method, path, body) {
@@ -41,10 +47,40 @@ async function api(method, path, body) {
 
 async function loadTasks() {
   tasks = await api('GET', '/api/tasks');
-  renderBoard();
+  render();
 }
 
-// ---- Render ----
+// ---- View Toggle ----
+function setView(view) {
+  currentView = view;
+  if (view === 'board') {
+    viewBoard.style.display = '';
+    viewGantt.style.display = 'none';
+    btnViewBoard.classList.add('active');
+    btnViewBoard.setAttribute('aria-pressed', 'true');
+    btnViewGantt.classList.remove('active');
+    btnViewGantt.setAttribute('aria-pressed', 'false');
+    renderBoard();
+  } else {
+    viewBoard.style.display = 'none';
+    viewGantt.style.display = '';
+    btnViewBoard.classList.remove('active');
+    btnViewBoard.setAttribute('aria-pressed', 'false');
+    btnViewGantt.classList.add('active');
+    btnViewGantt.setAttribute('aria-pressed', 'true');
+    renderGantt();
+  }
+}
+
+function render() {
+  if (currentView === 'board') renderBoard();
+  else renderGantt();
+}
+
+btnViewBoard.addEventListener('click', () => setView('board'));
+btnViewGantt.addEventListener('click', () => setView('gantt'));
+
+// ---- Board Render ----
 function renderBoard() {
   board.innerHTML = '';
   COLUMNS.forEach(col => {
@@ -81,7 +117,6 @@ function buildColumn(col, colTasks) {
   const body = column.querySelector('.column-body');
   colTasks.forEach(task => body.appendChild(buildCard(task)));
 
-  // Drag-over events on column
   column.addEventListener('dragover', e => {
     e.preventDefault();
     column.classList.add('drag-over');
@@ -152,7 +187,6 @@ function buildCard(task) {
     </div>
   `;
 
-  // Drag events
   card.addEventListener('dragstart', e => {
     draggedId = task.id;
     setTimeout(() => card.classList.add('dragging'), 0);
@@ -162,14 +196,10 @@ function buildCard(task) {
     card.classList.remove('dragging');
     draggedId = null;
   });
-
-  // Edit
   card.querySelector('.card-btn.edit').addEventListener('click', e => {
     e.stopPropagation();
     openEditModal(task);
   });
-
-  // Delete
   card.querySelector('.card-btn.delete').addEventListener('click', e => {
     e.stopPropagation();
     openDeleteModal(task.id);
@@ -178,11 +208,152 @@ function buildCard(task) {
   return card;
 }
 
+// ---- Gantt Render ----
+function renderGantt() {
+  ganttWrap.innerHTML = '';
+
+  // Only tasks that have at least a startDate or dueDate
+  const ganttTasks = tasks.filter(t => t.startDate || t.dueDate);
+
+  if (ganttTasks.length === 0) {
+    ganttWrap.innerHTML = `
+      <div class="gantt-empty">
+        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2">
+          <rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/>
+          <line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
+        </svg>
+        <p>No tasks with dates yet.</p>
+        <span>Add start or due dates to your tasks to see them here.</span>
+      </div>`;
+    return;
+  }
+
+  // ---- Compute timeline range ----
+  // Parse dates strictly as local midnight to avoid UTC offset shifting the day
+  const parseDate = str => new Date(str + 'T00:00:00');
+
+  const allDates = [];
+  ganttTasks.forEach(t => {
+    if (t.startDate) allDates.push(parseDate(t.startDate));
+    if (t.dueDate)   allDates.push(parseDate(t.dueDate));
+  });
+
+  // Timeline: earliest date - 1 day padding, latest date + 2 days padding
+  const minMs = Math.min(...allDates.map(d => d.getTime()));
+  const maxMs = Math.max(...allDates.map(d => d.getTime()));
+
+  const rangeStart = new Date(minMs);
+  rangeStart.setDate(rangeStart.getDate() - 1);
+  rangeStart.setHours(0, 0, 0, 0);
+
+  const rangeEnd = new Date(maxMs);
+  rangeEnd.setDate(rangeEnd.getDate() + 2);
+  rangeEnd.setHours(0, 0, 0, 0);
+
+  const totalMs = rangeEnd.getTime() - rangeStart.getTime();
+  const totalDays = Math.round(totalMs / 86400000);
+
+  // Position helper: returns % offset from rangeStart
+  function pct(dateMs) {
+    return ((dateMs - rangeStart.getTime()) / totalMs) * 100;
+  }
+
+  // ---- Build header days ----
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  // Show every Nth day label depending on range to avoid crowding
+  const labelEvery = totalDays <= 14 ? 1 : totalDays <= 30 ? 3 : totalDays <= 90 ? 7 : 14;
+
+  let headerHtml = '';
+  for (let i = 0; i <= totalDays; i++) {
+    const d = new Date(rangeStart);
+    d.setDate(d.getDate() + i);
+    const left = pct(d.getTime());
+    if (left > 100) break;
+    const isToday = d.getTime() === today.getTime();
+    const isWeekend = d.getDay() === 0 || d.getDay() === 6;
+    const showLabel = i % labelEvery === 0;
+    headerHtml += `<div class="gantt-day-tick ${isToday ? 'today' : ''} ${isWeekend ? 'weekend' : ''}"
+      style="left:${left.toFixed(3)}%">
+      ${showLabel ? `<span>${d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>` : ''}
+    </div>`;
+  }
+
+  // Today marker line
+  const todayPct = pct(today.getTime());
+  const todayLineHtml = todayPct >= 0 && todayPct <= 100
+    ? `<div class="gantt-today-line" style="left:${todayPct.toFixed(3)}%"><span>Today</span></div>`
+    : '';
+
+  // ---- Build rows ----
+  let rowsHtml = '';
+  ganttTasks.forEach(task => {
+    const col = COLUMNS.find(c => c.id === task.column) || COLUMNS[0];
+    const priorityColor = { low: '#22C55E', medium: '#F59E0B', high: '#EF4444' }[task.priority] || '#F59E0B';
+
+    // Resolve start and end — use createdAt date as fallback start
+    const startStr = task.startDate || task.createdAt.slice(0, 10);
+    const endStr   = task.dueDate   || task.startDate || task.createdAt.slice(0, 10);
+
+    const startMs = parseDate(startStr).getTime();
+    const endMs   = parseDate(endStr).getTime();
+
+    // Clamp to visible range
+    const barLeft = Math.max(0, pct(startMs));
+    const barRight = Math.min(100, pct(endMs + 86400000)); // end of dueDate day
+    const barWidth = Math.max(barRight - barLeft, 0.5); // min 0.5% so zero-day tasks are visible
+
+    const isOverdue = task.dueDate && parseDate(task.dueDate).getTime() < today.getTime() && task.column !== 'done';
+
+    rowsHtml += `
+      <div class="gantt-row">
+        <div class="gantt-label">
+          <span class="gantt-col-dot" style="background:${col.color}"></span>
+          <span class="gantt-task-name" title="${escHtml(task.title)}">${escHtml(task.title)}</span>
+          <span class="badge-priority ${task.priority}" style="margin-left:auto;flex-shrink:0">${capitalize(task.priority)}</span>
+        </div>
+        <div class="gantt-timeline">
+          ${todayLineHtml}
+          <div class="gantt-bar ${isOverdue ? 'overdue' : ''}"
+            style="left:${barLeft.toFixed(3)}%;width:${barWidth.toFixed(3)}%;background:${col.color}"
+            title="${escHtml(task.title)}: ${startStr} → ${endStr}"
+            data-id="${task.id}">
+            <span class="gantt-bar-label">${escHtml(task.title)}</span>
+          </div>
+        </div>
+      </div>`;
+  });
+
+  ganttWrap.innerHTML = `
+    <div class="gantt">
+      <div class="gantt-header">
+        <div class="gantt-header-label">Task</div>
+        <div class="gantt-header-timeline">
+          ${headerHtml}
+        </div>
+      </div>
+      <div class="gantt-body">
+        ${rowsHtml}
+      </div>
+    </div>`;
+
+  // Click bar to edit
+  ganttWrap.querySelectorAll('.gantt-bar').forEach(bar => {
+    bar.addEventListener('click', () => {
+      const task = tasks.find(t => t.id === parseInt(bar.dataset.id));
+      if (task) openEditModal(task);
+    });
+  });
+}
+
 // ---- Modal ----
 function openCreateModal(columnId) {
   taskForm.reset();
   document.getElementById('task-id').value = '';
   document.getElementById('task-column').value = columnId || 'todo';
+  // Default startDate = today
+  document.getElementById('task-start').value = toInputDate(new Date());
   modalTitle.textContent = 'New Task';
   btnSubmit.textContent = 'Create Task';
   modalOverlay.classList.add('active');
@@ -190,12 +361,13 @@ function openCreateModal(columnId) {
 }
 
 function openEditModal(task) {
-  document.getElementById('task-id').value = task.id;
-  document.getElementById('task-title').value = task.title;
+  document.getElementById('task-id').value          = task.id;
+  document.getElementById('task-title').value       = task.title;
   document.getElementById('task-description').value = task.description || '';
-  document.getElementById('task-priority').value = task.priority;
-  document.getElementById('task-column').value = task.column;
-  document.getElementById('task-due').value = task.dueDate || '';
+  document.getElementById('task-priority').value    = task.priority;
+  document.getElementById('task-column').value      = task.column;
+  document.getElementById('task-start').value       = task.startDate || '';
+  document.getElementById('task-due').value         = task.dueDate || '';
   modalTitle.textContent = 'Edit Task';
   btnSubmit.textContent = 'Save Changes';
   modalOverlay.classList.add('active');
@@ -217,25 +389,18 @@ function closeDeleteModal() {
   deleteTargetId = null;
 }
 
-// ---- Event Listeners ----
+// ---- Events ----
 btnOpenModal.addEventListener('click', () => openCreateModal());
 btnCancel.addEventListener('click', closeModal);
 modalClose.addEventListener('click', closeModal);
 deleteClose.addEventListener('click', closeDeleteModal);
 deleteCancel.addEventListener('click', closeDeleteModal);
 
-modalOverlay.addEventListener('click', e => {
-  if (e.target === modalOverlay) closeModal();
-});
-deleteOverlay.addEventListener('click', e => {
-  if (e.target === deleteOverlay) closeDeleteModal();
-});
+modalOverlay.addEventListener('click', e => { if (e.target === modalOverlay) closeModal(); });
+deleteOverlay.addEventListener('click', e => { if (e.target === deleteOverlay) closeDeleteModal(); });
 
 document.addEventListener('keydown', e => {
-  if (e.key === 'Escape') {
-    closeModal();
-    closeDeleteModal();
-  }
+  if (e.key === 'Escape') { closeModal(); closeDeleteModal(); }
 });
 
 taskForm.addEventListener('submit', async e => {
@@ -246,7 +411,8 @@ taskForm.addEventListener('submit', async e => {
     description: document.getElementById('task-description').value.trim(),
     priority:    document.getElementById('task-priority').value,
     column:      document.getElementById('task-column').value,
-    dueDate:     document.getElementById('task-due').value || null
+    startDate:   document.getElementById('task-start').value || null,
+    dueDate:     document.getElementById('task-due').value   || null
   };
   if (!payload.title) return;
 
@@ -259,7 +425,7 @@ taskForm.addEventListener('submit', async e => {
       const created = await api('POST', '/api/tasks', payload);
       tasks.push(created);
     }
-    renderBoard();
+    render();
     closeModal();
   } catch (err) {
     console.error(err);
@@ -274,7 +440,7 @@ deleteConfirm.addEventListener('click', async () => {
   try {
     await api('DELETE', `/api/tasks/${deleteTargetId}`);
     tasks = tasks.filter(t => t.id !== deleteTargetId);
-    renderBoard();
+    render();
     closeDeleteModal();
   } catch (err) {
     console.error(err);
@@ -285,29 +451,36 @@ deleteConfirm.addEventListener('click', async () => {
 
 // ---- Helpers ----
 function escHtml(str) {
-  return str
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
+  return String(str)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
 function capitalize(str) {
   return str.charAt(0).toUpperCase() + str.slice(1);
 }
 
+// Format YYYY-MM-DD for <input type="date"> using LOCAL time (no UTC shift)
+function toInputDate(d) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
 function formatDue(dateStr) {
   if (!dateStr) return null;
+  // Parse as local midnight — appending T00:00:00 forces local time, not UTC
   const due = new Date(dateStr + 'T00:00:00');
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   const diff = Math.floor((due - today) / 86400000);
   const overdue = diff < 0;
   let label;
-  if (diff === 0) label = 'Today';
-  else if (diff === 1) label = 'Tomorrow';
+  if (diff === 0)       label = 'Today';
+  else if (diff === 1)  label = 'Tomorrow';
   else if (diff === -1) label = 'Yesterday';
-  else if (overdue) label = `${Math.abs(diff)}d overdue`;
+  else if (overdue)     label = `${Math.abs(diff)}d overdue`;
   else label = due.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
   return { label, overdue };
 }
