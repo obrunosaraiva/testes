@@ -181,8 +181,13 @@ input[type=file].hidden-file { display:none; }
 .gantt-cell.today { background:rgba(108,92,231,.08); }
 .gantt-bar { position:absolute; height:22px; top:8px; border-radius:6px; min-width:12px; cursor:pointer; display:flex; align-items:center; justify-content:center; font-size:.68rem; font-weight:600; color:#fff; text-shadow:0 1px 2px rgba(0,0,0,.3); transition:opacity .15s; z-index:5; }
 .gantt-bar:hover { opacity:.85; }
+.gantt-bar-prep { opacity:.45; background-image:repeating-linear-gradient(45deg,transparent,transparent 4px,rgba(255,255,255,.2) 4px,rgba(255,255,255,.2) 8px) !important; border-radius:6px 0 0 6px; }
+.gantt-bar-event { background:linear-gradient(135deg,#fdcb6e 0%,#e17055 100%) !important; border:2px solid rgba(253,203,110,.7); box-shadow:0 2px 10px rgba(253,203,110,.45); border-radius:0 6px 6px 0; z-index:6; }
+.gantt-bar-event-only { background:linear-gradient(135deg,#fdcb6e 0%,#e17055 100%) !important; border:2px solid rgba(253,203,110,.7); box-shadow:0 2px 10px rgba(253,203,110,.45); }
 .gantt-today-line { position:absolute; top:0; bottom:0; width:2px; background:var(--accent); z-index:6; pointer-events:none; }
 .gantt-empty { text-align:center; padding:40px; color:var(--text-muted); font-size:.9rem; }
+.event-toggle-label { display:flex; align-items:center; gap:8px; cursor:pointer; font-size:.85rem; font-weight:500; color:var(--text); }
+.event-toggle-label input[type=checkbox] { width:16px; height:16px; cursor:pointer; accent-color:var(--accent); flex-shrink:0; }
 
 /* Project colors */
 .pc-0{background:#6c5ce7;color:#fff} .pc-1{background:#e17055;color:#fff} .pc-2{background:#00b894;color:#fff}
@@ -354,6 +359,22 @@ input[type=file].hidden-file { display:none; }
         <div class="fg">
           <label>Deadline</label>
           <input type="date" id="dmDeadline">
+        </div>
+      </div>
+      <div class="fg" style="margin-top:4px">
+        <label class="event-toggle-label">
+          <input type="checkbox" id="dmIsEvent" onchange="toggleEventFields()">
+          <span>É um evento?</span>
+        </label>
+      </div>
+      <div class="fg-row" id="eventDatesGroup" style="display:none">
+        <div class="fg">
+          <label>Início do evento</label>
+          <input type="date" id="dmEventStart">
+        </div>
+        <div class="fg">
+          <label>Fim do evento</label>
+          <input type="date" id="dmEventEnd">
         </div>
       </div>
       <div class="fg">
@@ -574,6 +595,9 @@ async function saveTask(task) {
       urgency: task.urgency || '',
       start_date: task.startDate || '',
       deadline: task.deadline || '',
+      is_event: task.isEvent || false,
+      event_start_date: task.eventStartDate || '',
+      event_end_date: task.eventEndDate || '',
       card_color: task.cardColor || 'none',
       checklist: task.checklist || [],
       attachments: (task.attachments || []).map(a => ({ name: a.name, size: a.size, type: a.type })),
@@ -751,6 +775,10 @@ function openNew(status){
   document.getElementById('dmUrgency').value='';
   document.getElementById('dmStartDate').value='';
   document.getElementById('dmDeadline').value='';
+  document.getElementById('dmIsEvent').checked=false;
+  document.getElementById('dmEventStart').value='';
+  document.getElementById('dmEventEnd').value='';
+  document.getElementById('eventDatesGroup').style.display='none';
   document.getElementById('dmDeleteBtn').style.display='none';
   pickColorByValue('none');
   populateProjects();
@@ -772,6 +800,10 @@ function openDetail(id){
   document.getElementById('dmUrgency').value=t.urgency||'';
   document.getElementById('dmStartDate').value=t.startDate||'';
   document.getElementById('dmDeadline').value=t.deadline||'';
+  document.getElementById('dmIsEvent').checked=!!t.isEvent;
+  document.getElementById('dmEventStart').value=t.eventStartDate||'';
+  document.getElementById('dmEventEnd').value=t.eventEndDate||'';
+  document.getElementById('eventDatesGroup').style.display=t.isEvent?'':'none';
   document.getElementById('dmDeleteBtn').style.display='';
   pickColorByValue(t.cardColor||'none');
   populateProjects(t.project);
@@ -780,6 +812,7 @@ function openDetail(id){
 }
 
 function closeDetail(){document.getElementById('detailModal').classList.remove('active');editId=null;}
+function toggleEventFields(){const on=document.getElementById('dmIsEvent').checked;document.getElementById('eventDatesGroup').style.display=on?'':'none';}
 
 function saveDetail(){
   const title=document.getElementById('dmTaskTitle').value.trim();
@@ -793,6 +826,9 @@ function saveDetail(){
     urgency:document.getElementById('dmUrgency').value,
     startDate:document.getElementById('dmStartDate').value,
     deadline:document.getElementById('dmDeadline').value,
+    isEvent:document.getElementById('dmIsEvent').checked,
+    eventStartDate:document.getElementById('dmEventStart').value,
+    eventEndDate:document.getElementById('dmEventEnd').value,
     cardColor:document.querySelector('.color-opt.active')?.dataset.color||'none',
     checklist:tempChecklist,
     attachments:tempAttachments
@@ -953,12 +989,35 @@ function renderGantt(){
     const start=t.startDate?new Date(t.startDate+'T00:00:00'):t.deadline?new Date(t.deadline+'T00:00:00'):null;
     const end=t.deadline?new Date(t.deadline+'T00:00:00'):t.startDate?new Date(t.startDate+'T00:00:00'):null;
     if(start&&end){
-      const startIdx=Math.max(0,daysBetween(rangeStart,start));
-      const endIdx=Math.min(days.length-1,daysBetween(rangeStart,end));
-      const left=startIdx*40;
-      const width=Math.max(40,(endIdx-startIdx+1)*40);
       const urgOpacity=t.urgency==='critical'?'1':t.urgency==='high'?'.9':'.75';
-      html+=`<div class="gantt-bar" style="left:${left}px;width:${width}px;background:${barColor};opacity:${urgOpacity}" onclick="openDetail('${t.id}')" title="${esc(t.title)}">${endIdx-startIdx<3?'':esc(t.title)}</div>`;
+      if(t.isEvent&&t.eventStartDate){
+        const evStart=new Date(t.eventStartDate+'T00:00:00');
+        const evEnd=t.eventEndDate?new Date(t.eventEndDate+'T00:00:00'):evStart;
+        // Prep bar: from task start to day before event
+        const prepEnd=new Date(evStart.getTime()-86400000);
+        if(start<evStart){
+          const prepStartIdx=Math.max(0,daysBetween(rangeStart,start));
+          const prepEndIdx=Math.min(days.length-1,daysBetween(rangeStart,prepEnd));
+          if(prepEndIdx>=prepStartIdx){
+            const left=prepStartIdx*40;const width=Math.max(12,(prepEndIdx-prepStartIdx+1)*40);
+            html+=`<div class="gantt-bar gantt-bar-prep" style="left:${left}px;width:${width}px;background:${barColor}" onclick="openDetail('${t.id}')" title="${esc(t.title)} — preparação"></div>`;
+          }
+        }
+        // Event bar
+        const evStartIdx=Math.max(0,daysBetween(rangeStart,evStart));
+        const evEndIdx=Math.min(days.length-1,daysBetween(rangeStart,evEnd));
+        if(evEndIdx>=evStartIdx){
+          const left=evStartIdx*40;const width=Math.max(12,(evEndIdx-evStartIdx+1)*40);
+          const cls=start<evStart?'gantt-bar gantt-bar-event':'gantt-bar gantt-bar-event-only';
+          html+=`<div class="${cls}" style="left:${left}px;width:${width}px" onclick="openDetail('${t.id}')" title="${esc(t.title)} — EVENTO">${evEndIdx-evStartIdx<2?'':esc(t.title)}</div>`;
+        }
+      }else{
+        const startIdx=Math.max(0,daysBetween(rangeStart,start));
+        const endIdx=Math.min(days.length-1,daysBetween(rangeStart,end));
+        const left=startIdx*40;
+        const width=Math.max(40,(endIdx-startIdx+1)*40);
+        html+=`<div class="gantt-bar" style="left:${left}px;width:${width}px;background:${barColor};opacity:${urgOpacity}" onclick="openDetail('${t.id}')" title="${esc(t.title)}">${endIdx-startIdx<3?'':esc(t.title)}</div>`;
+      }
     }
 
     // Today line
