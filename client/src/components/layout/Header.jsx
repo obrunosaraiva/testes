@@ -1,9 +1,11 @@
 import { useKanban } from '../../context/KanbanContext';
 import { useAuth } from '../../hooks/useAuth';
+import { useTheme } from '../../hooks/useTheme';
 
 export default function Header({ onOpenTemplates, onOpenReport }) {
   const { view, setView, syncStatus } = useKanban();
   const { signOut } = useAuth();
+  const { theme, toggleTheme } = useTheme();
 
   return (
     <div style={{
@@ -28,6 +30,18 @@ export default function Header({ onOpenTemplates, onOpenReport }) {
         }}>
           {syncStatus}
         </span>
+
+        <button
+          onClick={toggleTheme}
+          title={theme === 'dark' ? 'Modo claro' : 'Modo escuro'}
+          style={{
+            background: 'none', border: '1px solid var(--border)',
+            borderRadius: 8, color: 'var(--text-muted)',
+            padding: '5px 10px', fontSize: '1rem', lineHeight: 1,
+          }}
+        >
+          {theme === 'dark' ? '☀️' : '🌙'}
+        </button>
 
         <button className="view-btn" onClick={onOpenTemplates}>Templates</button>
         <button className="view-btn" onClick={onOpenReport}>📋 Relatório</button>

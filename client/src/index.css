@@ -19,6 +19,27 @@
   --done: #22c55e;
 }
 
+:root.light {
+  --bg: #f3f4f8;
+  --surface: #ffffff;
+  --surface2: #f0f1f5;
+  --surface3: #e4e6ed;
+  --border: #d1d5db;
+  --text: #111827;
+  --text-muted: #6b7280;
+  --accent: #6366f1;
+  --accent2: #4f46e5;
+  --success: #16a34a;
+  --warning: #d97706;
+  --danger: #dc2626;
+  --info: #2563eb;
+  --backlog: #6b7280;
+  --todo: #2563eb;
+  --doing: #d97706;
+  --review: #9333ea;
+  --done: #16a34a;
+}
+
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 html, body, #root {
