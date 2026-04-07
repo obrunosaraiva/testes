@@ -1,6 +1,14 @@
 import { createContext, useContext, useReducer, useEffect, useRef, useCallback } from 'react';
 import { sb } from '../lib/supabase';
 
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+// Supabase can return jsonb columns as already-parsed arrays OR as strings
+function parseJsonField(value) {
+  if (!value) return [];
+  if (Array.isArray(value)) return value;
+  try { return JSON.parse(value); } catch { return []; }
+}
+
 // ─── Constants ────────────────────────────────────────────────────────────────
 const SK = 'kanban_pro_v2';
 const DRAFT_KEY = 'kanban_task_draft';
@@ -130,8 +138,8 @@ export function KanbanProvider({ children }) {
           eventStartDate: t.event_start_date || '',
           eventEndDate: t.event_end_date || '',
           cardColor: t.card_color || 'none',
-          checklist: (() => { try { return JSON.parse(t.checklist || '[]'); } catch { return []; } })(),
-          attachments: (() => { try { return JSON.parse(t.attachments || '[]'); } catch { return []; } })(),
+          checklist: parseJsonField(t.checklist),
+          attachments: parseJsonField(t.attachments),
           createdAt: t.created_at,
         }));
 
