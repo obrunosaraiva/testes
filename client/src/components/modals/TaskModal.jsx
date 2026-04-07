@@ -15,6 +15,7 @@ const EMPTY_FORM = {
   title: '', description: '', project: '', status: 'backlog',
   assignee: '', urgency: '', startDate: '', deadline: '', deadlineTime: '',
   isEvent: false, eventStartDate: '', eventEndDate: '', cardColor: 'none',
+  ticketGoal: '', ticketsSold: '',
 };
 
 export default function TaskModal({ taskId, defaultStatus, onClose }) {
@@ -46,6 +47,8 @@ export default function TaskModal({ taskId, defaultStatus, onClose }) {
         eventStartDate: task.eventStartDate || '',
         eventEndDate: task.eventEndDate || '',
         cardColor: task.cardColor || 'none',
+        ticketGoal: task.ticketGoal ?? '',
+        ticketsSold: task.ticketsSold ?? '',
       });
       setChecklist(JSON.parse(JSON.stringify(task.checklist || [])));
       setAttachments(JSON.parse(JSON.stringify(task.attachments || [])));
@@ -67,6 +70,8 @@ export default function TaskModal({ taskId, defaultStatus, onClose }) {
           eventStartDate: draft.eventStartDate || '',
           eventEndDate: draft.eventEndDate || '',
           cardColor: draft.cardColor || 'none',
+          ticketGoal: draft.ticketGoal ?? '',
+          ticketsSold: draft.ticketsSold ?? '',
         });
         setChecklist(draft.checklist || []);
       } else {
@@ -275,16 +280,19 @@ export default function TaskModal({ taskId, defaultStatus, onClose }) {
             </label>
           </div>
           {form.isEvent && (
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-              <div>
-                <label className="field-label">Início do evento</label>
-                <input type="date" value={form.eventStartDate} onChange={e => setField('eventStartDate', e.target.value)} />
+            <>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                <div>
+                  <label className="field-label">Início do evento</label>
+                  <input type="date" value={form.eventStartDate} onChange={e => setField('eventStartDate', e.target.value)} />
+                </div>
+                <div>
+                  <label className="field-label">Fim do evento</label>
+                  <input type="date" value={form.eventEndDate} onChange={e => setField('eventEndDate', e.target.value)} />
+                </div>
               </div>
-              <div>
-                <label className="field-label">Fim do evento</label>
-                <input type="date" value={form.eventEndDate} onChange={e => setField('eventEndDate', e.target.value)} />
-              </div>
-            </div>
+              <EventSalesTracker form={form} setField={setField} />
+            </>
           )}
 
           {/* Color picker */}
@@ -392,6 +400,125 @@ export default function TaskModal({ taskId, defaultStatus, onClose }) {
               <button className="btn btn-primary" onClick={handleSave}>Salvar</button>
             </div>
           </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function EventSalesTracker({ form, setField }) {
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const MS = 86400000;
+
+  const eventDate = form.eventStartDate ? new Date(form.eventStartDate + 'T00:00:00') : null;
+  if (!eventDate) return (
+    <div style={{ fontSize: '.8rem', color: 'var(--text-muted)', padding: '10px 14px', background: 'var(--surface2)', borderRadius: 10, border: '1px dashed var(--border)' }}>
+      Preencha a data de início do evento para ver o painel de vendas.
+    </div>
+  );
+
+  const campaignStart = form.startDate ? new Date(form.startDate + 'T00:00:00') : null;
+  const refStart = campaignStart || new Date(eventDate.getTime() - 30 * MS);
+  const totalDays = Math.max(1, Math.ceil((eventDate - refStart) / MS));
+  const daysRemaining = Math.max(0, Math.ceil((eventDate - today) / MS));
+  const daysElapsed = Math.max(0, totalDays - daysRemaining);
+
+  const goal = parseInt(form.ticketGoal) || 0;
+  const sold = parseInt(form.ticketsSold) || 0;
+  const remaining = Math.max(0, goal - sold);
+  const salesPct = goal > 0 ? Math.min(100, (sold / goal) * 100) : 0;
+  const timePct = Math.min(100, (daysElapsed / totalDays) * 100);
+  const expectedByNow = goal > 0 && daysElapsed > 0 ? (goal / totalDays) * daysElapsed : 0;
+  const dailyNeeded = daysRemaining > 0 && goal > 0 ? Math.ceil(remaining / daysRemaining) : 0;
+  const dailyCurrent = daysElapsed > 0 && sold > 0 ? (sold / daysElapsed).toFixed(1) : '0';
+
+  let barColor = '#22c55e';
+  let statusText = '✅ Dentro da meta';
+  if (goal > 0 && expectedByNow > 0) {
+    const ratio = sold / expectedByNow;
+    if (ratio < 0.6) { barColor = '#ef4444'; statusText = '🔴 Fora da meta'; }
+    else if (ratio < 0.9) { barColor = '#f59e0b'; statusText = '🟡 Atenção: abaixo do ritmo'; }
+  } else if (goal === 0) {
+    barColor = 'var(--accent)'; statusText = '—';
+  }
+
+  const eventDateStr = eventDate.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+
+  return (
+    <div style={{ background: 'var(--surface2)', border: `1px solid ${barColor}40`, borderRadius: 12, padding: 16, display: 'flex', flexDirection: 'column', gap: 14 }}>
+
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <span style={{ fontWeight: 700, fontSize: '.92rem' }}>🎟 Painel de Vendas</span>
+        <span style={{ fontSize: '.78rem', fontWeight: 600, color: barColor }}>{statusText}</span>
+      </div>
+
+      {/* Stats */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 8, textAlign: 'center' }}>
+        {[
+          { value: daysRemaining, label: 'dias restantes', color: daysRemaining <= 7 ? '#ef4444' : 'var(--text)' },
+          { value: goal || '—', label: 'meta', color: 'var(--text)' },
+          { value: sold, label: 'vendidos', color: 'var(--text)' },
+          { value: goal > 0 ? remaining : '—', label: 'faltam', color: barColor },
+        ].map(({ value, label, color }) => (
+          <div key={label} style={{ background: 'var(--surface3)', borderRadius: 8, padding: '8px 4px' }}>
+            <div style={{ fontSize: '1.4rem', fontWeight: 700, color }}>{value}</div>
+            <div style={{ fontSize: '.65rem', color: 'var(--text-muted)', marginTop: 2 }}>{label}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Sales progress bar */}
+      <div>
+        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '.72rem', color: 'var(--text-muted)', marginBottom: 5 }}>
+          <span>🎫 Progresso de vendas</span>
+          <span style={{ fontWeight: 600, color: barColor }}>{salesPct.toFixed(1)}%</span>
+        </div>
+        <div style={{ height: 14, background: 'var(--surface3)', borderRadius: 7, overflow: 'hidden', position: 'relative' }}>
+          <div style={{ height: '100%', width: `${salesPct}%`, borderRadius: 7, background: barColor, transition: 'width .5s, background .5s' }} />
+          {/* Pace marker */}
+          {goal > 0 && timePct > 0 && (
+            <div style={{
+              position: 'absolute', top: 0, bottom: 0, left: `${timePct}%`,
+              width: 2, background: 'rgba(255,255,255,0.6)',
+              transform: 'translateX(-50%)',
+            }} title="Ritmo esperado" />
+          )}
+        </div>
+        {goal > 0 && (
+          <div style={{ fontSize: '.68rem', color: 'var(--text-muted)', marginTop: 3 }}>
+            A linha branca indica onde deveríamos estar hoje no ritmo linear.
+          </div>
+        )}
+      </div>
+
+      {/* Time bar */}
+      <div>
+        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '.72rem', color: 'var(--text-muted)', marginBottom: 5 }}>
+          <span>⏱ Tempo da campanha ({daysElapsed}d passados)</span>
+          <span>📅 Evento: {eventDateStr}</span>
+        </div>
+        <div style={{ height: 8, background: 'var(--surface3)', borderRadius: 4, overflow: 'hidden' }}>
+          <div style={{ height: '100%', width: `${timePct}%`, borderRadius: 4, background: 'var(--accent)', transition: 'width .5s' }} />
+        </div>
+      </div>
+
+      {/* Pace */}
+      {goal > 0 && (
+        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '.8rem', background: 'var(--surface3)', borderRadius: 8, padding: '8px 12px' }}>
+          <span style={{ color: 'var(--text-muted)' }}>📈 Ritmo atual: <strong style={{ color: 'var(--text)' }}>{dailyCurrent}/dia</strong></span>
+          <span style={{ color: 'var(--text-muted)' }}>🎯 Precisa vender: <strong style={{ color: barColor }}>{dailyNeeded}/dia</strong></span>
+        </div>
+      )}
+
+      {/* Inputs */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+        <div>
+          <label className="field-label">🎯 Meta de ingressos</label>
+          <input type="number" min="0" value={form.ticketGoal} onChange={e => setField('ticketGoal', e.target.value)} placeholder="Ex: 500" />
+        </div>
+        <div>
+          <label className="field-label">✅ Ingressos vendidos</label>
+          <input type="number" min="0" value={form.ticketsSold} onChange={e => setField('ticketsSold', e.target.value)} placeholder="Ex: 150" />
         </div>
       </div>
     </div>

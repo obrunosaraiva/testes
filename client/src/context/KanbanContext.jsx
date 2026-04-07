@@ -29,6 +29,8 @@ function normalizeTask(t) {
     checklist: parseJsonField(t.checklist),
     attachments: parseJsonField(t.attachments),
     createdAt: t.createdAt || t.created_at || '',
+    ticketGoal: t.ticketGoal ?? t.ticket_goal ?? '',
+    ticketsSold: t.ticketsSold ?? t.tickets_sold ?? '',
   };
 }
 
