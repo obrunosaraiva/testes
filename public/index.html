@@ -1134,9 +1134,13 @@ function populateProjects(sel){
 function esc(s){if(!s)return'';const d=document.createElement('div');d.textContent=s;return d.innerHTML;}
 function formatDateShort(iso){if(!iso)return'';const d=new Date(iso+'T00:00:00');return d.toLocaleDateString('pt-BR',{day:'2-digit',month:'short'});}
 
-// Close only via X button — no click-outside, no Escape close for detail modal
+// Click outside does NOT close modal — Escape fecha mas mantém rascunho
 document.addEventListener('keydown',e=>{
-  // Escape only closes templates modal, not task modal (to avoid losing data)
+  if(e.key==='Escape'){
+    const modal=document.getElementById('detailModal');
+    if(modal.classList.contains('active'))closeDetail(); // fecha mas NÃO descarta rascunho
+    closeTemplatesModal();
+  }
   if(e.key==='n'&&!e.ctrlKey&&!e.metaKey&&!['INPUT','TEXTAREA','SELECT'].includes(document.activeElement.tagName)){e.preventDefault();openNew('backlog');}
 });
 
