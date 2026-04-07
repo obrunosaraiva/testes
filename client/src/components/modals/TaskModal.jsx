@@ -1,6 +1,26 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useKanban } from '../../context/KanbanContext';
 
+// Auto-growing textarea — grows with content, no need to drag resize
+function AutoTextarea({ value, onChange, placeholder, style }) {
+  const ref = useRef(null);
+  useEffect(() => {
+    if (!ref.current) return;
+    ref.current.style.height = 'auto';
+    ref.current.style.height = ref.current.scrollHeight + 'px';
+  }, [value]);
+  return (
+    <textarea
+      ref={ref}
+      value={value}
+      onChange={onChange}
+      placeholder={placeholder}
+      rows={1}
+      style={{ resize: 'none', overflow: 'hidden', minHeight: 88, ...style }}
+    />
+  );
+}
+
 const CARD_COLORS = ['none','red','orange','yellow','green','blue','purple','pink'];
 const COLOR_MAP = {
   none: 'transparent', red: '#ef4444', orange: '#f97316', yellow: '#eab308',
@@ -204,12 +224,10 @@ export default function TaskModal({ taskId, defaultStatus, onClose }) {
           />
 
           {/* Description */}
-          <textarea
+          <AutoTextarea
             value={form.description}
             onChange={e => setField('description', e.target.value)}
             placeholder="Descrição..."
-            rows={3}
-            style={{ resize: 'vertical' }}
           />
 
           {/* Row: Project + Status */}
