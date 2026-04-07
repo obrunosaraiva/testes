@@ -9,6 +9,29 @@ function parseJsonField(value) {
   try { return JSON.parse(value); } catch { return []; }
 }
 
+// Normalizes both old snake_case localStorage format and new camelCase format
+function normalizeTask(t) {
+  return {
+    id: t.id,
+    title: t.title || '',
+    description: t.description || '',
+    project: t.project || '',
+    status: t.status || 'backlog',
+    assignee: t.assignee || '',
+    urgency: t.urgency || '',
+    startDate: t.startDate || t.start_date || '',
+    deadline: t.deadline || '',
+    deadlineTime: t.deadlineTime || t.deadline_time || '',
+    isEvent: t.isEvent ?? t.is_event ?? false,
+    eventStartDate: t.eventStartDate || t.event_start_date || '',
+    eventEndDate: t.eventEndDate || t.event_end_date || '',
+    cardColor: t.cardColor || t.card_color || 'none',
+    checklist: parseJsonField(t.checklist),
+    attachments: parseJsonField(t.attachments),
+    createdAt: t.createdAt || t.created_at || '',
+  };
+}
+
 // ─── Constants ────────────────────────────────────────────────────────────────
 const SK = 'kanban_pro_v2';
 const DRAFT_KEY = 'kanban_task_draft';
@@ -105,7 +128,7 @@ export function KanbanProvider({ children }) {
           type: 'LOAD_LOCAL',
           payload: {
             projects: parsed.projects || ['Projeto 1'],
-            tasks: parsed.tasks || [],
+            tasks: (parsed.tasks || []).map(normalizeTask),
             templates: parsed.templates || [],
             activeProject: parsed.activeProject || '__all__',
             view: parsed.view || 'board',
@@ -144,7 +167,9 @@ export function KanbanProvider({ children }) {
         }));
 
         const supabaseIds = new Set(mapped.map(t => t.id));
-        const localOnly = stateRef.current.tasks.filter(t => !supabaseIds.has(t.id));
+        const localOnly = stateRef.current.tasks
+          .filter(t => !supabaseIds.has(t.id))
+          .map(normalizeTask);
 
         const allTasks = [...mapped, ...localOnly];
         dispatch({ type: 'SET_TASKS', payload: allTasks });
