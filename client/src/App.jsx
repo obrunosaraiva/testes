@@ -82,7 +82,7 @@ function KanbanApp() {
       />
       <ProjectBar />
 
-      <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+      <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
         {view === 'board' && (
           <BoardView onOpenTask={openTaskById} onNewTask={openNewTask} />
         )}
