@@ -421,6 +421,7 @@ input[type=file].hidden-file { display:none; }
 
       <div class="modal-actions">
         <button class="btn btn-danger" id="dmDeleteBtn" onclick="deleteFromDetail()" style="margin-right:auto">Excluir</button>
+        <span id="autosaveStatus" style="font-size:.75rem;color:var(--text-muted);margin-right:auto;display:none"></span>
         <button class="btn btn-ghost" onclick="closeDetail(true)">Cancelar</button>
         <button class="btn btn-primary" onclick="saveDetail()">Salvar</button>
       </div>
@@ -864,13 +865,66 @@ function openDetail(id){
   pickColorByValue(t.cardColor||'none');
   populateProjects(t.project);
   renderChecklist();renderAttachments();
+  setAutosaveStatus('');
+  // Attach autosave listeners to all modal inputs
+  document.getElementById('detailModal').querySelectorAll('input,textarea,select').forEach(el=>{
+    el.removeEventListener('input',triggerAutosave);
+    el.removeEventListener('change',triggerAutosave);
+    el.addEventListener('input',triggerAutosave);
+    el.addEventListener('change',triggerAutosave);
+  });
   document.getElementById('detailModal').classList.add('active');
 }
 
 function closeDetail(discardDraft){
+  clearTimeout(autosaveTimer);
   document.getElementById('detailModal').classList.remove('active');
-  if(discardDraft||editId)clearDraft(); // limpa rascunho ao cancelar ou ao fechar edição
+  if(discardDraft||editId)clearDraft();
   editId=null;
+}
+
+// ===== AUTOSAVE =====
+let autosaveTimer=null;
+function setAutosaveStatus(msg,color){
+  const el=document.getElementById('autosaveStatus');
+  if(!el)return;
+  el.textContent=msg;
+  el.style.color=color||'var(--text-muted)';
+  el.style.display=msg?'':'none';
+}
+function triggerAutosave(){
+  if(!editId)return; // autosave só em edição — novas tarefas usam rascunho
+  clearTimeout(autosaveTimer);
+  setAutosaveStatus('Modificado...','var(--text-muted)');
+  autosaveTimer=setTimeout(()=>{
+    const t=S.tasks.find(x=>x.id===editId);
+    if(!t)return;
+    // Coleta estado atual do modal
+    const updated={
+      title:document.getElementById('dmTaskTitle').value.trim()||t.title,
+      description:document.getElementById('dmTaskDesc').value.trim(),
+      project:document.getElementById('dmProject').value,
+      status:document.getElementById('dmStatus').value,
+      assignee:document.getElementById('dmAssignee').value.trim(),
+      urgency:document.getElementById('dmUrgency').value,
+      startDate:document.getElementById('dmStartDate').value,
+      deadline:document.getElementById('dmDeadline').value,
+      deadlineTime:document.getElementById('dmDeadlineTime').value,
+      isEvent:document.getElementById('dmIsEvent').checked,
+      eventStartDate:document.getElementById('dmEventStart').value,
+      eventEndDate:document.getElementById('dmEventEnd').value,
+      cardColor:document.querySelector('.color-opt.active')?.dataset.color||t.cardColor||'none',
+      checklist:tempChecklist,
+      attachments:tempAttachments
+    };
+    Object.assign(t,updated);
+    setAutosaveStatus('Salvando...','var(--accent)');
+    saveTask(t).then(()=>{
+      setAutosaveStatus('Salvo ✓','var(--success)');
+      setTimeout(()=>setAutosaveStatus(''),2000);
+      render();
+    });
+  },1500);
 }
 
 const DRAFT_KEY='kanban_task_draft';
@@ -982,13 +1036,13 @@ function renderChecklist(){
     cont.appendChild(d);
   });
 }
-function addChecklistItem(){tempChecklist.push({text:'',done:false,assignee:'',deadline:'',time:''});renderChecklist();saveDraft();const inputs=document.querySelectorAll('.cl-text');if(inputs.length)inputs[inputs.length-1].focus();}
-function toggleCL(i){tempChecklist[i].done=!tempChecklist[i].done;renderChecklist();saveDraft();}
-function updateCLText(i,v){tempChecklist[i].text=v;saveDraft();}
-function updateCLAssignee(i,v){tempChecklist[i].assignee=v;saveDraft();}
-function updateCLDeadline(i,v){tempChecklist[i].deadline=v;saveDraft();}
-function updateCLTime(i,v){tempChecklist[i].time=v;saveDraft();}
-function removeCL(i){tempChecklist.splice(i,1);renderChecklist();saveDraft();}
+function addChecklistItem(){tempChecklist.push({text:'',done:false,assignee:'',deadline:'',time:''});renderChecklist();saveDraft();triggerAutosave();const inputs=document.querySelectorAll('.cl-text');if(inputs.length)inputs[inputs.length-1].focus();}
+function toggleCL(i){tempChecklist[i].done=!tempChecklist[i].done;renderChecklist();saveDraft();triggerAutosave();}
+function updateCLText(i,v){tempChecklist[i].text=v;saveDraft();triggerAutosave();}
+function updateCLAssignee(i,v){tempChecklist[i].assignee=v;saveDraft();triggerAutosave();}
+function updateCLDeadline(i,v){tempChecklist[i].deadline=v;saveDraft();triggerAutosave();}
+function updateCLTime(i,v){tempChecklist[i].time=v;saveDraft();triggerAutosave();}
+function removeCL(i){tempChecklist.splice(i,1);renderChecklist();saveDraft();triggerAutosave();}
 
 // ===== ATTACHMENTS =====
 function renderAttachments(){
