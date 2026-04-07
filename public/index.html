@@ -967,13 +967,13 @@ function renderChecklist(){
     cont.appendChild(d);
   });
 }
-function addChecklistItem(){tempChecklist.push({text:'',done:false,assignee:'',deadline:'',time:''});renderChecklist();const inputs=document.querySelectorAll('.cl-text');if(inputs.length)inputs[inputs.length-1].focus();}
-function toggleCL(i){tempChecklist[i].done=!tempChecklist[i].done;renderChecklist();}
-function updateCLText(i,v){tempChecklist[i].text=v;}
-function updateCLAssignee(i,v){tempChecklist[i].assignee=v;}
-function updateCLDeadline(i,v){tempChecklist[i].deadline=v;}
-function updateCLTime(i,v){tempChecklist[i].time=v;}
-function removeCL(i){tempChecklist.splice(i,1);renderChecklist();}
+function addChecklistItem(){tempChecklist.push({text:'',done:false,assignee:'',deadline:'',time:''});renderChecklist();saveDraft();const inputs=document.querySelectorAll('.cl-text');if(inputs.length)inputs[inputs.length-1].focus();}
+function toggleCL(i){tempChecklist[i].done=!tempChecklist[i].done;renderChecklist();saveDraft();}
+function updateCLText(i,v){tempChecklist[i].text=v;saveDraft();}
+function updateCLAssignee(i,v){tempChecklist[i].assignee=v;saveDraft();}
+function updateCLDeadline(i,v){tempChecklist[i].deadline=v;saveDraft();}
+function updateCLTime(i,v){tempChecklist[i].time=v;saveDraft();}
+function removeCL(i){tempChecklist.splice(i,1);renderChecklist();saveDraft();}
 
 // ===== ATTACHMENTS =====
 function renderAttachments(){
