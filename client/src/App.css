@@ -64,12 +64,16 @@
   min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
-  padding: 6px 12px;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  min-height: 60px;
+  padding: 6px 12px 6px;
   transition: background .15s;
+}
+
+.col-body > * + * {
+  margin-top: 8px;
+}
+
+.col-body > .card:last-child {
+  margin-bottom: 4px;
 }
 
 .col-body.drag-over {
