@@ -664,7 +664,9 @@ function renderTabs(){
     t.className='project-tab'+(S.activeProject===name?' active':'');
     t.dataset.project=name;
     const cnt=S.tasks.filter(x=>x.project===name).length;
-    t.innerHTML=`<span>${esc(name)}</span><span class="tc">${cnt}</span><span class="dp" onclick="event.stopPropagation();delProject('${esc(name)}')">&times;</span>`;
+    t.innerHTML=`<span>${esc(name)}</span><span class="tc">${cnt}</span><span class="dp">&times;</span>`;
+    const dp=t.querySelector('.dp');
+    dp.addEventListener('click',e=>{e.stopPropagation();delProject(name);});
     t.onclick=e=>{if(!e.target.classList.contains('dp'))filterProject(name);};
     bar.insertBefore(t,btn);
   });
