@@ -1,0 +1,82 @@
+import { useKanban } from '../../context/KanbanContext';
+
+const PROJ_COLORS = ['pc0','pc1','pc2','pc3','pc4','pc5','pc6','pc7'];
+
+const URGENCY_LABEL = { low: 'Baixa', medium: 'Média', high: 'Alta', critical: 'Crítica' };
+
+function formatDateShort(iso) {
+  if (!iso) return '';
+  const d = iso.includes('T') ? new Date(iso) : new Date(iso + 'T00:00:00');
+  return d.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' });
+}
+
+export default function TaskCard({ task, projIndex, onOpen }) {
+  const { deleteTask, updateTask, projects } = useKanban();
+  const cl = task.checklist || [];
+  const done = cl.filter(x => x.done).length;
+  const pc = PROJ_COLORS[projIndex % PROJ_COLORS.length];
+  const isOverdue = task.deadline && new Date(task.deadline + 'T23:59:59') < new Date() && task.status !== 'done';
+  const lateChecklistItems = cl.filter(c => c.deadline && !c.done && new Date(c.deadline + 'T23:59:59') < new Date()).length;
+  const attCount = (task.attachments || []).length;
+
+  function handleDragStart(e) {
+    e.dataTransfer.setData('text/plain', task.id);
+    e.dataTransfer.effectAllowed = 'move';
+  }
+
+  async function handleDelete(e) {
+    e.stopPropagation();
+    if (!confirm(`Excluir "${task.title}"?`)) return;
+    await deleteTask(task.id);
+  }
+
+  return (
+    <div
+      draggable
+      onDragStart={handleDragStart}
+      onClick={() => onOpen(task.id)}
+      className={`card card-c-${task.cardColor || 'none'}`}
+      style={{ cursor: 'pointer' }}
+    >
+      <div className="card-color-bar" />
+      <div className="card-top">
+        <span className={`card-proj-tag ${pc}`}>{task.project}</span>
+        {task.urgency && task.urgency !== 'medium' && (
+          <span className={`urgency-badge urgency-${task.urgency}`}>
+            {URGENCY_LABEL[task.urgency]}
+          </span>
+        )}
+      </div>
+      <div className="card-title">{task.title}</div>
+      {task.description && <div className="card-desc">{task.description}</div>}
+      {cl.length > 0 && (
+        <div className="card-checklist-bar">
+          <div className="card-checklist-fill" style={{ width: `${(done / cl.length) * 100}%` }} />
+        </div>
+      )}
+      {lateChecklistItems > 0 && (
+        <span style={{ fontSize: '.7rem', color: 'var(--danger)', fontWeight: 600 }}>
+          🔴 {lateChecklistItems} item(s) atrasado(s)
+        </span>
+      )}
+      <div className="card-meta">
+        {task.deadline && (
+          <span className={isOverdue ? 'overdue' : ''}>
+            📅 {formatDateShort(task.deadline)}
+            {task.deadlineTime ? ' ' + task.deadlineTime : ''}
+            {isOverdue ? ' (atrasada)' : ''}
+          </span>
+        )}
+        {task.assignee && <span>👤 {task.assignee}</span>}
+        {attCount > 0 && <span>📎 {attCount}</span>}
+        {cl.length > 0 && <span>☑ {done}/{cl.length}</span>}
+      </div>
+      <div className="card-footer">
+        <span className="card-date">{formatDateShort(task.createdAt)}</span>
+        <div className="card-actions">
+          <button className="card-btn del" onClick={handleDelete} title="Excluir">✕</button>
+        </div>
+      </div>
+    </div>
+  );
+}

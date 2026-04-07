@@ -1,0 +1,74 @@
+import { useState } from 'react';
+import { useKanban } from '../../context/KanbanContext';
+import TaskCard from './TaskCard';
+
+const STATUS_CONFIG = {
+  backlog: { label: 'Backlog', color: 'var(--backlog)' },
+  todo:    { label: 'To Do',   color: 'var(--todo)' },
+  doing:   { label: 'Doing',   color: 'var(--doing)' },
+  review:  { label: 'Review',  color: 'var(--review)' },
+  done:    { label: 'Done',    color: 'var(--done)' },
+};
+
+export default function Column({ status, onOpenTask, onNewTask }) {
+  const { tasks, projects, activeProject, updateTask } = useKanban();
+  const [dragOver, setDragOver] = useState(false);
+
+  const cfg = STATUS_CONFIG[status];
+  const items = tasks.filter(t => {
+    if (t.status !== status) return false;
+    if (activeProject !== '__all__' && t.project !== activeProject) return false;
+    return true;
+  });
+
+  function handleDragOver(e) {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    setDragOver(true);
+  }
+
+  function handleDrop(e) {
+    e.preventDefault();
+    setDragOver(false);
+    const id = e.dataTransfer.getData('text/plain');
+    const task = tasks.find(t => t.id === id);
+    if (task && task.status !== status) {
+      updateTask({ ...task, status });
+    }
+  }
+
+  return (
+    <div className="column">
+      <div className="col-header">
+        <div className="col-title">
+          <div className="col-dot" style={{ background: cfg.color }} />
+          {cfg.label}
+        </div>
+        <span className="col-count">{items.length}</span>
+      </div>
+
+      <div
+        className={`col-body${dragOver ? ' drag-over' : ''}`}
+        onDragOver={handleDragOver}
+        onDragLeave={() => setDragOver(false)}
+        onDrop={handleDrop}
+      >
+        {items.length === 0 && (
+          <div className="empty-state">Nenhuma tarefa</div>
+        )}
+        {items.map(task => (
+          <TaskCard
+            key={task.id}
+            task={task}
+            projIndex={projects.indexOf(task.project)}
+            onOpen={onOpenTask}
+          />
+        ))}
+      </div>
+
+      <button className="add-card-btn" onClick={() => onNewTask(status)}>
+        + Tarefa
+      </button>
+    </div>
+  );
+}
