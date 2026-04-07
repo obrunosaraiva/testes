@@ -530,7 +530,7 @@ async function loadFromSupabase() {
   // Load tasks
   const { data: tasks } = await sb.from('kanban_tasks').select('*').order('created_at');
   if (tasks) {
-    S.tasks = tasks.map(t => ({
+    const supabaseTasks = tasks.map(t => ({
       id: t.id,
       title: t.title,
       description: t.description || '',
@@ -540,11 +540,21 @@ async function loadFromSupabase() {
       urgency: t.urgency || '',
       startDate: t.start_date || '',
       deadline: t.deadline || '',
+      deadlineTime: t.deadline_time || '',
+      isEvent: t.is_event || false,
+      eventStartDate: t.event_start_date || '',
+      eventEndDate: t.event_end_date || '',
       cardColor: t.card_color || 'none',
       checklist: t.checklist || [],
       attachments: t.attachments || [],
       created_at: t.created_at
     }));
+    // Merge: keep local-only tasks (not yet synced) + supabase tasks
+    const supabaseIds = new Set(supabaseTasks.map(t => t.id));
+    const localOnlyTasks = S.tasks.filter(t => !supabaseIds.has(t.id));
+    S.tasks = [...supabaseTasks, ...localOnlyTasks];
+    // Sync any local-only tasks up to Supabase
+    localOnlyTasks.forEach(t => saveTask(t));
   }
   // Load templates
   const { data: templates } = await sb.from('kanban_templates').select('*').order('created_at');
@@ -555,7 +565,7 @@ async function loadFromSupabase() {
       cardColor: t.card_color || 'none', checklist: t.checklist || [], created_at: t.created_at
     }));
   }
-  // Also save locally as cache
+  // Save merged state locally as cache
   localStorage.setItem(SK, JSON.stringify(S));
 }
 
@@ -611,7 +621,12 @@ async function saveTask(task) {
       created_at: task.created_at
     };
     const { error } = await sb.from('kanban_tasks').upsert(row, { onConflict: 'id' });
-    if (error) throw error;
+    if (error) {
+      // Se falhou por colunas inexistentes, tenta sem os novos campos
+      const { deadline_time, is_event, event_start_date, event_end_date, ...rowBasic } = row;
+      const { error: error2 } = await sb.from('kanban_tasks').upsert(rowBasic, { onConflict: 'id' });
+      if (error2) throw error2;
+    }
     setSyncStatus('ok', 'Supabase ✓');
   } catch (e) {
     console.warn('[Kanban] Sync task error:', e.message);
