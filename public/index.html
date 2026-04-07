@@ -252,6 +252,7 @@ input[type=file].hidden-file { display:none; }
   <div class="header-actions">
     <span class="sync-badge" id="syncBadge">Conectando...</span>
     <button class="view-btn" onclick="openTemplatesModal()">Templates</button>
+    <button class="view-btn" onclick="openReportModal()">&#128203; Relatório</button>
     <button class="view-btn active" id="btnBoard" onclick="switchView('board')">Board</button>
     <button class="view-btn" id="btnGantt" onclick="switchView('gantt')">Gantt</button>
   </div>
@@ -441,6 +442,54 @@ input[type=file].hidden-file { display:none; }
     <div class="modal-body">
       <p style="font-size:.82rem;color:var(--text-muted);margin-bottom:14px;">Clique num template para criar uma nova tarefa a partir dele.</p>
       <div class="tpl-grid" id="tplGrid"></div>
+    </div>
+  </div>
+</div>
+
+<!-- REPORT MODAL -->
+<div class="modal-overlay" id="reportModal">
+  <div class="modal" style="max-width:500px">
+    <div class="modal-head">
+      <h2>&#128203; Gerar Relatório</h2>
+      <button class="modal-close" onclick="closeReportModal()">&times;</button>
+    </div>
+    <div class="modal-body">
+      <p style="font-size:.82rem;color:var(--text-muted);margin-bottom:18px;">Configure os filtros e copie o relatório para a área de transferência.</p>
+
+      <div style="display:flex;flex-direction:column;gap:14px;">
+        <div>
+          <label style="font-size:.8rem;color:var(--text-muted);display:block;margin-bottom:6px;">Projeto</label>
+          <select id="rptProject" style="width:100%;padding:8px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:inherit;font-size:.9rem;">
+            <option value="__all__">Todos os projetos</option>
+          </select>
+        </div>
+
+        <div>
+          <label style="font-size:.8rem;color:var(--text-muted);display:block;margin-bottom:6px;">Status</label>
+          <div style="display:flex;flex-wrap:wrap;gap:8px;" id="rptStatusFilters">
+            <label style="display:flex;align-items:center;gap:5px;font-size:.85rem;cursor:pointer;"><input type="checkbox" value="backlog" checked> 📥 Backlog</label>
+            <label style="display:flex;align-items:center;gap:5px;font-size:.85rem;cursor:pointer;"><input type="checkbox" value="todo" checked> 📌 To Do</label>
+            <label style="display:flex;align-items:center;gap:5px;font-size:.85rem;cursor:pointer;"><input type="checkbox" value="doing" checked> 🔄 Doing</label>
+            <label style="display:flex;align-items:center;gap:5px;font-size:.85rem;cursor:pointer;"><input type="checkbox" value="review" checked> 👀 Review</label>
+            <label style="display:flex;align-items:center;gap:5px;font-size:.85rem;cursor:pointer;"><input type="checkbox" value="done"> ✅ Done</label>
+          </div>
+        </div>
+
+        <div>
+          <label style="display:flex;align-items:center;gap:8px;font-size:.85rem;cursor:pointer;">
+            <input type="checkbox" id="rptOnlyLate">
+            ⚠️ Apenas tarefas atrasadas
+          </label>
+        </div>
+      </div>
+
+      <div id="rptPreview" style="margin-top:20px;background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:14px;font-size:.78rem;line-height:1.7;white-space:pre-wrap;max-height:320px;overflow-y:auto;color:var(--text);font-family:monospace;display:none;"></div>
+
+      <div style="display:flex;gap:10px;margin-top:18px;">
+        <button class="btn btn-ghost" style="flex:1" onclick="previewReport()">&#128065; Visualizar</button>
+        <button class="btn btn-primary" style="flex:1" id="rptCopyBtn" onclick="copyReport()" disabled>&#128203; Copiar</button>
+      </div>
+      <div id="rptCopyFeedback" style="text-align:center;font-size:.8rem;color:var(--success);margin-top:8px;display:none;">✓ Copiado para a área de transferência!</div>
     </div>
   </div>
 </div>
@@ -1214,6 +1263,111 @@ document.addEventListener('keydown',e=>{
   }
   if(e.key==='n'&&!e.ctrlKey&&!e.metaKey&&!['INPUT','TEXTAREA','SELECT'].includes(document.activeElement.tagName)){e.preventDefault();openNew('backlog');}
 });
+
+// ===== REPORT =====
+function openReportModal(){
+  const sel=document.getElementById('rptProject');
+  sel.innerHTML='<option value="__all__">Todos os projetos</option>';
+  S.projects.forEach(p=>{const o=document.createElement('option');o.value=p;o.textContent=p;sel.appendChild(o);});
+  document.getElementById('rptPreview').style.display='none';
+  document.getElementById('rptCopyBtn').disabled=true;
+  document.getElementById('rptCopyFeedback').style.display='none';
+  document.getElementById('reportModal').classList.add('active');
+}
+function closeReportModal(){document.getElementById('reportModal').classList.remove('active');}
+
+function buildReportText(){
+  const proj=document.getElementById('rptProject').value;
+  const onlyLate=document.getElementById('rptOnlyLate').checked;
+  const statuses=[...document.querySelectorAll('#rptStatusFilters input:checked')].map(i=>i.value);
+  const statusIcon={backlog:'📥',todo:'📌',doing:'🔄',review:'👀',done:'✅'};
+  const statusLabel={backlog:'Backlog',todo:'To Do',doing:'Doing',review:'Review',done:'Done'};
+  const today=new Date(); today.setHours(0,0,0,0);
+
+  let tasks=S.tasks.filter(t=>{
+    if(proj!=='__all__'&&t.project!==proj)return false;
+    if(!statuses.includes(t.status))return false;
+    if(onlyLate){
+      if(!t.deadline)return false;
+      const dl=new Date(t.deadline+'T00:00:00');
+      if(dl>=today)return false;
+    }
+    return true;
+  });
+
+  if(!tasks.length)return'Nenhuma tarefa encontrada com os filtros selecionados.';
+
+  const now=new Date();
+  const dateStr=now.toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit',year:'numeric'});
+  const timeStr=now.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
+
+  let lines=[];
+  lines.push('📋 Relatório Kanban Pro');
+  lines.push(`_${dateStr} - ${timeStr}_`);
+
+  // Group by project
+  const projs=proj==='__all__'?[...new Set(tasks.map(t=>t.project||'Sem Projeto'))]:[(proj==='__all__'?null:proj)||'Sem Projeto'];
+  const allProjs=proj==='__all__'?[...new Set(tasks.map(t=>t.project||'Sem Projeto'))]:[(proj==='__all__'?'Sem Projeto':proj)];
+
+  allProjs.forEach(pName=>{
+    const pt=tasks.filter(t=>(t.project||'Sem Projeto')===pName);
+    if(!pt.length)return;
+    lines.push('');
+    lines.push('---');
+    lines.push(`📁 ${pName}`);
+    pt.forEach(t=>{
+      const icon=statusIcon[t.status]||'•';
+      const dl=t.deadline?new Date(t.deadline+'T00:00:00'):null;
+      const late=dl&&dl<today&&t.status!=='done';
+      const dlStr=dl?dl.toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'}):'';
+      lines.push(`${icon} ${t.title}`);
+      const meta=[];
+      if(t.assignee)meta.push(`👤 ${t.assignee}`);
+      if(dlStr)meta.push(`📅 ${dlStr}${late?' ⚠️ atrasado':''}`);
+      if(meta.length)lines.push(`   ${meta.join(' · ')}`);
+    });
+  });
+
+  // Summary
+  lines.push('');
+  lines.push('---');
+  lines.push('📊 Resumo');
+  lines.push(`Total: ${tasks.length} tarefa${tasks.length!==1?'s':''}`);
+  const byStatus=Object.entries(statusLabel).filter(([k])=>statuses.includes(k)).map(([k,l])=>{const n=tasks.filter(t=>t.status===k).length;return n?`${statusIcon[k]} ${l}: ${n}`:null;}).filter(Boolean);
+  if(byStatus.length)lines.push(byStatus.join(' · '));
+  const late=tasks.filter(t=>{if(!t.deadline||t.status==='done')return false;const dl=new Date(t.deadline+'T00:00:00');return dl<today;}).length;
+  if(late)lines.push(`⚠️ Atrasadas: ${late}`);
+
+  return lines.join('\n');
+}
+
+function previewReport(){
+  const text=buildReportText();
+  const el=document.getElementById('rptPreview');
+  el.textContent=text;
+  el.style.display='block';
+  document.getElementById('rptCopyBtn').disabled=false;
+  document.getElementById('rptCopyFeedback').style.display='none';
+}
+
+async function copyReport(){
+  const text=buildReportText();
+  try{
+    await navigator.clipboard.writeText(text);
+    const fb=document.getElementById('rptCopyFeedback');
+    fb.style.display='block';
+    setTimeout(()=>fb.style.display='none',3000);
+  }catch(e){
+    // fallback
+    const ta=document.createElement('textarea');
+    ta.value=text;ta.style.position='fixed';ta.style.opacity='0';
+    document.body.appendChild(ta);ta.select();document.execCommand('copy');
+    document.body.removeChild(ta);
+    const fb=document.getElementById('rptCopyFeedback');
+    fb.style.display='block';
+    setTimeout(()=>fb.style.display='none',3000);
+  }
+}
 
 // ===== TEMPLATES =====
 function openTemplatesModal(){
