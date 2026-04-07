@@ -1132,7 +1132,7 @@ function populateProjects(sel){
   S.projects.forEach(p=>{const o=document.createElement('option');o.value=p;o.textContent=p;if(p===sel||((!sel)&&S.activeProject!=='__all__'&&p===S.activeProject))o.selected=true;s.appendChild(o);});
 }
 function esc(s){if(!s)return'';const d=document.createElement('div');d.textContent=s;return d.innerHTML;}
-function formatDateShort(iso){if(!iso)return'';const d=new Date(iso+'T00:00:00');return d.toLocaleDateString('pt-BR',{day:'2-digit',month:'short'});}
+function formatDateShort(iso){if(!iso)return'';const d=iso.includes('T')?new Date(iso):new Date(iso+'T00:00:00');return d.toLocaleDateString('pt-BR',{day:'2-digit',month:'short'});}
 
 // Click outside does NOT close modal — Escape fecha mas mantém rascunho
 document.addEventListener('keydown',e=>{
