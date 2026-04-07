@@ -471,8 +471,14 @@ input[type=file].hidden-file { display:none; }
             <label style="display:flex;align-items:center;gap:5px;font-size:.85rem;cursor:pointer;"><input type="checkbox" value="todo" checked> 📌 To Do</label>
             <label style="display:flex;align-items:center;gap:5px;font-size:.85rem;cursor:pointer;"><input type="checkbox" value="doing" checked> 🔄 Doing</label>
             <label style="display:flex;align-items:center;gap:5px;font-size:.85rem;cursor:pointer;"><input type="checkbox" value="review" checked> 👀 Review</label>
-            <label style="display:flex;align-items:center;gap:5px;font-size:.85rem;cursor:pointer;"><input type="checkbox" value="done"> ✅ Done</label>
           </div>
+        </div>
+
+        <div>
+          <label style="display:flex;align-items:center;gap:8px;font-size:.85rem;cursor:pointer;">
+            <input type="checkbox" id="rptIncludeDone">
+            ✅ Incluir tarefas concluídas?
+          </label>
         </div>
 
         <div>
@@ -1279,11 +1285,12 @@ function closeReportModal(){document.getElementById('reportModal').classList.rem
 function buildReportText(){
   const proj=document.getElementById('rptProject').value;
   const onlyLate=document.getElementById('rptOnlyLate').checked;
+  const includeDone=document.getElementById('rptIncludeDone').checked;
   const statuses=[...document.querySelectorAll('#rptStatusFilters input:checked')].map(i=>i.value);
-  const statusLabel={backlog:'Backlog',todo:'To Do',doing:'Fazendo',review:'Em Revisão',done:'Concluído'};
+  const statusLabel={backlog:'Backlog',todo:'To Do',doing:'Fazendo',review:'Em Revisão'};
   const today=new Date(); today.setHours(0,0,0,0);
 
-  let tasks=S.tasks.filter(t=>{
+  const activeTasks=S.tasks.filter(t=>{
     if(proj!=='__all__'&&t.project!==proj)return false;
     if(!statuses.includes(t.status))return false;
     if(onlyLate){
@@ -1294,7 +1301,14 @@ function buildReportText(){
     return true;
   });
 
-  if(!tasks.length)return'Nenhuma tarefa encontrada com os filtros selecionados.';
+  const doneTasks=includeDone?S.tasks.filter(t=>{
+    if(t.status!=='done')return false;
+    if(proj!=='__all__'&&t.project!==proj)return false;
+    return true;
+  }):[];
+
+  const allTasks=[...activeTasks,...doneTasks];
+  if(!allTasks.length)return'Nenhuma tarefa encontrada com os filtros selecionados.';
 
   const now=new Date();
   const dateStr=now.toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit',year:'numeric'});
@@ -1304,32 +1318,42 @@ function buildReportText(){
   lines.push('📋 *Relatório Kanban Pro*');
   lines.push(`${dateStr} - ${timeStr}`);
 
-  const allProjs=proj==='__all__'?[...new Set(tasks.map(t=>t.project||'Sem Projeto'))]:[(proj==='__all__'?'Sem Projeto':proj)];
+  const allProjs=proj==='__all__'
+    ?[...new Set(allTasks.map(t=>t.project||'Sem Projeto'))]
+    :[proj==='__all__'?'Sem Projeto':proj];
 
   allProjs.forEach(pName=>{
-    const pt=tasks.filter(t=>(t.project||'Sem Projeto')===pName);
-    if(!pt.length)return;
+    const active=activeTasks.filter(t=>(t.project||'Sem Projeto')===pName);
+    const done=doneTasks.filter(t=>(t.project||'Sem Projeto')===pName);
+    if(!active.length&&!done.length)return;
     lines.push('');
     lines.push(`📁 *${pName}*`);
     lines.push('');
-    pt.forEach((t,i)=>{
+
+    let i=1;
+    active.forEach(t=>{
       const dl=t.deadline?new Date(t.deadline+'T00:00:00'):null;
-      const late=dl&&dl<today&&t.status!=='done';
+      const late=dl&&dl<today;
       const dlStr=dl?dl.toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit',year:'numeric'}):'Sem prazo';
       const statusStr=statusLabel[t.status]||t.status;
-      const prazoStatus=t.status==='done'?'Concluído':late?'⚠️ Atrasado':'✅ Dentro do prazo';
-      lines.push(`${i+1}. *${t.title}*`);
+      const prazoStatus=late?'⚠️ Atrasado':'✅ Dentro do prazo';
+      lines.push(`${i++}. *${t.title}*`);
       lines.push(`   👤 Responsável: ${t.assignee||'—'}`);
       lines.push(`   🔄 Status: ${statusStr} — ${prazoStatus}`);
       lines.push(`   📅 Prazo: ${dlStr}`);
+    });
+
+    done.forEach(t=>{
+      lines.push(`${i++}. ${t.title} — ${t.assignee||'—'} ✅`);
     });
   });
 
   // Summary
   lines.push('');
   lines.push('---');
-  lines.push(`📊 Total: ${tasks.length} tarefa${tasks.length!==1?'s':''}`);
-  const lateCount=tasks.filter(t=>{if(!t.deadline||t.status==='done')return false;const dl=new Date(t.deadline+'T00:00:00');return dl<today;}).length;
+  lines.push(`📊 Total: ${allTasks.length} tarefa${allTasks.length!==1?'s':''}`);
+  if(includeDone&&doneTasks.length)lines.push(`✅ Concluídas: ${doneTasks.length}`);
+  const lateCount=activeTasks.filter(t=>{if(!t.deadline)return false;const dl=new Date(t.deadline+'T00:00:00');return dl<today;}).length;
   if(lateCount)lines.push(`⚠️ Atrasadas: ${lateCount}`);
 
   return lines.join('\n');
