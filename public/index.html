@@ -1280,8 +1280,7 @@ function buildReportText(){
   const proj=document.getElementById('rptProject').value;
   const onlyLate=document.getElementById('rptOnlyLate').checked;
   const statuses=[...document.querySelectorAll('#rptStatusFilters input:checked')].map(i=>i.value);
-  const statusIcon={backlog:'📥',todo:'📌',doing:'🔄',review:'👀',done:'✅'};
-  const statusLabel={backlog:'Backlog',todo:'To Do',doing:'Doing',review:'Review',done:'Done'};
+  const statusLabel={backlog:'Backlog',todo:'To Do',doing:'Fazendo',review:'Em Revisão',done:'Concluído'};
   const today=new Date(); today.setHours(0,0,0,0);
 
   let tasks=S.tasks.filter(t=>{
@@ -1302,41 +1301,36 @@ function buildReportText(){
   const timeStr=now.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
 
   let lines=[];
-  lines.push('📋 Relatório Kanban Pro');
-  lines.push(`_${dateStr} - ${timeStr}_`);
+  lines.push('📋 *Relatório Kanban Pro*');
+  lines.push(`${dateStr} - ${timeStr}`);
 
-  // Group by project
-  const projs=proj==='__all__'?[...new Set(tasks.map(t=>t.project||'Sem Projeto'))]:[(proj==='__all__'?null:proj)||'Sem Projeto'];
   const allProjs=proj==='__all__'?[...new Set(tasks.map(t=>t.project||'Sem Projeto'))]:[(proj==='__all__'?'Sem Projeto':proj)];
 
   allProjs.forEach(pName=>{
     const pt=tasks.filter(t=>(t.project||'Sem Projeto')===pName);
     if(!pt.length)return;
     lines.push('');
-    lines.push('---');
-    lines.push(`📁 ${pName}`);
-    pt.forEach(t=>{
-      const icon=statusIcon[t.status]||'•';
+    lines.push(`📁 *${pName}*`);
+    lines.push('');
+    pt.forEach((t,i)=>{
       const dl=t.deadline?new Date(t.deadline+'T00:00:00'):null;
       const late=dl&&dl<today&&t.status!=='done';
-      const dlStr=dl?dl.toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'}):'';
-      lines.push(`${icon} ${t.title}`);
-      const meta=[];
-      if(t.assignee)meta.push(`👤 ${t.assignee}`);
-      if(dlStr)meta.push(`📅 ${dlStr}${late?' ⚠️ atrasado':''}`);
-      if(meta.length)lines.push(`   ${meta.join(' · ')}`);
+      const dlStr=dl?dl.toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit',year:'numeric'}):'Sem prazo';
+      const statusStr=statusLabel[t.status]||t.status;
+      const prazoStatus=t.status==='done'?'Concluído':late?'⚠️ Atrasado':'✅ Dentro do prazo';
+      lines.push(`${i+1}. *${t.title}*`);
+      lines.push(`   👤 Responsável: ${t.assignee||'—'}`);
+      lines.push(`   🔄 Status: ${statusStr} — ${prazoStatus}`);
+      lines.push(`   📅 Prazo: ${dlStr}`);
     });
   });
 
   // Summary
   lines.push('');
   lines.push('---');
-  lines.push('📊 Resumo');
-  lines.push(`Total: ${tasks.length} tarefa${tasks.length!==1?'s':''}`);
-  const byStatus=Object.entries(statusLabel).filter(([k])=>statuses.includes(k)).map(([k,l])=>{const n=tasks.filter(t=>t.status===k).length;return n?`${statusIcon[k]} ${l}: ${n}`:null;}).filter(Boolean);
-  if(byStatus.length)lines.push(byStatus.join(' · '));
-  const late=tasks.filter(t=>{if(!t.deadline||t.status==='done')return false;const dl=new Date(t.deadline+'T00:00:00');return dl<today;}).length;
-  if(late)lines.push(`⚠️ Atrasadas: ${late}`);
+  lines.push(`📊 Total: ${tasks.length} tarefa${tasks.length!==1?'s':''}`);
+  const lateCount=tasks.filter(t=>{if(!t.deadline||t.status==='done')return false;const dl=new Date(t.deadline+'T00:00:00');return dl<today;}).length;
+  if(lateCount)lines.push(`⚠️ Atrasadas: ${lateCount}`);
 
   return lines.join('\n');
 }
