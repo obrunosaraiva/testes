@@ -1341,10 +1341,24 @@ function buildReportText(){
       lines.push(`   👤 Responsável: ${t.assignee||'—'}`);
       lines.push(`   🔄 Status: ${statusStr} — ${prazoStatus}`);
       lines.push(`   📅 Prazo: ${dlStr}`);
+      if(t.checklist&&t.checklist.length){
+        t.checklist.forEach(c=>{
+          const ck=c.done?'☑':'☐';
+          const clDeadline=c.deadline?` · 📅 ${new Date(c.deadline+'T00:00:00').toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'})}`:'';
+          const clAssignee=c.assignee?` · 👤 ${c.assignee}`:'';
+          lines.push(`      ${ck} ${c.text||'—'}${clAssignee}${clDeadline}`);
+        });
+      }
     });
 
     done.forEach(t=>{
       lines.push(`${i++}. ${t.title} — ${t.assignee||'—'} ✅`);
+      if(t.checklist&&t.checklist.length){
+        t.checklist.forEach(c=>{
+          const ck=c.done?'☑':'☐';
+          lines.push(`      ${ck} ${c.text||'—'}`);
+        });
+      }
     });
   });
 
