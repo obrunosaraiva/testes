@@ -15,6 +15,7 @@
   --backlog: #6b7280;
   --todo: #3b82f6;
   --doing: #f59e0b;
+  --paused: #ef4444;
   --review: #a855f7;
   --done: #22c55e;
 }
@@ -36,6 +37,7 @@
   --backlog: #6b7280;
   --todo: #2563eb;
   --doing: #d97706;
+  --paused: #dc2626;
   --review: #9333ea;
   --done: #16a34a;
 }

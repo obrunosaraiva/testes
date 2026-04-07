@@ -221,6 +221,7 @@ export default function TaskModal({ taskId, defaultStatus, onClose }) {
                 <option value="backlog">Backlog</option>
                 <option value="todo">To Do</option>
                 <option value="doing">Doing</option>
+                <option value="paused">Pausado</option>
                 <option value="review">Review</option>
                 <option value="done">Done</option>
               </select>

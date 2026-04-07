@@ -3,9 +3,10 @@ import { useKanban } from '../../context/KanbanContext';
 import TaskCard from './TaskCard';
 
 const STATUS_CONFIG = {
-  backlog: { label: 'Backlog', color: 'var(--backlog)' },
-  todo:    { label: 'To Do',   color: 'var(--todo)' },
+  backlog: { label: 'Backlog',  color: 'var(--backlog)' },
+  todo:    { label: 'To Do',    color: 'var(--todo)' },
   doing:   { label: 'Doing',   color: 'var(--doing)' },
+  paused:  { label: 'Pausado', color: 'var(--paused)' },
   review:  { label: 'Review',  color: 'var(--review)' },
   done:    { label: 'Done',    color: 'var(--done)' },
 };

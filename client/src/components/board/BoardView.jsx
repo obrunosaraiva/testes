@@ -1,6 +1,6 @@
 import Column from './Column';
 
-const STATUSES = ['backlog', 'todo', 'doing', 'review', 'done'];
+const STATUSES = ['backlog', 'todo', 'doing', 'paused', 'review', 'done'];
 
 export default function BoardView({ onOpenTask, onNewTask }) {
   return (
