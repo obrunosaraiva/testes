@@ -132,6 +132,7 @@ body { font-family:'Segoe UI',system-ui,-apple-system,sans-serif; background:var
 .checklist-item .cl-row2 input:focus { border-color:var(--accent); }
 .checklist-item .cl-row2 input[type=text] { flex:1; min-width:0; }
 .checklist-item .cl-row2 input[type=date] { width:130px; flex-shrink:0; }
+.checklist-item .cl-row2 input[type=time] { width:90px; flex-shrink:0; }
 .cl-overdue { color:var(--danger); font-size:.68rem; font-weight:600; margin-left:24px; margin-top:3px; }
 .add-cl-btn { padding:6px 10px; background:none; border:1px dashed var(--border); border-radius:6px; color:var(--text-muted); cursor:pointer; font-size:.8rem; width:100%; margin-top:6px; transition:all .15s; }
 .add-cl-btn:hover { border-color:var(--accent); color:var(--accent); }
@@ -362,6 +363,10 @@ input[type=file].hidden-file { display:none; }
           <input type="date" id="dmDeadline">
         </div>
       </div>
+      <div class="fg">
+        <label>Hora da entrega</label>
+        <input type="time" id="dmDeadlineTime" style="max-width:160px">
+      </div>
       <div class="fg" style="margin-top:4px">
         <label class="event-toggle-label">
           <input type="checkbox" id="dmIsEvent" onchange="toggleEventFields()">
@@ -416,7 +421,7 @@ input[type=file].hidden-file { display:none; }
 
       <div class="modal-actions">
         <button class="btn btn-danger" id="dmDeleteBtn" onclick="deleteFromDetail()" style="margin-right:auto">Excluir</button>
-        <button class="btn btn-ghost" onclick="closeDetail()">Cancelar</button>
+        <button class="btn btn-ghost" onclick="closeDetail(true)">Cancelar</button>
         <button class="btn btn-primary" onclick="saveDetail()">Salvar</button>
       </div>
     </div>
@@ -596,6 +601,7 @@ async function saveTask(task) {
       urgency: task.urgency || '',
       start_date: task.startDate || '',
       deadline: task.deadline || '',
+      deadline_time: task.deadlineTime || '',
       is_event: task.isEvent || false,
       event_start_date: task.eventStartDate || '',
       event_end_date: task.eventEndDate || '',
@@ -693,7 +699,7 @@ function renderCards(){
         ${cl.length?`<div class="card-checklist-bar"><div class="card-checklist-fill" style="width:${cl.length?done/cl.length*100:0}%"></div></div>`:''}
         ${cl.filter(c=>c.deadline&&!c.done&&new Date(c.deadline+'T23:59:59')<new Date()).length?`<span style="font-size:.7rem;color:var(--danger);font-weight:600">&#128308; ${cl.filter(c=>c.deadline&&!c.done&&new Date(c.deadline+'T23:59:59')<new Date()).length} item(s) atrasado(s)</span>`:''}
         <div class="card-meta">
-          ${deadlineStr?`<span class="${isOverdue?'overdue':''}">&#128197; ${deadlineStr}${isOverdue?' (atrasada)':''}</span>`:''}
+          ${deadlineStr?`<span class="${isOverdue?'overdue':''}">&#128197; ${deadlineStr}${t.deadlineTime?' '+t.deadlineTime:''}${isOverdue?' (atrasada)':''}</span>`:''}
           ${assigneeStr}
           ${attStr}
           ${cl.length?`<span>&#9745; ${done}/${cl.length}</span>`:''}
@@ -772,22 +778,50 @@ function switchView(v){
 // ===== DETAIL MODAL =====
 function openNew(status){
   editId=null;
-  tempChecklist=[];tempAttachments=[];
+  tempAttachments=[];
   document.getElementById('dmTitle').textContent='Nova Tarefa';
-  document.getElementById('dmTaskTitle').value='';
-  document.getElementById('dmTaskDesc').value='';
-  document.getElementById('dmStatus').value=status||'backlog';
-  document.getElementById('dmAssignee').value='';
-  document.getElementById('dmUrgency').value='';
-  document.getElementById('dmStartDate').value='';
-  document.getElementById('dmDeadline').value='';
-  document.getElementById('dmIsEvent').checked=false;
-  document.getElementById('dmEventStart').value='';
-  document.getElementById('dmEventEnd').value='';
-  document.getElementById('eventDatesGroup').style.display='none';
   document.getElementById('dmDeleteBtn').style.display='none';
   pickColorByValue('none');
   populateProjects();
+
+  // Restore draft if exists
+  const draft=loadDraft();
+  if(draft){
+    document.getElementById('dmTaskTitle').value=draft.title||'';
+    document.getElementById('dmTaskDesc').value=draft.description||'';
+    document.getElementById('dmStatus').value=draft.status||status||'backlog';
+    document.getElementById('dmAssignee').value=draft.assignee||'';
+    document.getElementById('dmUrgency').value=draft.urgency||'';
+    document.getElementById('dmStartDate').value=draft.startDate||'';
+    document.getElementById('dmDeadline').value=draft.deadline||'';
+    document.getElementById('dmDeadlineTime').value=draft.deadlineTime||'';
+    document.getElementById('dmIsEvent').checked=!!draft.isEvent;
+    document.getElementById('dmEventStart').value=draft.eventStartDate||'';
+    document.getElementById('dmEventEnd').value=draft.eventEndDate||'';
+    document.getElementById('eventDatesGroup').style.display=draft.isEvent?'':'none';
+    tempChecklist=draft.checklist||[];
+  }else{
+    document.getElementById('dmTaskTitle').value='';
+    document.getElementById('dmTaskDesc').value='';
+    document.getElementById('dmStatus').value=status||'backlog';
+    document.getElementById('dmAssignee').value='';
+    document.getElementById('dmUrgency').value='';
+    document.getElementById('dmStartDate').value='';
+    document.getElementById('dmDeadline').value='';
+    document.getElementById('dmDeadlineTime').value='';
+    document.getElementById('dmIsEvent').checked=false;
+    document.getElementById('dmEventStart').value='';
+    document.getElementById('dmEventEnd').value='';
+    document.getElementById('eventDatesGroup').style.display='none';
+    tempChecklist=[];
+  }
+
+  // Auto-save draft on any input change
+  document.getElementById('detailModal').querySelectorAll('input,textarea,select').forEach(el=>{
+    el.addEventListener('input',saveDraft,{once:false});
+    el.addEventListener('change',saveDraft,{once:false});
+  });
+
   renderChecklist();renderAttachments();
   document.getElementById('detailModal').classList.add('active');
   setTimeout(()=>document.getElementById('dmTaskTitle').focus(),100);
@@ -806,6 +840,7 @@ function openDetail(id){
   document.getElementById('dmUrgency').value=t.urgency||'';
   document.getElementById('dmStartDate').value=t.startDate||'';
   document.getElementById('dmDeadline').value=t.deadline||'';
+  document.getElementById('dmDeadlineTime').value=t.deadlineTime||'';
   document.getElementById('dmIsEvent').checked=!!t.isEvent;
   document.getElementById('dmEventStart').value=t.eventStartDate||'';
   document.getElementById('dmEventEnd').value=t.eventEndDate||'';
@@ -817,7 +852,36 @@ function openDetail(id){
   document.getElementById('detailModal').classList.add('active');
 }
 
-function closeDetail(){document.getElementById('detailModal').classList.remove('active');editId=null;}
+function closeDetail(discardDraft){
+  document.getElementById('detailModal').classList.remove('active');
+  if(discardDraft||editId)clearDraft(); // limpa rascunho ao cancelar ou ao fechar edição
+  editId=null;
+}
+
+const DRAFT_KEY='kanban_task_draft';
+function saveDraft(){
+  if(editId)return; // só salva rascunho em novas tarefas
+  const draft={
+    title:document.getElementById('dmTaskTitle').value,
+    description:document.getElementById('dmTaskDesc').value,
+    project:document.getElementById('dmProject').value,
+    status:document.getElementById('dmStatus').value,
+    assignee:document.getElementById('dmAssignee').value,
+    urgency:document.getElementById('dmUrgency').value,
+    startDate:document.getElementById('dmStartDate').value,
+    deadline:document.getElementById('dmDeadline').value,
+    deadlineTime:document.getElementById('dmDeadlineTime').value,
+    isEvent:document.getElementById('dmIsEvent').checked,
+    eventStartDate:document.getElementById('dmEventStart').value,
+    eventEndDate:document.getElementById('dmEventEnd').value,
+    checklist:tempChecklist,
+  };
+  localStorage.setItem(DRAFT_KEY,JSON.stringify(draft));
+}
+function loadDraft(){
+  try{return JSON.parse(localStorage.getItem(DRAFT_KEY));}catch(e){return null;}
+}
+function clearDraft(){localStorage.removeItem(DRAFT_KEY);}
 function toggleEventFields(){const on=document.getElementById('dmIsEvent').checked;document.getElementById('eventDatesGroup').style.display=on?'':'none';}
 
 function saveDetail(){
@@ -832,6 +896,7 @@ function saveDetail(){
     urgency:document.getElementById('dmUrgency').value,
     startDate:document.getElementById('dmStartDate').value,
     deadline:document.getElementById('dmDeadline').value,
+    deadlineTime:document.getElementById('dmDeadlineTime').value,
     isEvent:document.getElementById('dmIsEvent').checked,
     eventStartDate:document.getElementById('dmEventStart').value,
     eventEndDate:document.getElementById('dmEventEnd').value,
@@ -846,6 +911,7 @@ function saveDetail(){
     const newTask={id:'t_'+Date.now()+'_'+Math.random().toString(36).slice(2,5),created_at:new Date().toISOString(),...data};
     S.tasks.push(newTask);
     saveTask(newTask);
+    clearDraft(); // rascunho salvo com sucesso
   }
   closeDetail();render();
   if(S.view==='gantt'){
@@ -894,17 +960,19 @@ function renderChecklist(){
       <div class="cl-row2">
         <input type="text" value="${esc(item.assignee||'')}" onchange="updateCLAssignee(${i},this.value)" placeholder="Responsavel...">
         <input type="date" value="${item.deadline||''}" onchange="updateCLDeadline(${i},this.value)">
+        <input type="time" value="${item.time||''}" onchange="updateCLTime(${i},this.value)" title="Hora da entrega">
       </div>
       ${isOverdue?'<div class="cl-overdue">&#128308; Atrasado!</div>':''}
     `;
     cont.appendChild(d);
   });
 }
-function addChecklistItem(){tempChecklist.push({text:'',done:false,assignee:'',deadline:''});renderChecklist();const inputs=document.querySelectorAll('.cl-text');if(inputs.length)inputs[inputs.length-1].focus();}
+function addChecklistItem(){tempChecklist.push({text:'',done:false,assignee:'',deadline:'',time:''});renderChecklist();const inputs=document.querySelectorAll('.cl-text');if(inputs.length)inputs[inputs.length-1].focus();}
 function toggleCL(i){tempChecklist[i].done=!tempChecklist[i].done;renderChecklist();}
 function updateCLText(i,v){tempChecklist[i].text=v;}
 function updateCLAssignee(i,v){tempChecklist[i].assignee=v;}
 function updateCLDeadline(i,v){tempChecklist[i].deadline=v;}
+function updateCLTime(i,v){tempChecklist[i].time=v;}
 function removeCL(i){tempChecklist.splice(i,1);renderChecklist();}
 
 // ===== ATTACHMENTS =====
@@ -1066,10 +1134,9 @@ function populateProjects(sel){
 function esc(s){if(!s)return'';const d=document.createElement('div');d.textContent=s;return d.innerHTML;}
 function formatDateShort(iso){if(!iso)return'';const d=new Date(iso+'T00:00:00');return d.toLocaleDateString('pt-BR',{day:'2-digit',month:'short'});}
 
-// Close on overlay / Escape
-document.getElementById('detailModal').addEventListener('click',e=>{if(e.target===e.currentTarget)closeDetail();});
+// Close only via X button — no click-outside, no Escape close for detail modal
 document.addEventListener('keydown',e=>{
-  if(e.key==='Escape')closeDetail();
+  // Escape only closes templates modal, not task modal (to avoid losing data)
   if(e.key==='n'&&!e.ctrlKey&&!e.metaKey&&!['INPUT','TEXTAREA','SELECT'].includes(document.activeElement.tagName)){e.preventDefault();openNew('backlog');}
 });
 
