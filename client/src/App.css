@@ -3,6 +3,7 @@
   display: flex;
   flex-direction: column;
   height: 100vh;
+  overflow: hidden;
 }
 
 /* ── Board ── */
@@ -14,7 +15,7 @@
   overflow-y: hidden;
   flex: 1;
   min-height: 0;
-  align-items: flex-start;
+  align-items: stretch;
 }
 
 .column {
@@ -26,7 +27,8 @@
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 14px;
-  max-height: 100%;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .col-header {
@@ -34,6 +36,7 @@
   align-items: center;
   justify-content: space-between;
   padding: 14px 16px 10px;
+  flex-shrink: 0;
 }
 
 .col-title {
@@ -58,6 +61,7 @@
 
 .col-body {
   flex: 1;
+  min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
   padding: 6px 12px;
@@ -91,6 +95,7 @@
   color: var(--text-muted);
   font-size: .82rem;
   transition: all .15s;
+  flex-shrink: 0;
 }
 .add-card-btn:hover { border-color: var(--accent); color: var(--accent); }
 
