@@ -91,11 +91,13 @@ function reducer(state, action) {
     case 'SET_SYNC_STATUS':
       return { ...state, syncStatus: action.payload };
     case 'SET_TASKS': {
-      // Never restore tasks that are already in the local trash.
-      // This prevents deleted tasks from reappearing when Supabase loads
-      // before the DB delete completes (or after a quick page refresh).
+      // Merge DB tasks with any locally-added tasks not yet confirmed by DB.
+      // This prevents the race condition where SET_TASKS fires before saveTaskToDb
+      // completes, wiping tasks that exist in local state but not in DB yet.
       const trashedIds = new Set(state.trashedTasks.map(t => t.id));
-      return { ...state, tasks: action.payload.filter(t => !trashedIds.has(t.id)) };
+      const dbIds = new Set(action.payload.map(t => t.id));
+      const localPending = state.tasks.filter(t => !dbIds.has(t.id) && !trashedIds.has(t.id));
+      return { ...state, tasks: [...action.payload.filter(t => !trashedIds.has(t.id)), ...localPending] };
     }
     case 'SET_PROJECTS':
       return { ...state, projects: action.payload.map(normalizeProject) };
@@ -440,9 +442,16 @@ export function KanbanProvider({ children }) {
     };
     const { error } = await sb.from('kanban_tasks').upsert(row, { onConflict: 'id' });
     if (error) {
+      // Retry without optional columns that may not exist in the DB yet (migration pending)
       const { deadline_time, is_event, event_start_date, event_end_date, card_color, ticket_goal, tickets_sold, event_type, links, deleted, ...basic } = row;
-      await sb.from('kanban_tasks').upsert(basic, { onConflict: 'id' }).catch(() => {});
+      const { error: e2 } = await sb.from('kanban_tasks').upsert(basic, { onConflict: 'id' });
+      if (e2) {
+        console.error('[Kanban] task save failed:', e2.message, '| task id:', task.id);
+        dispatch({ type: 'SET_SYNC_STATUS', payload: '⚠ Erro ao salvar' });
+        return e2; // propagate so callers can react
+      }
     }
+    return null; // success
   }
 
   // ── Project DB ops — targeted, never delete based on list comparison ───────
@@ -485,9 +494,15 @@ export function KanbanProvider({ children }) {
   }
 
   // ── Public actions ──────────────────────────────────────────────────────────
-  function addTask(task) {
-    dispatch({ type: 'ADD_TASK', payload: task });
-    saveTaskToDb(task);
+  // addTask: DB-first — task only appears in UI after Supabase confirms the save.
+  // This eliminates the race condition where SET_TASKS (from loadSupabase) fires
+  // between ADD_TASK and saveTaskToDb completing, wiping the locally-added task.
+  async function addTask(task) {
+    const error = await saveTaskToDb(task);
+    if (!error) {
+      dispatch({ type: 'ADD_TASK', payload: task });
+    }
+    // On error: SET_SYNC_STATUS already updated inside saveTaskToDb; task not added locally
   }
 
   function updateTask(task) {
