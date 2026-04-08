@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useKanban } from '../../context/KanbanContext';
 import { useRole } from '../../context/RoleContext';
 import { useConfirm } from '../../hooks/useConfirm';
@@ -18,8 +18,8 @@ export default function ProjectBar() {
   } = useKanban();
   const { can, userId } = useRole();
 
-  // Only show CCs that are public OR were created by the current user
-  const visibleCCs = costCenters.filter(cc => !cc.isPrivate || cc.createdBy === userId);
+  // Only show CCs that are public OR were created by the current user OR shared with the current user
+  const visibleCCs = costCenters.filter(cc => !cc.isPrivate || cc.createdBy === userId || (cc.sharedWith || []).includes(userId));
   // Only show projects whose CC is visible (or has no CC)
   const visibleProjects = projects.filter(proj => {
     if (!proj.costCenter) return true;
@@ -263,7 +263,7 @@ export default function ProjectBar() {
       {showNewCC && (
         <NewCostCenterModal
           onClose={() => setShowNewCC(false)}
-          onCreate={(label, color, isPrivate) => { addCostCenter(label, color, isPrivate, userId); setShowNewCC(false); }}
+          onCreate={(label, color, isPrivate, sharedWith) => { addCostCenter(label, color, isPrivate, userId, sharedWith); setShowNewCC(false); }}
         />
       )}
       {editingCC && (
@@ -435,49 +435,107 @@ function CostCenterPicker({ costCenters, value, onChange }) {
   );
 }
 
+function UserPicker({ selectedIds, onChange, excludeId }) {
+  const { allProfiles, loadAllProfiles } = useRole();
+  useEffect(() => { loadAllProfiles(); }, []);
+  const users = allProfiles.filter(u => u.id !== excludeId);
+  if (users.length === 0) return (
+    <div style={{ fontSize: '.75rem', color: 'var(--text-muted)', padding: '8px 0' }}>Nenhum outro usuário cadastrado.</div>
+  );
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+      {users.map(u => {
+        const active = selectedIds.includes(u.id);
+        return (
+          <label key={u.id} style={{
+            display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer',
+            padding: '7px 12px', borderRadius: 8,
+            background: active ? 'var(--accent)18' : 'var(--surface2)',
+            border: `1px solid ${active ? 'var(--accent)' : 'var(--border)'}`,
+            transition: 'all .15s',
+          }}>
+            <input type="checkbox" checked={active} onChange={() => onChange(active ? selectedIds.filter(id => id !== u.id) : [...selectedIds, u.id])} />
+            <div style={{ width: 28, height: 28, borderRadius: '50%', background: 'var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '.75rem', fontWeight: 700, color: '#fff', flexShrink: 0 }}>
+              {(u.email || u.name || '?')[0].toUpperCase()}
+            </div>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontSize: '.83rem', fontWeight: active ? 600 : 400 }}>{u.name || u.email}</div>
+              {u.name && <div style={{ fontSize: '.72rem', color: 'var(--text-muted)' }}>{u.email}</div>}
+            </div>
+            <div style={{ marginLeft: 'auto', fontSize: '.72rem', color: 'var(--text-muted)', textTransform: 'capitalize' }}>{u.role}</div>
+          </label>
+        );
+      })}
+    </div>
+  );
+}
+
+function CCModalBody({ label, setLabel, color, setColor, isPrivate, setIsPrivate, sharedWith, setSharedWith, creatorId, isNew }) {
+  return (
+    <>
+      <div>
+        <label className="field-label">Nome</label>
+        <input value={label} onChange={e => setLabel(e.target.value)} placeholder={isNew ? 'Ex: Marketing...' : undefined} autoFocus />
+      </div>
+      <div>
+        <label className="field-label">Cor</label>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+          {PRESET_COLORS.map(c => (
+            <button key={c} type="button" onClick={() => setColor(c)} style={{ width: 28, height: 28, borderRadius: '50%', background: c, border: 'none', cursor: 'pointer', outline: color === c ? `3px solid ${c}` : '3px solid transparent', outlineOffset: 2, transition: 'outline .1s' }} />
+          ))}
+          <input type="color" value={color} onChange={e => setColor(e.target.value)} style={{ width: 28, height: 28, padding: 1, borderRadius: '50%', border: '1px solid var(--border)', cursor: 'pointer', background: 'none' }} title="Cor personalizada" />
+        </div>
+      </div>
+      {isNew && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <span style={{ width: 12, height: 12, borderRadius: '50%', background: color, flexShrink: 0 }} />
+          <span style={{ fontSize: '.85rem', color: 'var(--text-muted)' }}>{label || 'Prévia'}</span>
+        </div>
+      )}
+      {/* Privacy toggle */}
+      <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', padding: '8px 12px', borderRadius: 8, background: isPrivate ? 'var(--surface3)' : 'var(--surface2)', border: `1px solid ${isPrivate ? 'var(--accent)' : 'var(--border)'}`, transition: 'all .15s' }}>
+        <input type="checkbox" checked={isPrivate} onChange={e => setIsPrivate(e.target.checked)} />
+        <div>
+          <div style={{ fontSize: '.85rem', fontWeight: 600 }}>{isPrivate ? '🔒 Privado' : '🌐 Público'}</div>
+          <div style={{ fontSize: '.72rem', color: 'var(--text-muted)' }}>
+            {isPrivate ? 'Só você e quem você escolher veem este CC' : 'Todos os usuários visualizam este CC'}
+          </div>
+        </div>
+      </label>
+      {/* Shared with — only when private */}
+      {isPrivate && (
+        <div>
+          <label className="field-label">Compartilhar acesso com</label>
+          <UserPicker selectedIds={sharedWith} onChange={setSharedWith} excludeId={creatorId} />
+        </div>
+      )}
+    </>
+  );
+}
+
 function EditCostCenterModal({ cc, onClose, onSave }) {
+  const { userId } = useRole();
   const [label, setLabel] = useState(cc.label);
   const [color, setColor] = useState(cc.color);
   const [isPrivate, setIsPrivate] = useState(cc.isPrivate || false);
+  const [sharedWith, setSharedWith] = useState(cc.sharedWith || []);
 
   function handleSubmit(e) {
     e.preventDefault();
     if (!label.trim()) return;
-    onSave({ label: label.trim(), color, isPrivate });
+    onSave({ label: label.trim(), color, isPrivate, sharedWith: isPrivate ? sharedWith : [] });
   }
 
   return (
     <div className="modal-overlay active" onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
-      <div className="modal" style={{ maxWidth: 360 }} onClick={e => e.stopPropagation()}>
+      <div className="modal" style={{ maxWidth: 400 }} onClick={e => e.stopPropagation()}>
         <div className="modal-head">
           <h2>✎ Editar Centro de Custo</h2>
           <button className="modal-close" onClick={onClose}>&times;</button>
         </div>
         <form onSubmit={handleSubmit}>
           <div className="modal-body">
-            <div>
-              <label className="field-label">Nome</label>
-              <input value={label} onChange={e => setLabel(e.target.value)} autoFocus />
-            </div>
-            <div>
-              <label className="field-label">Cor</label>
-              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-                {PRESET_COLORS.map(c => (
-                  <button key={c} type="button" onClick={() => setColor(c)} style={{ width: 28, height: 28, borderRadius: '50%', background: c, border: 'none', cursor: 'pointer', outline: color === c ? `3px solid ${c}` : '3px solid transparent', outlineOffset: 2, transition: 'outline .1s' }} />
-                ))}
-                <input type="color" value={color} onChange={e => setColor(e.target.value)} style={{ width: 28, height: 28, padding: 1, borderRadius: '50%', border: '1px solid var(--border)', cursor: 'pointer', background: 'none' }} title="Cor personalizada" />
-              </div>
-            </div>
-            {/* Privacy toggle */}
-            <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', padding: '8px 12px', borderRadius: 8, background: isPrivate ? 'var(--surface3)' : 'var(--surface2)', border: `1px solid ${isPrivate ? 'var(--accent)' : 'var(--border)'}`, transition: 'all .15s' }}>
-              <input type="checkbox" checked={isPrivate} onChange={e => setIsPrivate(e.target.checked)} />
-              <div>
-                <div style={{ fontSize: '.85rem', fontWeight: 600 }}>{isPrivate ? '🔒 Privado' : '🌐 Público'}</div>
-                <div style={{ fontSize: '.72rem', color: 'var(--text-muted)' }}>
-                  {isPrivate ? 'Só você vê este CC, seus projetos e tarefas' : 'Todos os usuários visualizam este CC'}
-                </div>
-              </div>
-            </label>
+            <CCModalBody label={label} setLabel={setLabel} color={color} setColor={setColor} isPrivate={isPrivate} setIsPrivate={setIsPrivate} sharedWith={sharedWith} setSharedWith={setSharedWith} creatorId={userId} isNew={false} />
             <div style={{ display: 'flex', gap: 10, paddingTop: 4 }}>
               <button type="button" className="btn btn-ghost" style={{ flex: 1 }} onClick={onClose}>Cancelar</button>
               <button type="submit" className="btn btn-primary" style={{ flex: 1 }}>Salvar</button>
@@ -490,67 +548,28 @@ function EditCostCenterModal({ cc, onClose, onSave }) {
 }
 
 function NewCostCenterModal({ onClose, onCreate }) {
+  const { userId } = useRole();
   const [label, setLabel] = useState('');
   const [color, setColor] = useState(PRESET_COLORS[0]);
   const [isPrivate, setIsPrivate] = useState(false);
+  const [sharedWith, setSharedWith] = useState([]);
 
   function handleSubmit(e) {
     e.preventDefault();
     if (!label.trim()) return;
-    onCreate(label.trim(), color, isPrivate);
+    onCreate(label.trim(), color, isPrivate, isPrivate ? sharedWith : []);
   }
 
   return (
     <div className="modal-overlay active" onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
-      <div className="modal" style={{ maxWidth: 360 }} onClick={e => e.stopPropagation()}>
+      <div className="modal" style={{ maxWidth: 400 }} onClick={e => e.stopPropagation()}>
         <div className="modal-head">
           <h2>+ Novo Centro de Custo</h2>
           <button className="modal-close" onClick={onClose}>&times;</button>
         </div>
         <form onSubmit={handleSubmit}>
           <div className="modal-body">
-            <div>
-              <label className="field-label">Nome</label>
-              <input value={label} onChange={e => setLabel(e.target.value)} placeholder="Ex: Marketing..." autoFocus />
-            </div>
-            <div>
-              <label className="field-label">Cor</label>
-              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-                {PRESET_COLORS.map(c => (
-                  <button
-                    key={c}
-                    type="button"
-                    onClick={() => setColor(c)}
-                    style={{
-                      width: 28, height: 28, borderRadius: '50%', background: c, border: 'none', cursor: 'pointer',
-                      outline: color === c ? `3px solid ${c}` : '3px solid transparent',
-                      outlineOffset: 2, transition: 'outline .1s',
-                    }}
-                  />
-                ))}
-                <input
-                  type="color"
-                  value={color}
-                  onChange={e => setColor(e.target.value)}
-                  style={{ width: 28, height: 28, padding: 1, borderRadius: '50%', border: '1px solid var(--border)', cursor: 'pointer', background: 'none' }}
-                  title="Cor personalizada"
-                />
-              </div>
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 4 }}>
-              <span style={{ width: 12, height: 12, borderRadius: '50%', background: color, flexShrink: 0 }} />
-              <span style={{ fontSize: '.85rem', color: 'var(--text-muted)' }}>{label || 'Prévia'}</span>
-            </div>
-            {/* Privacy toggle */}
-            <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', padding: '8px 12px', borderRadius: 8, background: isPrivate ? 'var(--surface3)' : 'var(--surface2)', border: `1px solid ${isPrivate ? 'var(--accent)' : 'var(--border)'}`, transition: 'all .15s' }}>
-              <input type="checkbox" checked={isPrivate} onChange={e => setIsPrivate(e.target.checked)} />
-              <div>
-                <div style={{ fontSize: '.85rem', fontWeight: 600 }}>{isPrivate ? '🔒 Privado' : '🌐 Público'}</div>
-                <div style={{ fontSize: '.72rem', color: 'var(--text-muted)' }}>
-                  {isPrivate ? 'Só você vê este CC, seus projetos e tarefas' : 'Todos os usuários visualizam este CC'}
-                </div>
-              </div>
-            </label>
+            <CCModalBody label={label} setLabel={setLabel} color={color} setColor={setColor} isPrivate={isPrivate} setIsPrivate={setIsPrivate} sharedWith={sharedWith} setSharedWith={setSharedWith} creatorId={userId} isNew={true} />
             <div style={{ display: 'flex', gap: 10, paddingTop: 4 }}>
               <button type="button" className="btn btn-ghost" style={{ flex: 1 }} onClick={onClose}>Cancelar</button>
               <button type="submit" className="btn btn-primary" style={{ flex: 1 }}>Criar CC</button>

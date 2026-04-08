@@ -11,10 +11,10 @@ export const COST_CENTERS = {
 };
 
 export const DEFAULT_COST_CENTERS = [
-  { key: 'IBEC',  label: 'IBEC',  color: '#eab308', isPrivate: false, createdBy: null },
-  { key: 'GH',    label: 'GH',    color: '#3b82f6', isPrivate: false, createdBy: null },
-  { key: 'Leanx', label: 'Leanx', color: '#ef4444', isPrivate: false, createdBy: null },
-  { key: 'Up3',   label: 'Up3',   color: '#22c55e', isPrivate: false, createdBy: null },
+  { key: 'IBEC',  label: 'IBEC',  color: '#eab308', isPrivate: false, createdBy: null, sharedWith: [] },
+  { key: 'GH',    label: 'GH',    color: '#3b82f6', isPrivate: false, createdBy: null, sharedWith: [] },
+  { key: 'Leanx', label: 'Leanx', color: '#ef4444', isPrivate: false, createdBy: null, sharedWith: [] },
+  { key: 'Up3',   label: 'Up3',   color: '#22c55e', isPrivate: false, createdBy: null, sharedWith: [] },
 ];
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -595,12 +595,12 @@ export function KanbanProvider({ children }) {
   function toggleCostCenterFilter(cc) { dispatch({ type: 'TOGGLE_COST_CENTER_FILTER', payload: cc }); }
   function clearCostCenterFilter() { dispatch({ type: 'CLEAR_COST_CENTER_FILTER' }); }
 
-  function addCostCenter(label, color, isPrivate = false, createdBy = null) {
+  function addCostCenter(label, color, isPrivate = false, createdBy = null, sharedWith = []) {
     const key = label.trim().replace(/\s+/g, '_').toUpperCase().slice(0, 20);
     const unique = stateRef.current.costCenters.some(cc => cc.key === key)
       ? key + '_' + Date.now().toString(36).slice(-4)
       : key;
-    dispatch({ type: 'ADD_COST_CENTER', payload: { key: unique, label: label.trim(), color, isPrivate, createdBy } });
+    dispatch({ type: 'ADD_COST_CENTER', payload: { key: unique, label: label.trim(), color, isPrivate, createdBy, sharedWith } });
   }
 
   function addResource(item) { dispatch({ type: 'ADD_RESOURCE', payload: { id: 'r_' + Date.now(), createdAt: new Date().toISOString(), costCenters: [], ...item } }); }

@@ -37,7 +37,7 @@ export default function Column({ status, onOpenTask, onNewTask }) {
     const proj = projects.find(p => p.name === t.project);
     if (proj?.costCenter) {
       const cc = costCenters.find(c => c.key === proj.costCenter);
-      if (cc?.isPrivate && cc.createdBy !== userId) return false;
+      if (cc?.isPrivate && cc.createdBy !== userId && !(cc.sharedWith || []).includes(userId)) return false;
     }
 
     // Cost center filter
