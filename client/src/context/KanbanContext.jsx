@@ -244,12 +244,10 @@ export function KanbanProvider({ children }) {
   const deletedIds = useRef(new Set()); // tracks IDs deleted this session — blocks any in-flight autosave upsert
   useEffect(() => { stateRef.current = state; }, [state]);
 
-  // ── Persist to localStorage ─────────────────────────────────────────────────
+  // ── Persist UI preferences to localStorage (NOT tasks/projects — those live in Supabase) ──
   const saveLocal = useCallback((s) => {
     try {
       localStorage.setItem(SK, JSON.stringify({
-        projects: s.projects,
-        tasks: s.tasks,
         templates: s.templates,
         resources: s.resources,
         activeProject: s.activeProject,
@@ -266,12 +264,10 @@ export function KanbanProvider({ children }) {
   }, []);
 
   useEffect(() => {
-    if (state.tasks.length > 0 || state.projects.length > 1 || state.trashedTasks.length > 0) {
-      saveLocal(state);
-    }
-  }, [state, saveLocal]);
+    saveLocal(state);
+  }, [state.templates, state.resources, state.activeProject, state.view, state.viewFilter, state.costCenterFilter, state.costCenters, state.trashedTasks, state.trashedProjects]);
 
-  // ── Load from localStorage on mount ────────────────────────────────────────
+  // ── Load UI preferences from localStorage on mount ─────────────────────────
   useEffect(() => {
     try {
       const raw = localStorage.getItem(SK);
@@ -280,8 +276,6 @@ export function KanbanProvider({ children }) {
         dispatch({
           type: 'LOAD_LOCAL',
           payload: {
-            projects: (p.projects || ['Projeto 1']).map(normalizeProject),
-            tasks: (p.tasks || []).map(normalizeTask),
             templates: p.templates || [],
             resources: p.resources || [],
             activeProject: p.activeProject || '__all__',
@@ -334,35 +328,15 @@ export function KanbanProvider({ children }) {
           ticketsSold: t.tickets_sold,
         }));
 
-        // Supabase is source of truth. Only update if we got real data back.
-        // Never wipe tasks if Supabase returned an unexpected empty list.
-        if (mapped.length > 0 || stateRef.current.tasks.length === 0) {
-          dispatch({ type: 'SET_TASKS', payload: mapped });
-        }
-
-        // Merge DB projects with local-only projects (pending insert or offline)
-        // Read directly from localStorage so timing of React state updates doesn't matter
-        let localProjects = [];
-        let trashedProjNames = new Set();
-        try {
-          const rawLocal = localStorage.getItem(SK);
-          if (rawLocal) localProjects = (JSON.parse(rawLocal).projects || []).map(normalizeProject);
-          const rawTrash = localStorage.getItem(TRASH_KEY);
-          if (rawTrash) trashedProjNames = new Set((JSON.parse(rawTrash).trashedProjects || []).map(p => p.name));
-        } catch {}
+        dispatch({ type: 'SET_TASKS', payload: mapped });
 
         const dbMapped = (dbProjects || []).map(p => ({
           id: p.id || ('p_' + p.name.replace(/[^a-z0-9]/gi, '_')),
           name: p.name,
           costCenter: p.cost_center || null,
         }));
-        const dbNames = new Set(dbMapped.map(p => p.name));
-        // Keep local projects not yet in DB and not in trash (in-flight inserts)
-        const pendingLocal = localProjects.filter(p => !dbNames.has(p.name) && !trashedProjNames.has(p.name));
-        // Re-insert pending projects so they survive future reloads
-        for (const p of pendingLocal) insertProjectToDb(p);
 
-        dispatch({ type: 'SET_PROJECTS', payload: [...dbMapped, ...pendingLocal] });
+        dispatch({ type: 'SET_PROJECTS', payload: dbMapped });
 
         dispatch({ type: 'SET_DB_READY' });
       } catch (e) {
