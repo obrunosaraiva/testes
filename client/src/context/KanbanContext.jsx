@@ -340,16 +340,29 @@ export function KanbanProvider({ children }) {
           dispatch({ type: 'SET_TASKS', payload: mapped });
         }
 
-        if (dbProjects && dbProjects.length) {
-          dispatch({
-            type: 'SET_PROJECTS',
-            payload: dbProjects.map(p => ({
-              id: p.id || ('p_' + p.name.replace(/[^a-z0-9]/gi, '_')),
-              name: p.name,
-              costCenter: p.cost_center || null,
-            })),
-          });
-        }
+        // Merge DB projects with local-only projects (pending insert or offline)
+        // Read directly from localStorage so timing of React state updates doesn't matter
+        let localProjects = [];
+        let trashedProjNames = new Set();
+        try {
+          const rawLocal = localStorage.getItem(SK);
+          if (rawLocal) localProjects = (JSON.parse(rawLocal).projects || []).map(normalizeProject);
+          const rawTrash = localStorage.getItem(TRASH_KEY);
+          if (rawTrash) trashedProjNames = new Set((JSON.parse(rawTrash).trashedProjects || []).map(p => p.name));
+        } catch {}
+
+        const dbMapped = (dbProjects || []).map(p => ({
+          id: p.id || ('p_' + p.name.replace(/[^a-z0-9]/gi, '_')),
+          name: p.name,
+          costCenter: p.cost_center || null,
+        }));
+        const dbNames = new Set(dbMapped.map(p => p.name));
+        // Keep local projects not yet in DB and not in trash (in-flight inserts)
+        const pendingLocal = localProjects.filter(p => !dbNames.has(p.name) && !trashedProjNames.has(p.name));
+        // Re-insert pending projects so they survive future reloads
+        for (const p of pendingLocal) insertProjectToDb(p);
+
+        dispatch({ type: 'SET_PROJECTS', payload: [...dbMapped, ...pendingLocal] });
 
         dispatch({ type: 'SET_DB_READY' });
       } catch (e) {
@@ -438,28 +451,29 @@ export function KanbanProvider({ children }) {
 
   // ── Project DB ops — targeted, never delete based on list comparison ───────
   async function insertProjectToDb(proj) {
-    try {
-      await sb.from('kanban_projects').insert({ name: proj.name, cost_center: proj.costCenter || null });
-    } catch (e) {
-      // Fallback: upsert in case it already exists
-      await sb.from('kanban_projects').upsert({ name: proj.name, cost_center: proj.costCenter || null }, { onConflict: 'name' }).catch(() => {});
+    // Note: Supabase never throws — errors come in { error } return value
+    const { error } = await sb.from('kanban_projects').insert({
+      name: proj.name,
+      cost_center: proj.costCenter || null,
+    });
+    if (error) {
+      console.warn('[Kanban] project insert failed:', error.message, '— retrying with upsert');
+      const { error: e2 } = await sb.from('kanban_projects')
+        .upsert({ name: proj.name, cost_center: proj.costCenter || null }, { onConflict: 'name' });
+      if (e2) console.warn('[Kanban] project upsert also failed:', e2.message);
     }
   }
 
   async function updateProjectInDb(proj) {
-    try {
-      await sb.from('kanban_projects').upsert({ name: proj.name, cost_center: proj.costCenter || null }, { onConflict: 'name' });
-    } catch (e) {
-      console.warn('[Kanban] updateProject DB error:', e.message);
-    }
+    const { error } = await sb.from('kanban_projects')
+      .update({ cost_center: proj.costCenter || null })
+      .eq('name', proj.name);
+    if (error) console.warn('[Kanban] updateProject DB error:', error.message);
   }
 
   async function deleteProjectFromDb(name) {
-    try {
-      await sb.from('kanban_projects').delete().eq('name', name);
-    } catch (e) {
-      console.warn('[Kanban] deleteProject DB error:', e.message);
-    }
+    const { error } = await sb.from('kanban_projects').delete().eq('name', name);
+    if (error) console.warn('[Kanban] deleteProject DB error:', error.message);
   }
 
   // ── Public actions ──────────────────────────────────────────────────────────
