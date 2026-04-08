@@ -217,6 +217,8 @@ function reducer(state, action) {
     // ── Dynamic Cost Centers ──
     case 'ADD_COST_CENTER':
       return { ...state, costCenters: [...state.costCenters, action.payload] };
+    case 'UPDATE_COST_CENTER':
+      return { ...state, costCenters: state.costCenters.map(cc => cc.key === action.payload.key ? { ...cc, ...action.payload } : cc) };
     case 'DELETE_COST_CENTER':
       return { ...state, costCenters: state.costCenters.filter(cc => cc.key !== action.payload) };
 
@@ -602,6 +604,10 @@ export function KanbanProvider({ children }) {
   function addResource(item) { dispatch({ type: 'ADD_RESOURCE', payload: { id: 'r_' + Date.now(), createdAt: new Date().toISOString(), ...item } }); }
   function deleteResource(id) { dispatch({ type: 'DELETE_RESOURCE', payload: id }); }
 
+  function updateCostCenter(key, patch) {
+    dispatch({ type: 'UPDATE_COST_CENTER', payload: { key, ...patch } });
+  }
+
   function deleteCostCenter(key) {
     dispatch({ type: 'DELETE_COST_CENTER', payload: key });
   }
@@ -620,7 +626,7 @@ export function KanbanProvider({ children }) {
       addProject, updateProject, softDeleteProject, restoreProject, permDeleteProject,
       setActiveProject, toggleCombinedProject, clearCombinedProjects,
       setView, setViewFilter, toggleCostCenterFilter, clearCostCenterFilter,
-      addCostCenter, deleteCostCenter,
+      addCostCenter, updateCostCenter, deleteCostCenter,
       addTemplate, deleteTemplate,
       addResource, deleteResource,
       saveTaskToDb, saveDraft, loadDraft, clearDraft,

@@ -14,7 +14,7 @@ export default function ProjectBar() {
     setActiveProject, toggleCombinedProject, clearCombinedProjects,
     addProject, updateProject, softDeleteProject, setViewFilter,
     toggleCostCenterFilter, clearCostCenterFilter,
-    addCostCenter, deleteCostCenter,
+    addCostCenter, updateCostCenter, deleteCostCenter,
   } = useKanban();
   const { can, userId } = useRole();
 
@@ -30,6 +30,7 @@ export default function ProjectBar() {
   const [editingProject, setEditingProject] = useState(null);
   const [combineMode, setCombineMode] = useState(false);
   const [showNewCC, setShowNewCC] = useState(false);
+  const [editingCC, setEditingCC] = useState(null);
   const [showFilters, setShowFilters] = useState(false);
   const [ConfirmDialog, confirm] = useConfirm();
 
@@ -135,10 +136,20 @@ export default function ProjectBar() {
               >
                 <span style={{ width: 7, height: 7, borderRadius: '50%', background: cc.color, flexShrink: 0 }} />
                 {cc.label}
-                {can.admin && (
+                {cc.isPrivate && <span title="Privado" style={{ fontSize: '.65rem', opacity: 0.6 }}>🔒</span>}
+                {(can.admin || cc.createdBy === userId) && (
+                  <span
+                    onClick={e => { e.stopPropagation(); setEditingCC(cc); }}
+                    style={{ marginLeft: 1, opacity: 0.4, fontSize: '.7rem', lineHeight: 1, cursor: 'pointer' }}
+                    onMouseEnter={e => e.currentTarget.style.opacity = '1'}
+                    onMouseLeave={e => e.currentTarget.style.opacity = '0.4'}
+                    title="Editar CC"
+                  >✎</span>
+                )}
+                {(can.admin || cc.createdBy === userId) && (
                   <span
                     onClick={async e => { e.stopPropagation(); const ok = await confirm(`Remover "${cc.label}" dos centros de custo?`, { title: 'Remover CC', confirmLabel: 'Remover' }); if (ok) deleteCostCenter(cc.key); }}
-                    style={{ marginLeft: 2, opacity: 0.4, fontSize: '.7rem', lineHeight: 1, cursor: 'pointer' }}
+                    style={{ marginLeft: 1, opacity: 0.4, fontSize: '.7rem', lineHeight: 1, cursor: 'pointer' }}
                     onMouseEnter={e => e.currentTarget.style.opacity = '1'}
                     onMouseLeave={e => e.currentTarget.style.opacity = '0.4'}
                     title="Remover CC"
@@ -249,6 +260,13 @@ export default function ProjectBar() {
         <NewCostCenterModal
           onClose={() => setShowNewCC(false)}
           onCreate={(label, color, isPrivate) => { addCostCenter(label, color, isPrivate, userId); setShowNewCC(false); }}
+        />
+      )}
+      {editingCC && (
+        <EditCostCenterModal
+          cc={editingCC}
+          onClose={() => setEditingCC(null)}
+          onSave={(patch) => { updateCostCenter(editingCC.key, patch); setEditingCC(null); }}
         />
       )}
       {ConfirmDialog}
@@ -409,6 +427,60 @@ function CostCenterPicker({ costCenters, value, onChange }) {
           <span style={{ fontSize: '.85rem', fontWeight: value === key ? 600 : 400 }}>{label}</span>
         </label>
       ))}
+    </div>
+  );
+}
+
+function EditCostCenterModal({ cc, onClose, onSave }) {
+  const [label, setLabel] = useState(cc.label);
+  const [color, setColor] = useState(cc.color);
+  const [isPrivate, setIsPrivate] = useState(cc.isPrivate || false);
+
+  function handleSubmit(e) {
+    e.preventDefault();
+    if (!label.trim()) return;
+    onSave({ label: label.trim(), color, isPrivate });
+  }
+
+  return (
+    <div className="modal-overlay active" onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
+      <div className="modal" style={{ maxWidth: 360 }} onClick={e => e.stopPropagation()}>
+        <div className="modal-head">
+          <h2>✎ Editar Centro de Custo</h2>
+          <button className="modal-close" onClick={onClose}>&times;</button>
+        </div>
+        <form onSubmit={handleSubmit}>
+          <div className="modal-body">
+            <div>
+              <label className="field-label">Nome</label>
+              <input value={label} onChange={e => setLabel(e.target.value)} autoFocus />
+            </div>
+            <div>
+              <label className="field-label">Cor</label>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+                {PRESET_COLORS.map(c => (
+                  <button key={c} type="button" onClick={() => setColor(c)} style={{ width: 28, height: 28, borderRadius: '50%', background: c, border: 'none', cursor: 'pointer', outline: color === c ? `3px solid ${c}` : '3px solid transparent', outlineOffset: 2, transition: 'outline .1s' }} />
+                ))}
+                <input type="color" value={color} onChange={e => setColor(e.target.value)} style={{ width: 28, height: 28, padding: 1, borderRadius: '50%', border: '1px solid var(--border)', cursor: 'pointer', background: 'none' }} title="Cor personalizada" />
+              </div>
+            </div>
+            {/* Privacy toggle */}
+            <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', padding: '8px 12px', borderRadius: 8, background: isPrivate ? 'var(--surface3)' : 'var(--surface2)', border: `1px solid ${isPrivate ? 'var(--accent)' : 'var(--border)'}`, transition: 'all .15s' }}>
+              <input type="checkbox" checked={isPrivate} onChange={e => setIsPrivate(e.target.checked)} />
+              <div>
+                <div style={{ fontSize: '.85rem', fontWeight: 600 }}>{isPrivate ? '🔒 Privado' : '🌐 Público'}</div>
+                <div style={{ fontSize: '.72rem', color: 'var(--text-muted)' }}>
+                  {isPrivate ? 'Só você vê este CC, seus projetos e tarefas' : 'Todos os usuários visualizam este CC'}
+                </div>
+              </div>
+            </label>
+            <div style={{ display: 'flex', gap: 10, paddingTop: 4 }}>
+              <button type="button" className="btn btn-ghost" style={{ flex: 1 }} onClick={onClose}>Cancelar</button>
+              <button type="submit" className="btn btn-primary" style={{ flex: 1 }}>Salvar</button>
+            </div>
+          </div>
+        </form>
+      </div>
     </div>
   );
 }
