@@ -166,6 +166,7 @@ export default function TaskModal({ taskId, defaultStatus, onClose }) {
       confirmLabel: 'Mover',
     });
     if (!ok) return;
+    clearTimeout(autosaveTimer.current); // cancel any pending autosave before deleting
     softDeleteTask(task.id, userId || '');
     clearDraft();
     onClose();

@@ -232,6 +232,7 @@ const KanbanContext = createContext(null);
 export function KanbanProvider({ children }) {
   const [state, dispatch] = useReducer(reducer, initialState);
   const stateRef = useRef(state);
+  const deletedIds = useRef(new Set()); // tracks IDs deleted this session — blocks any in-flight autosave upsert
   useEffect(() => { stateRef.current = state; }, [state]);
 
   // ── Persist to localStorage ─────────────────────────────────────────────────
@@ -297,7 +298,8 @@ export function KanbanProvider({ children }) {
       try {
         const [{ data: dbProjects }, { data: tasks, error: taskError }] = await Promise.all([
           sb.from('kanban_projects').select('*').order('created_at'),
-          sb.from('kanban_tasks').select('*').order('created_at'),
+          // Filter out soft-deleted rows (deleted = true). Column may not exist yet — fallback below.
+          sb.from('kanban_tasks').select('*').neq('deleted', true).order('created_at'),
         ]);
         if (taskError) throw taskError;
 
@@ -344,7 +346,12 @@ export function KanbanProvider({ children }) {
           dispatch({ type: 'UPSERT_TASK', payload: normalizeTask(row) });
         })
         .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'kanban_tasks' }, ({ new: row }) => {
-          dispatch({ type: 'UPSERT_TASK', payload: normalizeTask(row) });
+          // If the row was soft-deleted, remove it from the board on all devices immediately
+          if (row?.deleted) {
+            if (row.id) dispatch({ type: 'REMOVE_TASK_BY_ID', payload: row.id });
+          } else {
+            dispatch({ type: 'UPSERT_TASK', payload: normalizeTask(row) });
+          }
         })
         .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'kanban_tasks' }, ({ old: row }) => {
           if (row?.id) dispatch({ type: 'REMOVE_TASK_BY_ID', payload: row.id });
@@ -374,8 +381,9 @@ export function KanbanProvider({ children }) {
 
   // ── Supabase task save ──────────────────────────────────────────────────────
   async function saveTaskToDb(task) {
-    // Guard: if task was soft-deleted while this save was in-flight, skip it.
-    // This prevents race conditions where autosave upserts a task after it was deleted.
+    // Guard 1: task was explicitly deleted this session (blocks in-flight upserts)
+    if (deletedIds.current.has(task.id)) return;
+    // Guard 2: task was removed from state (soft-deleted)
     if (!stateRef.current.tasks.some(t => t.id === task.id)) return;
     const row = {
       id: task.id,
@@ -396,11 +404,12 @@ export function KanbanProvider({ children }) {
       attachments: JSON.stringify(task.attachments || []),
       ticket_goal: task.ticketGoal !== '' && task.ticketGoal != null ? Number(task.ticketGoal) : null,
       tickets_sold: task.ticketsSold !== '' && task.ticketsSold != null ? Number(task.ticketsSold) : null,
+      deleted: false, // explicitly mark as not deleted so a race upsert never revives a deleted task
     };
     const { error } = await sb.from('kanban_tasks').upsert(row, { onConflict: 'id' });
     if (error) {
       // Fallback: strip columns that may not exist in older DB schemas
-      const { deadline_time, is_event, event_start_date, event_end_date, card_color, ticket_goal, tickets_sold, ...basic } = row;
+      const { deadline_time, is_event, event_start_date, event_end_date, card_color, ticket_goal, tickets_sold, deleted, ...basic } = row;
       await sb.from('kanban_tasks').upsert(basic, { onConflict: 'id' }).catch(() => {});
     }
   }
@@ -442,10 +451,22 @@ export function KanbanProvider({ children }) {
   }
 
   function softDeleteTask(id, deletedBy = '') {
+    // Track in session so saveTaskToDb never upserts a deleted task
+    deletedIds.current.add(id);
     dispatch({ type: 'SOFT_DELETE_TASK', payload: { id, deletedAt: new Date().toISOString(), deletedBy } });
-    // Delete immediately — the guard in saveTaskToDb (checks stateRef) prevents
-    // any in-flight autosave from re-inserting it. SET_TASKS also filters trashed IDs.
-    sb.from('kanban_tasks').delete().eq('id', id).catch(() => {});
+    // Step 1: UPDATE deleted=true — fires Realtime UPDATE event to ALL devices immediately
+    // Step 2: Hard DELETE to clean the row from the table
+    sb.from('kanban_tasks')
+      .update({ deleted: true })
+      .eq('id', id)
+      .then(({ error }) => {
+        if (error) console.warn('[Kanban] soft-delete flag failed:', error.message, '— trying hard delete anyway');
+        return sb.from('kanban_tasks').delete().eq('id', id);
+      })
+      .then(({ error }) => {
+        if (error) console.warn('[Kanban] hard delete failed:', error.message, '— task may reappear on refresh');
+      })
+      .catch(e => console.warn('[Kanban] delete error:', e.message));
   }
 
   function restoreTask(id) {
