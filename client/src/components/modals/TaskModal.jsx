@@ -41,8 +41,8 @@ const EMPTY_FORM = {
   links: [],
 };
 
-export default function TaskModal({ taskId, defaultStatus, onClose }) {
-  const { tasks, projects, addTask, updateTask, softDeleteTask, saveDraft, loadDraft, clearDraft } = useKanban();
+export default function TaskModal({ taskId, defaultStatus, templateData, onClose }) {
+  const { tasks, projects, addTask, updateTask, softDeleteTask, saveDraft, loadDraft, clearDraft, templates, addTemplate } = useKanban();
   const { can, userId } = useRole();
   const [ConfirmDialog, confirm] = useConfirm();
 
@@ -82,29 +82,30 @@ export default function TaskModal({ taskId, defaultStatus, onClose }) {
       setChecklist(JSON.parse(JSON.stringify(task.checklist || [])));
       setAttachments(JSON.parse(JSON.stringify(task.attachments || [])));
     } else {
-      // New task — restore draft if exists
-      const draft = loadDraft();
-      if (draft) {
+      // New task — template takes priority, then draft, then blank
+      const src = templateData || loadDraft();
+      if (src) {
         setForm({
-          title: draft.title || '',
-          description: draft.description || '',
-          project: draft.project || (projects[0]?.name || ''),
-          status: draft.status || defaultStatus || 'backlog',
-          assignee: draft.assignee || '',
-          urgency: draft.urgency || '',
-          startDate: draft.startDate || '',
-          deadline: draft.deadline || '',
-          deadlineTime: draft.deadlineTime || '',
-          isEvent: draft.isEvent || false,
-          eventType: draft.eventType || 'presencial',
-          eventStartDate: draft.eventStartDate || '',
-          eventEndDate: draft.eventEndDate || '',
-          cardColor: draft.cardColor || 'none',
-          ticketGoal: draft.ticketGoal ?? '',
-          ticketsSold: draft.ticketsSold ?? '',
-          links: draft.links || [],
+          title: src.title || '',
+          description: src.description || '',
+          project: src.project || (projects[0]?.name || ''),
+          status: src.status || defaultStatus || 'backlog',
+          assignee: src.assignee || '',
+          urgency: src.urgency || '',
+          startDate: src.startDate || '',
+          deadline: src.deadline || '',
+          deadlineTime: src.deadlineTime || '',
+          isEvent: src.isEvent || false,
+          eventType: src.eventType || 'presencial',
+          eventStartDate: src.eventStartDate || '',
+          eventEndDate: src.eventEndDate || '',
+          cardColor: src.cardColor || 'none',
+          ticketGoal: src.ticketGoal ?? '',
+          ticketsSold: src.ticketsSold ?? '',
+          links: src.links || [],
         });
-        setChecklist(draft.checklist || []);
+        setChecklist(JSON.parse(JSON.stringify(src.checklist || [])));
+        setAttachments([]);
       } else {
         setForm(f => ({
           ...EMPTY_FORM,
@@ -115,7 +116,7 @@ export default function TaskModal({ taskId, defaultStatus, onClose }) {
         setAttachments([]);
       }
     }
-  }, [taskId]);
+  }, [taskId, templateData]);
 
   // Draft auto-save for new tasks
   useEffect(() => {
@@ -137,10 +138,13 @@ export default function TaskModal({ taskId, defaultStatus, onClose }) {
     }, 1500);
   }, [form, checklist, attachments, isNew, task]);
 
-  // Trigger autosave when form/checklist changes (edit mode only)
+  // Cleanup autosave timer on unmount
+  useEffect(() => () => clearTimeout(autosaveTimer.current), []);
+
+  // Trigger autosave when form/checklist/attachments change (edit mode only)
   useEffect(() => {
     if (!isNew && task) triggerAutosave();
-  }, [form, checklist]);
+  }, [form, checklist, attachments, triggerAutosave]);
 
   function setField(key, value) {
     setForm(f => ({ ...f, [key]: value }));
@@ -205,7 +209,6 @@ export default function TaskModal({ taskId, defaultStatus, onClose }) {
   }
 
   // Templates
-  const { templates, addTemplate } = useKanban();
   function handleSaveAsTemplate() {
     const name = prompt('Nome do template:');
     if (!name?.trim()) return;
