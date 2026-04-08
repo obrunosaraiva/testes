@@ -101,6 +101,8 @@ function reducer(state, action) {
       return { ...state, tasks: state.tasks.map(t => t.id === action.payload.id ? action.payload : t) };
     // Realtime: insert or update from another device
     case 'UPSERT_TASK': {
+      // Never re-add a task that is in the trash (handles race: upsert arrives after delete)
+      if (state.trashedTasks.some(t => t.id === action.payload.id)) return state;
       const exists = state.tasks.some(t => t.id === action.payload.id);
       return { ...state, tasks: exists
         ? state.tasks.map(t => t.id === action.payload.id ? action.payload : t)
@@ -367,6 +369,9 @@ export function KanbanProvider({ children }) {
 
   // ── Supabase task save ──────────────────────────────────────────────────────
   async function saveTaskToDb(task) {
+    // Guard: if task was soft-deleted while this save was in-flight, skip it.
+    // This prevents race conditions where autosave upserts a task after it was deleted.
+    if (!stateRef.current.tasks.some(t => t.id === task.id)) return;
     const row = {
       id: task.id,
       title: task.title,
@@ -430,7 +435,11 @@ export function KanbanProvider({ children }) {
 
   function softDeleteTask(id, deletedBy = '') {
     dispatch({ type: 'SOFT_DELETE_TASK', payload: { id, deletedAt: new Date().toISOString(), deletedBy } });
-    sb.from('kanban_tasks').delete().eq('id', id).catch(() => {});
+    // Small delay so any in-flight upsert (autosave) completes first,
+    // then the guard in saveTaskToDb blocks it, and the delete wins.
+    setTimeout(() => {
+      sb.from('kanban_tasks').delete().eq('id', id).catch(() => {});
+    }, 300);
   }
 
   function restoreTask(id) {
