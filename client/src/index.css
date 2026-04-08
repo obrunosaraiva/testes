@@ -206,12 +206,10 @@ select option { background: var(--surface2); }
   /* Show add-task button in single column view */
   .add-card-btn { display: block; }
 
-  /* Grids collapse to single column */
-  .form-grid-2,
-  .form-grid-3,
-  .form-grid-cl {
-    grid-template-columns: 1fr !important;
-  }
+  /* Grids collapse */
+  .form-grid-2  { grid-template-columns: 1fr !important; }
+  .form-grid-3  { grid-template-columns: 1fr 1fr !important; } /* dates side-by-side, time wraps */
+  .form-grid-cl { grid-template-columns: 1fr 1fr !important; } /* assignee+date side-by-side */
 
   /* Event stats: 4 cols → 2 cols */
   .form-grid-4 { grid-template-columns: repeat(2, 1fr) !important; }
