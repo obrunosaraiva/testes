@@ -1,34 +1,33 @@
 import { useState } from 'react';
-import { useKanban, COST_CENTERS } from '../../context/KanbanContext';
+import { useKanban } from '../../context/KanbanContext';
 import { useRole } from '../../context/RoleContext';
 
-const CC_KEYS = Object.keys(COST_CENTERS);
+const PRESET_COLORS = [
+  '#eab308','#f59e0b','#ef4444','#ec4899','#a855f7',
+  '#6366f1','#3b82f6','#22c55e','#14b8a6','#64748b',
+];
 
 export default function ProjectBar() {
   const {
-    projects, tasks, activeProject, combinedProjects, viewFilter, costCenterFilter,
+    projects, tasks, activeProject, combinedProjects, viewFilter, costCenterFilter, costCenters,
     setActiveProject, toggleCombinedProject, clearCombinedProjects,
     addProject, updateProject, softDeleteProject, setViewFilter,
     toggleCostCenterFilter, clearCostCenterFilter,
+    addCostCenter, deleteCostCenter,
   } = useKanban();
   const { can } = useRole();
 
   const [showNewModal, setShowNewModal] = useState(false);
-  const [editingProject, setEditingProject] = useState(null); // project object
+  const [editingProject, setEditingProject] = useState(null);
   const [combineMode, setCombineMode] = useState(false);
+  const [showNewCC, setShowNewCC] = useState(false);
 
   const allCount = tasks.length;
   const isCombining = combinedProjects.length > 0;
 
-  function handleAddProject() { setShowNewModal(true); }
-
   function handleDeleteProject(proj) {
     if (!confirm(`Mover "${proj.name}" para a lixeira?`)) return;
     softDeleteProject(proj.id);
-  }
-
-  function handleToggleCombine(projName) {
-    toggleCombinedProject(projName);
   }
 
   function exitCombineMode() {
@@ -82,30 +81,56 @@ export default function ProjectBar() {
         </div>
 
         {/* Cost center filter */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '0 24px 8px', flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 24px 8px', flexWrap: 'wrap' }}>
           <span style={{ fontSize: '.72rem', color: 'var(--text-muted)', marginRight: 2 }}>CC:</span>
-          {CC_KEYS.map(cc => {
-            const active = costCenterFilter.includes(cc);
-            const { color, label } = COST_CENTERS[cc];
+          {costCenters.map(cc => {
+            const active = costCenterFilter.includes(cc.key);
             return (
               <button
-                key={cc}
-                onClick={() => toggleCostCenterFilter(cc)}
+                key={cc.key}
+                onClick={() => toggleCostCenterFilter(cc.key)}
                 style={{
                   display: 'flex', alignItems: 'center', gap: 5,
                   padding: '2px 10px', borderRadius: 20, cursor: 'pointer', fontSize: '.75rem',
-                  background: active ? color + '22' : 'var(--surface2)',
-                  border: `1px solid ${active ? color : 'var(--border)'}`,
-                  color: active ? color : 'var(--text-muted)',
+                  background: active ? cc.color + '22' : 'var(--surface2)',
+                  border: `1px solid ${active ? cc.color : 'var(--border)'}`,
+                  color: active ? cc.color : 'var(--text-muted)',
                   fontWeight: active ? 700 : 400,
                   transition: 'all .15s',
                 }}
               >
-                <span style={{ width: 7, height: 7, borderRadius: '50%', background: color, flexShrink: 0 }} />
-                {label}
+                <span style={{ width: 7, height: 7, borderRadius: '50%', background: cc.color, flexShrink: 0 }} />
+                {cc.label}
+                {can.admin && (
+                  <span
+                    onClick={e => { e.stopPropagation(); if (confirm(`Remover centro de custo "${cc.label}"?`)) deleteCostCenter(cc.key); }}
+                    style={{ marginLeft: 2, opacity: 0.4, fontSize: '.7rem', lineHeight: 1, cursor: 'pointer' }}
+                    onMouseEnter={e => e.currentTarget.style.opacity = '1'}
+                    onMouseLeave={e => e.currentTarget.style.opacity = '0.4'}
+                    title="Remover CC"
+                  >×</span>
+                )}
               </button>
             );
           })}
+
+          {/* Add CC button */}
+          {can.admin && (
+            <button
+              onClick={() => setShowNewCC(true)}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 4,
+                padding: '2px 10px', borderRadius: 20, cursor: 'pointer', fontSize: '.75rem',
+                background: 'transparent', border: '1px dashed var(--border)',
+                color: 'var(--text-muted)', transition: 'all .15s',
+              }}
+              onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--accent)'; e.currentTarget.style.color = 'var(--accent)'; }}
+              onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.color = 'var(--text-muted)'; }}
+            >
+              + CC
+            </button>
+          )}
+
           {costCenterFilter.length > 0 && (
             <button
               onClick={clearCostCenterFilter}
@@ -124,6 +149,7 @@ export default function ProjectBar() {
               count={allCount}
               active={activeProject === '__all__'}
               onClick={() => setActiveProject('__all__')}
+              costCenters={costCenters}
             />
           )}
 
@@ -133,10 +159,11 @@ export default function ProjectBar() {
               label={proj.name}
               count={tasks.filter(t => t.project === proj.name).length}
               costCenter={proj.costCenter}
+              costCenters={costCenters}
               active={combineMode || isCombining ? combinedProjects.includes(proj.name) : activeProject === proj.name}
               onClick={() => {
                 if (combineMode || isCombining) {
-                  handleToggleCombine(proj.name);
+                  toggleCombinedProject(proj.name);
                 } else {
                   setActiveProject(proj.name);
                 }
@@ -150,7 +177,7 @@ export default function ProjectBar() {
 
           {can.create && (
             <button
-              onClick={handleAddProject}
+              onClick={() => setShowNewModal(true)}
               style={{
                 padding: '5px 12px', borderRadius: 20, flexShrink: 0,
                 background: 'transparent', border: '1px dashed var(--border)',
@@ -168,6 +195,7 @@ export default function ProjectBar() {
 
       {showNewModal && (
         <NewProjectModal
+          costCenters={costCenters}
           onClose={() => setShowNewModal(false)}
           onCreate={(name, cc) => { addProject(name, cc); setShowNewModal(false); }}
         />
@@ -176,16 +204,24 @@ export default function ProjectBar() {
       {editingProject && (
         <EditProjectModal
           project={editingProject}
+          costCenters={costCenters}
           onClose={() => setEditingProject(null)}
           onSave={(patch) => { updateProject(editingProject.id, patch); setEditingProject(null); }}
+        />
+      )}
+
+      {showNewCC && (
+        <NewCostCenterModal
+          onClose={() => setShowNewCC(false)}
+          onCreate={(label, color) => { addCostCenter(label, color); setShowNewCC(false); }}
         />
       )}
     </>
   );
 }
 
-function ProjectTab({ label, count, costCenter, active, onClick, onEdit, onDelete, combineMode, combined }) {
-  const cc = costCenter && COST_CENTERS[costCenter];
+function ProjectTab({ label, count, costCenter, costCenters = [], active, onClick, onEdit, onDelete, combineMode, combined }) {
+  const ccObj = costCenter && costCenters.find(c => c.key === costCenter);
   return (
     <div
       onClick={onClick}
@@ -201,11 +237,10 @@ function ProjectTab({ label, count, costCenter, active, onClick, onEdit, onDelet
         outlineOffset: 1,
       }}
     >
-      {/* Cost center dot */}
-      {cc && (
+      {ccObj && (
         <span style={{
           width: 8, height: 8, borderRadius: '50%', flexShrink: 0,
-          background: cc.color,
+          background: ccObj.color,
           border: active ? '1px solid rgba(255,255,255,.4)' : '1px solid transparent',
         }} title={`Centro de custo: ${costCenter}`} />
       )}
@@ -242,7 +277,7 @@ function ProjectTab({ label, count, costCenter, active, onClick, onEdit, onDelet
   );
 }
 
-function NewProjectModal({ onClose, onCreate }) {
+function NewProjectModal({ costCenters, onClose, onCreate }) {
   const [name, setName] = useState('');
   const [cc, setCc] = useState('');
 
@@ -267,24 +302,7 @@ function NewProjectModal({ onClose, onCreate }) {
             </div>
             <div>
               <label className="field-label">Centro de custo</label>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2,1fr)', gap: 8 }}>
-                {[['', 'Nenhum', '#6b7280'], ...CC_KEYS.map(k => [k, COST_CENTERS[k].label, COST_CENTERS[k].color])].map(([val, label, color]) => (
-                  <label
-                    key={val}
-                    style={{
-                      display: 'flex', alignItems: 'center', gap: 8,
-                      padding: '8px 12px', borderRadius: 8, cursor: 'pointer',
-                      background: cc === val ? 'var(--surface3)' : 'var(--surface2)',
-                      border: `1px solid ${cc === val ? color : 'var(--border)'}`,
-                      transition: 'all .15s',
-                    }}
-                  >
-                    <input type="radio" name="cc" value={val} checked={cc === val} onChange={() => setCc(val)} style={{ display: 'none' }} />
-                    <span style={{ width: 10, height: 10, borderRadius: '50%', background: color, flexShrink: 0 }} />
-                    <span style={{ fontSize: '.85rem', fontWeight: cc === val ? 600 : 400 }}>{label}</span>
-                  </label>
-                ))}
-              </div>
+              <CostCenterPicker costCenters={costCenters} value={cc} onChange={setCc} />
             </div>
             <div style={{ display: 'flex', gap: 10, paddingTop: 4 }}>
               <button type="button" className="btn btn-ghost" style={{ flex: 1 }} onClick={onClose}>Cancelar</button>
@@ -297,7 +315,7 @@ function NewProjectModal({ onClose, onCreate }) {
   );
 }
 
-function EditProjectModal({ project, onClose, onSave }) {
+function EditProjectModal({ project, costCenters, onClose, onSave }) {
   const [name, setName] = useState(project.name);
   const [cc, setCc] = useState(project.costCenter || '');
 
@@ -322,28 +340,97 @@ function EditProjectModal({ project, onClose, onSave }) {
             </div>
             <div>
               <label className="field-label">Centro de custo</label>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2,1fr)', gap: 8 }}>
-                {[['', 'Nenhum', '#6b7280'], ...CC_KEYS.map(k => [k, COST_CENTERS[k].label, COST_CENTERS[k].color])].map(([val, label, color]) => (
-                  <label
-                    key={val}
-                    style={{
-                      display: 'flex', alignItems: 'center', gap: 8,
-                      padding: '8px 12px', borderRadius: 8, cursor: 'pointer',
-                      background: cc === val ? 'var(--surface3)' : 'var(--surface2)',
-                      border: `1px solid ${cc === val ? color : 'var(--border)'}`,
-                      transition: 'all .15s',
-                    }}
-                  >
-                    <input type="radio" name="cc" value={val} checked={cc === val} onChange={() => setCc(val)} style={{ display: 'none' }} />
-                    <span style={{ width: 10, height: 10, borderRadius: '50%', background: color, flexShrink: 0 }} />
-                    <span style={{ fontSize: '.85rem', fontWeight: cc === val ? 600 : 400 }}>{label}</span>
-                  </label>
-                ))}
-              </div>
+              <CostCenterPicker costCenters={costCenters} value={cc} onChange={setCc} />
             </div>
             <div style={{ display: 'flex', gap: 10, paddingTop: 4 }}>
               <button type="button" className="btn btn-ghost" style={{ flex: 1 }} onClick={onClose}>Cancelar</button>
               <button type="submit" className="btn btn-primary" style={{ flex: 1 }}>Salvar</button>
+            </div>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+function CostCenterPicker({ costCenters, value, onChange }) {
+  const options = [{ key: '', label: 'Nenhum', color: '#6b7280' }, ...costCenters];
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2,1fr)', gap: 8 }}>
+      {options.map(({ key, label, color }) => (
+        <label
+          key={key}
+          style={{
+            display: 'flex', alignItems: 'center', gap: 8,
+            padding: '8px 12px', borderRadius: 8, cursor: 'pointer',
+            background: value === key ? 'var(--surface3)' : 'var(--surface2)',
+            border: `1px solid ${value === key ? color : 'var(--border)'}`,
+            transition: 'all .15s',
+          }}
+        >
+          <input type="radio" name="cc" value={key} checked={value === key} onChange={() => onChange(key)} style={{ display: 'none' }} />
+          <span style={{ width: 10, height: 10, borderRadius: '50%', background: color, flexShrink: 0 }} />
+          <span style={{ fontSize: '.85rem', fontWeight: value === key ? 600 : 400 }}>{label}</span>
+        </label>
+      ))}
+    </div>
+  );
+}
+
+function NewCostCenterModal({ onClose, onCreate }) {
+  const [label, setLabel] = useState('');
+  const [color, setColor] = useState(PRESET_COLORS[0]);
+
+  function handleSubmit(e) {
+    e.preventDefault();
+    if (!label.trim()) return;
+    onCreate(label.trim(), color);
+  }
+
+  return (
+    <div className="modal-overlay active" onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
+      <div className="modal" style={{ maxWidth: 360 }} onClick={e => e.stopPropagation()}>
+        <div className="modal-head">
+          <h2>+ Novo Centro de Custo</h2>
+          <button className="modal-close" onClick={onClose}>&times;</button>
+        </div>
+        <form onSubmit={handleSubmit}>
+          <div className="modal-body">
+            <div>
+              <label className="field-label">Nome</label>
+              <input value={label} onChange={e => setLabel(e.target.value)} placeholder="Ex: Marketing..." autoFocus />
+            </div>
+            <div>
+              <label className="field-label">Cor</label>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+                {PRESET_COLORS.map(c => (
+                  <button
+                    key={c}
+                    type="button"
+                    onClick={() => setColor(c)}
+                    style={{
+                      width: 28, height: 28, borderRadius: '50%', background: c, border: 'none', cursor: 'pointer',
+                      outline: color === c ? `3px solid ${c}` : '3px solid transparent',
+                      outlineOffset: 2, transition: 'outline .1s',
+                    }}
+                  />
+                ))}
+                <input
+                  type="color"
+                  value={color}
+                  onChange={e => setColor(e.target.value)}
+                  style={{ width: 28, height: 28, padding: 1, borderRadius: '50%', border: '1px solid var(--border)', cursor: 'pointer', background: 'none' }}
+                  title="Cor personalizada"
+                />
+              </div>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 4 }}>
+              <span style={{ width: 12, height: 12, borderRadius: '50%', background: color, flexShrink: 0 }} />
+              <span style={{ fontSize: '.85rem', color: 'var(--text-muted)' }}>{label || 'Prévia'}</span>
+            </div>
+            <div style={{ display: 'flex', gap: 10, paddingTop: 4 }}>
+              <button type="button" className="btn btn-ghost" style={{ flex: 1 }} onClick={onClose}>Cancelar</button>
+              <button type="submit" className="btn btn-primary" style={{ flex: 1 }}>Criar CC</button>
             </div>
           </div>
         </form>

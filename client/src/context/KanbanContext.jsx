@@ -2,12 +2,20 @@ import { createContext, useContext, useReducer, useEffect, useRef, useCallback }
 import { sb } from '../lib/supabase';
 
 // ─── Cost Centers ─────────────────────────────────────────────────────────────
+// Static export kept for any legacy references; dynamic list lives in state
 export const COST_CENTERS = {
   IBEC:  { label: 'IBEC',  color: '#eab308' },
   GH:    { label: 'GH',    color: '#3b82f6' },
   Leanx: { label: 'Leanx', color: '#ef4444' },
   Up3:   { label: 'Up3',   color: '#22c55e' },
 };
+
+export const DEFAULT_COST_CENTERS = [
+  { key: 'IBEC',  label: 'IBEC',  color: '#eab308' },
+  { key: 'GH',    label: 'GH',    color: '#3b82f6' },
+  { key: 'Leanx', label: 'Leanx', color: '#ef4444' },
+  { key: 'Up3',   label: 'Up3',   color: '#22c55e' },
+];
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function parseJsonField(value) {
@@ -58,6 +66,7 @@ const initialState = {
   trashedTasks: [],
   trashedProjects: [],
   templates: [],
+  costCenters: DEFAULT_COST_CENTERS,
   activeProject: '__all__',
   combinedProjects: [],       // array of project names for multi-view
   viewFilter: 'all',          // 'all' | 'events' | 'tasks'
@@ -183,6 +192,12 @@ function reducer(state, action) {
     case 'CLEAR_COST_CENTER_FILTER':
       return { ...state, costCenterFilter: [] };
 
+    // ── Dynamic Cost Centers ──
+    case 'ADD_COST_CENTER':
+      return { ...state, costCenters: [...state.costCenters, action.payload] };
+    case 'DELETE_COST_CENTER':
+      return { ...state, costCenters: state.costCenters.filter(cc => cc.key !== action.payload) };
+
     // ── Templates ──
     case 'ADD_TEMPLATE':
       return { ...state, templates: [...state.templates, action.payload] };
@@ -213,6 +228,7 @@ export function KanbanProvider({ children }) {
         view: s.view,
         viewFilter: s.viewFilter,
         costCenterFilter: s.costCenterFilter,
+        costCenters: s.costCenters,
       }));
       localStorage.setItem(TRASH_KEY, JSON.stringify({
         trashedTasks: s.trashedTasks,
@@ -242,7 +258,8 @@ export function KanbanProvider({ children }) {
             activeProject: p.activeProject || '__all__',
             view: p.view || 'board',
             viewFilter: p.viewFilter || 'all',
-        costCenterFilter: p.costCenterFilter || [],
+            costCenterFilter: p.costCenterFilter || [],
+            costCenters: p.costCenters || DEFAULT_COST_CENTERS,
           },
         });
       }
@@ -440,6 +457,18 @@ export function KanbanProvider({ children }) {
   function setViewFilter(f) { dispatch({ type: 'SET_VIEW_FILTER', payload: f }); }
   function toggleCostCenterFilter(cc) { dispatch({ type: 'TOGGLE_COST_CENTER_FILTER', payload: cc }); }
   function clearCostCenterFilter() { dispatch({ type: 'CLEAR_COST_CENTER_FILTER' }); }
+
+  function addCostCenter(label, color) {
+    const key = label.trim().replace(/\s+/g, '_').toUpperCase().slice(0, 20);
+    const unique = stateRef.current.costCenters.some(cc => cc.key === key)
+      ? key + '_' + Date.now().toString(36).slice(-4)
+      : key;
+    dispatch({ type: 'ADD_COST_CENTER', payload: { key: unique, label: label.trim(), color } });
+  }
+
+  function deleteCostCenter(key) {
+    dispatch({ type: 'DELETE_COST_CENTER', payload: key });
+  }
   function addTemplate(tpl) { dispatch({ type: 'ADD_TEMPLATE', payload: tpl }); }
   function deleteTemplate(id) { dispatch({ type: 'DELETE_TEMPLATE', payload: id }); }
 
@@ -455,6 +484,7 @@ export function KanbanProvider({ children }) {
       addProject, updateProject, softDeleteProject, restoreProject, permDeleteProject,
       setActiveProject, toggleCombinedProject, clearCombinedProjects,
       setView, setViewFilter, toggleCostCenterFilter, clearCostCenterFilter,
+      addCostCenter, deleteCostCenter,
       addTemplate, deleteTemplate,
       saveTaskToDb, saveDraft, loadDraft, clearDraft,
     }}>
