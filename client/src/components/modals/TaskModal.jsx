@@ -327,7 +327,7 @@ export default function TaskModal({ taskId, defaultStatus, onClose }) {
           {/* Color picker */}
           <div>
             <label className="field-label">Cor do card</label>
-            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <div className="color-picker">
               {CARD_COLORS.map(c => (
                 <div
                   key={c}
@@ -420,14 +420,12 @@ export default function TaskModal({ taskId, defaultStatus, onClose }) {
           </button>
 
           {/* Actions */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, paddingTop: 4 }}>
+          <div className="modal-actions">
             {!isNew && can.delete && (
               <button className="btn btn-danger" onClick={handleDelete}>🗑 Lixeira</button>
             )}
-            <div style={{ marginLeft: 'auto', display: 'flex', gap: 10 }}>
-              <button className="btn btn-ghost" onClick={onClose}>Cancelar</button>
-              <button className="btn btn-primary" onClick={handleSave}>Salvar</button>
-            </div>
+            <button className="btn btn-ghost modal-actions-push" onClick={onClose}>Cancelar</button>
+            <button className="btn btn-primary" onClick={handleSave}>Salvar</button>
           </div>
         </div>
       </div>
@@ -483,7 +481,7 @@ function EventSalesTracker({ form, setField }) {
       </div>
 
       {/* Stats */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 8, textAlign: 'center' }}>
+      <div className="form-grid-4">
         {[
           { value: daysRemaining, label: 'dias restantes', color: daysRemaining <= 7 ? '#ef4444' : 'var(--text)' },
           { value: goal || '—', label: 'meta', color: 'var(--text)' },
@@ -534,7 +532,7 @@ function EventSalesTracker({ form, setField }) {
 
       {/* Pace */}
       {goal > 0 && (
-        <div style={{ background: 'var(--surface3)', borderRadius: 8, padding: '10px 14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div className="pacing-row">
           <div>
             <div style={{ fontSize: '.7rem', color: 'var(--text-muted)', marginBottom: 2 }}>📊 Pacing diário necessário</div>
             <div style={{ fontSize: '.72rem', color: 'var(--text-muted)' }}>
@@ -551,7 +549,7 @@ function EventSalesTracker({ form, setField }) {
       )}
 
       {/* Inputs */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+      <div className="form-grid-2">
         <div>
           <label className="field-label">🎯 Meta de ingressos</label>
           <input type="number" min="0" value={form.ticketGoal} onChange={e => setField('ticketGoal', e.target.value)} placeholder="Ex: 500" />

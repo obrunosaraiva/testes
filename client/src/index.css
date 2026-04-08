@@ -152,6 +152,11 @@ select option { background: var(--surface2); }
 .form-grid-2  { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .form-grid-3  { display: grid; grid-template-columns: 1fr 1fr 140px; gap: 12px; }
 .form-grid-cl { display: grid; grid-template-columns: 1fr 140px 110px; gap: 6px; margin-top: 6px; }
+.form-grid-4  { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; text-align: center; }
+.color-picker { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.modal-actions { display: flex; align-items: center; gap: 10px; padding-top: 4px; flex-wrap: wrap; }
+.modal-actions-push { margin-left: auto; }
+.pacing-row { display: flex; align-items: center; justify-content: space-between; background: var(--surface3); border-radius: 8px; padding: 10px 14px; }
 
 /* CC filter collapsible on mobile */
 .cc-filter-row { display: flex; }
@@ -194,6 +199,22 @@ select option { background: var(--surface2); }
   .form-grid-cl {
     grid-template-columns: 1fr !important;
   }
+
+  /* Event stats: 4 cols → 2 cols */
+  .form-grid-4 { grid-template-columns: repeat(2, 1fr) !important; }
+
+  /* Color picker: bigger dots */
+  .color-picker > div { width: 32px !important; height: 32px !important; }
+
+  /* Action buttons: stack, full width */
+  .modal-actions { flex-direction: column-reverse; }
+  .modal-actions > *,
+  .modal-actions > div { width: 100%; }
+  .modal-actions .btn { width: 100%; justify-content: center; }
+  .modal-actions-push { margin-left: 0; }
+
+  /* Pacing row: stack vertically */
+  .pacing-row { flex-direction: column; gap: 8px; text-align: center; }
 
   /* Buttons: easier to tap */
   .btn { padding: 10px 18px; font-size: .9rem; }
