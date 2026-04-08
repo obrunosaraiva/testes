@@ -229,7 +229,7 @@ export default function ReportModal({ onClose }) {
             <label className="field-label">Projeto</label>
             <select value={filterProj} onChange={e => { setFilterProj(e.target.value); setPreview(''); }}>
               <option value="__all__">Todos os projetos</option>
-              {projects.map(p => <option key={p} value={p}>{p}</option>)}
+              {projects.map(p => <option key={p.id || p} value={p.name || p}>{p.name || p}</option>)}
             </select>
           </div>
 

@@ -1,15 +1,27 @@
 import { createContext, useContext, useReducer, useEffect, useRef, useCallback } from 'react';
 import { sb } from '../lib/supabase';
 
+// ─── Cost Centers ─────────────────────────────────────────────────────────────
+export const COST_CENTERS = {
+  IBEC:  { label: 'IBEC',  color: '#eab308' },
+  GH:    { label: 'GH',    color: '#3b82f6' },
+  Leanx: { label: 'Leanx', color: '#ef4444' },
+  Up3:   { label: 'Up3',   color: '#22c55e' },
+};
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
-// Supabase can return jsonb columns as already-parsed arrays OR as strings
 function parseJsonField(value) {
   if (!value) return [];
   if (Array.isArray(value)) return value;
   try { return JSON.parse(value); } catch { return []; }
 }
 
-// Normalizes both old snake_case localStorage format and new camelCase format
+// Migrate old string projects to objects
+function normalizeProject(p) {
+  if (typeof p === 'string') return { id: 'p_' + p.replace(/[^a-z0-9]/gi, '_'), name: p, costCenter: null };
+  return { id: p.id || ('p_' + Date.now() + '_' + Math.random().toString(36).slice(2,5)), name: p.name || String(p), costCenter: p.costCenter || null };
+}
+
 function normalizeTask(t) {
   return {
     id: t.id,
@@ -36,24 +48,31 @@ function normalizeTask(t) {
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 const SK = 'kanban_pro_v2';
+const TRASH_KEY = 'kanban_trash_v1';
 const DRAFT_KEY = 'kanban_task_draft';
 
-// ─── Initial state ─────────────────────────────────────────────────────────────
+// ─── Initial state ────────────────────────────────────────────────────────────
 const initialState = {
-  projects: ['Projeto 1'],
+  projects: [{ id: 'p_default', name: 'Projeto 1', costCenter: null }],
   tasks: [],
+  trashedTasks: [],
+  trashedProjects: [],
   templates: [],
   activeProject: '__all__',
+  combinedProjects: [],   // array of project names for multi-view
+  viewFilter: 'all',      // 'all' | 'events' | 'tasks'
   view: 'board',
   dbReady: false,
   syncStatus: 'Conectando...',
 };
 
-// ─── Reducer ───────────────────────────────────────────────────────────────────
+// ─── Reducer ──────────────────────────────────────────────────────────────────
 function reducer(state, action) {
   switch (action.type) {
     case 'LOAD_LOCAL':
       return { ...state, ...action.payload };
+    case 'LOAD_TRASH':
+      return { ...state, trashedTasks: action.payload.trashedTasks || [], trashedProjects: action.payload.trashedProjects || [] };
     case 'SET_DB_READY':
       return { ...state, dbReady: true, syncStatus: '● Online' };
     case 'SET_SYNC_STATUS':
@@ -61,38 +80,112 @@ function reducer(state, action) {
     case 'SET_TASKS':
       return { ...state, tasks: action.payload };
     case 'SET_PROJECTS':
-      return { ...state, projects: action.payload };
+      return { ...state, projects: action.payload.map(normalizeProject) };
     case 'SET_TEMPLATES':
       return { ...state, templates: action.payload };
+
+    // ── Tasks ──
     case 'ADD_TASK':
       return { ...state, tasks: [...state.tasks, action.payload] };
     case 'UPDATE_TASK':
       return { ...state, tasks: state.tasks.map(t => t.id === action.payload.id ? action.payload : t) };
-    case 'DELETE_TASK':
-      return { ...state, tasks: state.tasks.filter(t => t.id !== action.payload) };
-    case 'ADD_PROJECT':
-      return { ...state, projects: [...state.projects, action.payload] };
-    case 'DELETE_PROJECT':
+    case 'SOFT_DELETE_TASK': {
+      const task = state.tasks.find(t => t.id === action.payload.id);
+      if (!task) return state;
       return {
         ...state,
-        projects: state.projects.filter(p => p !== action.payload),
-        tasks: state.tasks.filter(t => t.project !== action.payload),
-        activeProject: state.activeProject === action.payload ? '__all__' : state.activeProject,
+        tasks: state.tasks.filter(t => t.id !== action.payload.id),
+        trashedTasks: [...state.trashedTasks, { ...task, deletedAt: action.payload.deletedAt, deletedWithProject: false }],
       };
+    }
+    case 'RESTORE_TASK': {
+      const task = state.trashedTasks.find(t => t.id === action.payload);
+      if (!task) return state;
+      const { deletedAt, deletedWithProject, ...restored } = task;
+      return {
+        ...state,
+        trashedTasks: state.trashedTasks.filter(t => t.id !== action.payload),
+        tasks: [...state.tasks, restored],
+      };
+    }
+    case 'PERM_DELETE_TASK':
+      return { ...state, trashedTasks: state.trashedTasks.filter(t => t.id !== action.payload) };
+
+    // ── Projects ──
+    case 'ADD_PROJECT':
+      return { ...state, projects: [...state.projects, action.payload] };
+    case 'UPDATE_PROJECT':
+      return { ...state, projects: state.projects.map(p => p.id === action.payload.id ? { ...p, ...action.payload } : p) };
+    case 'SOFT_DELETE_PROJECT': {
+      const proj = state.projects.find(p => p.id === action.payload.id);
+      if (!proj) return state;
+      const projTasks = state.tasks.filter(t => t.project === proj.name);
+      const newTrashed = projTasks.map(t => ({ ...t, deletedAt: action.payload.deletedAt, deletedWithProject: true }));
+      return {
+        ...state,
+        projects: state.projects.filter(p => p.id !== proj.id),
+        tasks: state.tasks.filter(t => t.project !== proj.name),
+        trashedProjects: [...state.trashedProjects, { ...proj, deletedAt: action.payload.deletedAt }],
+        trashedTasks: [...state.trashedTasks, ...newTrashed],
+        activeProject: state.activeProject === proj.name ? '__all__' : state.activeProject,
+        combinedProjects: state.combinedProjects.filter(n => n !== proj.name),
+      };
+    }
+    case 'RESTORE_PROJECT': {
+      const proj = state.trashedProjects.find(p => p.id === action.payload);
+      if (!proj) return state;
+      const { deletedAt, ...restoredProj } = proj;
+      const restoredTasks = state.trashedTasks
+        .filter(t => t.project === proj.name && t.deletedWithProject)
+        .map(({ deletedAt, deletedWithProject, ...t }) => t);
+      return {
+        ...state,
+        projects: [...state.projects, restoredProj],
+        trashedProjects: state.trashedProjects.filter(p => p.id !== proj.id),
+        tasks: [...state.tasks, ...restoredTasks],
+        trashedTasks: state.trashedTasks.filter(t => !(t.project === proj.name && t.deletedWithProject)),
+      };
+    }
+    case 'PERM_DELETE_PROJECT': {
+      const proj = state.trashedProjects.find(p => p.id === action.payload);
+      return {
+        ...state,
+        trashedProjects: state.trashedProjects.filter(p => p.id !== action.payload),
+        trashedTasks: proj
+          ? state.trashedTasks.filter(t => !(t.project === proj.name && t.deletedWithProject))
+          : state.trashedTasks,
+      };
+    }
+
+    // ── Filters / View ──
     case 'SET_ACTIVE_PROJECT':
-      return { ...state, activeProject: action.payload };
+      return { ...state, activeProject: action.payload, combinedProjects: [] };
+    case 'TOGGLE_COMBINED_PROJECT': {
+      const name = action.payload;
+      const next = state.combinedProjects.includes(name)
+        ? state.combinedProjects.filter(p => p !== name)
+        : [...state.combinedProjects, name];
+      return { ...state, combinedProjects: next, activeProject: '__all__' };
+    }
+    case 'CLEAR_COMBINED_PROJECTS':
+      return { ...state, combinedProjects: [] };
     case 'SET_VIEW':
       return { ...state, view: action.payload };
+    case 'SET_VIEW_FILTER':
+      return { ...state, viewFilter: action.payload };
+
+    // ── Templates ──
     case 'ADD_TEMPLATE':
       return { ...state, templates: [...state.templates, action.payload] };
     case 'DELETE_TEMPLATE':
       return { ...state, templates: state.templates.filter(t => t.id !== action.payload) };
+
     default:
       return state;
   }
 }
 
-// ─── Context ───────────────────────────────────────────────────────────────────
+// ─── Context ──────────────────────────────────────────────────────────────────
 const KanbanContext = createContext(null);
 
 export function KanbanProvider({ children }) {
@@ -100,7 +193,7 @@ export function KanbanProvider({ children }) {
   const stateRef = useRef(state);
   useEffect(() => { stateRef.current = state; }, [state]);
 
-  // ── Persist to localStorage ──────────────────────────────────────────────────
+  // ── Persist to localStorage ─────────────────────────────────────────────────
   const saveLocal = useCallback((s) => {
     try {
       localStorage.setItem(SK, JSON.stringify({
@@ -109,82 +202,89 @@ export function KanbanProvider({ children }) {
         templates: s.templates,
         activeProject: s.activeProject,
         view: s.view,
+        viewFilter: s.viewFilter,
       }));
-    } catch (e) {}
+      localStorage.setItem(TRASH_KEY, JSON.stringify({
+        trashedTasks: s.trashedTasks,
+        trashedProjects: s.trashedProjects,
+      }));
+    } catch {}
   }, []);
 
-  // Auto-save to localStorage on every state change
   useEffect(() => {
-    if (state.tasks.length > 0 || state.projects.length > 1) {
+    if (state.tasks.length > 0 || state.projects.length > 1 || state.trashedTasks.length > 0) {
       saveLocal(state);
     }
   }, [state, saveLocal]);
 
-  // ── Load from localStorage on mount ─────────────────────────────────────────
+  // ── Load from localStorage on mount ────────────────────────────────────────
   useEffect(() => {
     try {
       const raw = localStorage.getItem(SK);
       if (raw) {
-        const parsed = JSON.parse(raw);
+        const p = JSON.parse(raw);
         dispatch({
           type: 'LOAD_LOCAL',
           payload: {
-            projects: parsed.projects || ['Projeto 1'],
-            tasks: (parsed.tasks || []).map(normalizeTask),
-            templates: parsed.templates || [],
-            activeProject: parsed.activeProject || '__all__',
-            view: parsed.view || 'board',
+            projects: (p.projects || ['Projeto 1']).map(normalizeProject),
+            tasks: (p.tasks || []).map(normalizeTask),
+            templates: p.templates || [],
+            activeProject: p.activeProject || '__all__',
+            view: p.view || 'board',
+            viewFilter: p.viewFilter || 'all',
           },
         });
       }
-    } catch (e) {}
+    } catch {}
+
+    try {
+      const trash = localStorage.getItem(TRASH_KEY);
+      if (trash) {
+        const t = JSON.parse(trash);
+        dispatch({ type: 'LOAD_TRASH', payload: t });
+      }
+    } catch {}
   }, []);
 
-  // ── Load from Supabase ────────────────────────────────────────────────────────
+  // ── Load from Supabase ──────────────────────────────────────────────────────
   useEffect(() => {
     async function loadSupabase() {
       try {
-        const { data: projects } = await sb.from('kanban_projects').select('name').order('created_at');
-        const { data: tasks, error: taskError } = await sb.from('kanban_tasks').select('*').order('created_at');
+        const [{ data: dbProjects }, { data: tasks, error: taskError }] = await Promise.all([
+          sb.from('kanban_projects').select('*').order('created_at'),
+          sb.from('kanban_tasks').select('*').order('created_at'),
+        ]);
         if (taskError) throw taskError;
 
-        const mapped = (tasks || []).map(t => ({
-          id: t.id,
-          title: t.title || '',
-          description: t.description || '',
-          project: t.project || '',
-          status: t.status || 'backlog',
-          assignee: t.assignee || '',
-          urgency: t.urgency || 'medium',
-          startDate: t.start_date || '',
-          deadline: t.deadline || '',
-          deadlineTime: t.deadline_time || '',
-          isEvent: t.is_event || false,
-          eventStartDate: t.event_start_date || '',
-          eventEndDate: t.event_end_date || '',
-          cardColor: t.card_color || 'none',
-          checklist: parseJsonField(t.checklist),
-          attachments: parseJsonField(t.attachments),
+        const mapped = (tasks || []).map(t => normalizeTask({
+          ...t,
+          startDate: t.start_date,
+          deadlineTime: t.deadline_time,
+          isEvent: t.is_event,
+          eventStartDate: t.event_start_date,
+          eventEndDate: t.event_end_date,
+          cardColor: t.card_color,
           createdAt: t.created_at,
+          ticketGoal: t.ticket_goal,
+          ticketsSold: t.tickets_sold,
         }));
 
         const supabaseIds = new Set(mapped.map(t => t.id));
-        const localOnly = stateRef.current.tasks
-          .filter(t => !supabaseIds.has(t.id))
-          .map(normalizeTask);
+        const localOnly = stateRef.current.tasks.filter(t => !supabaseIds.has(t.id)).map(normalizeTask);
+        dispatch({ type: 'SET_TASKS', payload: [...mapped, ...localOnly] });
 
-        const allTasks = [...mapped, ...localOnly];
-        dispatch({ type: 'SET_TASKS', payload: allTasks });
-
-        if (projects && projects.length) {
-          dispatch({ type: 'SET_PROJECTS', payload: projects.map(p => p.name) });
+        if (dbProjects && dbProjects.length) {
+          dispatch({
+            type: 'SET_PROJECTS',
+            payload: dbProjects.map(p => ({
+              id: p.id || ('p_' + p.name.replace(/[^a-z0-9]/gi, '_')),
+              name: p.name,
+              costCenter: p.cost_center || null,
+            })),
+          });
         }
 
-        // Push local-only tasks to Supabase
-        for (const t of localOnly) {
-          saveTaskToDb(t);
-        }
-
+        for (const t of localOnly) saveTaskToDb(t);
         dispatch({ type: 'SET_DB_READY' });
       } catch (e) {
         console.warn('[Kanban] Supabase load error:', e.message);
@@ -194,7 +294,7 @@ export function KanbanProvider({ children }) {
     loadSupabase();
   }, []);
 
-  // ── Supabase task save ────────────────────────────────────────────────────────
+  // ── Supabase task save ──────────────────────────────────────────────────────
   async function saveTaskToDb(task) {
     const row = {
       id: task.id,
@@ -214,31 +314,39 @@ export function KanbanProvider({ children }) {
       checklist: JSON.stringify(task.checklist || []),
       attachments: JSON.stringify(task.attachments || []),
     };
-
     const { error } = await sb.from('kanban_tasks').upsert(row, { onConflict: 'id' });
     if (error) {
-      // Fallback without new columns if schema is outdated
       const { deadline_time, is_event, event_start_date, event_end_date, ...basic } = row;
-      const { error: e2 } = await sb.from('kanban_tasks').upsert(basic, { onConflict: 'id' });
-      if (e2) console.warn('[Kanban] saveTask fallback error:', e2.message);
+      await sb.from('kanban_tasks').upsert(basic, { onConflict: 'id' }).catch(() => {});
     }
   }
 
-  // ── Project sync to Supabase ──────────────────────────────────────────────────
+  // ── Project sync ────────────────────────────────────────────────────────────
   async function syncProjects(projects) {
     try {
       const { data: existing } = await sb.from('kanban_projects').select('name');
       const existingNames = (existing || []).map(p => p.name);
-      const toInsert = projects.filter(p => !existingNames.includes(p));
-      const toDelete = existingNames.filter(p => !projects.includes(p));
-      if (toInsert.length) await sb.from('kanban_projects').insert(toInsert.map(name => ({ name })));
+      const toInsert = projects.filter(p => !existingNames.includes(p.name));
+      const toDelete = existingNames.filter(n => !projects.some(p => p.name === n));
+      if (toInsert.length) {
+        await sb.from('kanban_projects').insert(toInsert.map(p => ({
+          name: p.name,
+          cost_center: p.costCenter || null,
+        })));
+      }
       for (const name of toDelete) await sb.from('kanban_projects').delete().eq('name', name);
+      // Update cost center for existing
+      for (const p of projects) {
+        if (existingNames.includes(p.name)) {
+          await sb.from('kanban_projects').update({ cost_center: p.costCenter || null }).eq('name', p.name);
+        }
+      }
     } catch (e) {
       console.warn('[Kanban] syncProjects error:', e.message);
     }
   }
 
-  // ── Public actions ────────────────────────────────────────────────────────────
+  // ── Public actions ──────────────────────────────────────────────────────────
   function addTask(task) {
     dispatch({ type: 'ADD_TASK', payload: task });
     saveTaskToDb(task);
@@ -249,71 +357,93 @@ export function KanbanProvider({ children }) {
     saveTaskToDb(task);
   }
 
-  async function deleteTask(id) {
-    dispatch({ type: 'DELETE_TASK', payload: id });
-    try { await sb.from('kanban_tasks').delete().eq('id', id); } catch (e) {}
+  function softDeleteTask(id, deletedBy = '') {
+    dispatch({ type: 'SOFT_DELETE_TASK', payload: { id, deletedAt: new Date().toISOString(), deletedBy } });
+    sb.from('kanban_tasks').delete().eq('id', id).catch(() => {});
   }
 
-  function addProject(name) {
-    const newProjects = [...stateRef.current.projects, name];
-    dispatch({ type: 'ADD_PROJECT', payload: name });
-    syncProjects(newProjects);
+  function restoreTask(id) {
+    const task = stateRef.current.trashedTasks.find(t => t.id === id);
+    dispatch({ type: 'RESTORE_TASK', payload: id });
+    if (task) saveTaskToDb(normalizeTask(task));
   }
 
-  async function deleteProject(name) {
-    const taskIds = stateRef.current.tasks.filter(t => t.project === name).map(t => t.id);
-    dispatch({ type: 'DELETE_PROJECT', payload: name });
-    const newProjects = stateRef.current.projects.filter(p => p !== name);
-    syncProjects(newProjects);
-    for (const id of taskIds) {
-      try { await sb.from('kanban_tasks').delete().eq('id', id); } catch (e) {}
+  function permDeleteTask(id) {
+    dispatch({ type: 'PERM_DELETE_TASK', payload: id });
+  }
+
+  function newProjectId() {
+    return 'p_' + Date.now() + '_' + Math.random().toString(36).slice(2, 5);
+  }
+
+  function addProject(name, costCenter = null) {
+    const proj = { id: newProjectId(), name, costCenter };
+    dispatch({ type: 'ADD_PROJECT', payload: proj });
+    syncProjects([...stateRef.current.projects, proj]);
+  }
+
+  function updateProject(id, patch) {
+    dispatch({ type: 'UPDATE_PROJECT', payload: { id, ...patch } });
+    const updated = stateRef.current.projects.map(p => p.id === id ? { ...p, ...patch } : p);
+    syncProjects(updated);
+  }
+
+  async function softDeleteProject(id, deletedBy = '') {
+    const proj = stateRef.current.projects.find(p => p.id === id);
+    dispatch({ type: 'SOFT_DELETE_PROJECT', payload: { id, deletedAt: new Date().toISOString(), deletedBy } });
+    if (proj) {
+      const taskIds = stateRef.current.tasks.filter(t => t.project === proj.name).map(t => t.id);
+      const newProjects = stateRef.current.projects.filter(p => p.id !== id);
+      syncProjects(newProjects);
+      for (const tid of taskIds) sb.from('kanban_tasks').delete().eq('id', tid).catch(() => {});
     }
+  }
+
+  function restoreProject(id) {
+    dispatch({ type: 'RESTORE_PROJECT', payload: id });
+    const proj = stateRef.current.trashedProjects.find(p => p.id === id);
+    if (proj) {
+      syncProjects([...stateRef.current.projects, proj]);
+      const restoredTasks = stateRef.current.trashedTasks.filter(t => t.project === proj.name && t.deletedWithProject);
+      for (const t of restoredTasks) saveTaskToDb(normalizeTask(t));
+    }
+  }
+
+  function permDeleteProject(id) {
+    dispatch({ type: 'PERM_DELETE_PROJECT', payload: id });
   }
 
   function setActiveProject(name) {
     dispatch({ type: 'SET_ACTIVE_PROJECT', payload: name });
   }
 
-  function setView(v) {
-    dispatch({ type: 'SET_VIEW', payload: v });
+  function toggleCombinedProject(name) {
+    dispatch({ type: 'TOGGLE_COMBINED_PROJECT', payload: name });
   }
 
-  function addTemplate(tpl) {
-    dispatch({ type: 'ADD_TEMPLATE', payload: tpl });
+  function clearCombinedProjects() {
+    dispatch({ type: 'CLEAR_COMBINED_PROJECTS' });
   }
 
-  function deleteTemplate(id) {
-    dispatch({ type: 'DELETE_TEMPLATE', payload: id });
-  }
+  function setView(v) { dispatch({ type: 'SET_VIEW', payload: v }); }
+  function setViewFilter(f) { dispatch({ type: 'SET_VIEW_FILTER', payload: f }); }
+  function addTemplate(tpl) { dispatch({ type: 'ADD_TEMPLATE', payload: tpl }); }
+  function deleteTemplate(id) { dispatch({ type: 'DELETE_TEMPLATE', payload: id }); }
 
-  // ── Draft helpers ─────────────────────────────────────────────────────────────
-  function saveDraft(draft) {
-    try { localStorage.setItem(DRAFT_KEY, JSON.stringify(draft)); } catch (e) {}
-  }
-  function loadDraft() {
-    try { return JSON.parse(localStorage.getItem(DRAFT_KEY)); } catch { return null; }
-  }
-  function clearDraft() {
-    try { localStorage.removeItem(DRAFT_KEY); } catch (e) {}
-  }
+  function saveDraft(draft) { try { localStorage.setItem(DRAFT_KEY, JSON.stringify(draft)); } catch {} }
+  function loadDraft() { try { return JSON.parse(localStorage.getItem(DRAFT_KEY)); } catch { return null; } }
+  function clearDraft() { try { localStorage.removeItem(DRAFT_KEY); } catch {} }
 
   return (
     <KanbanContext.Provider value={{
       ...state,
       dispatch,
-      addTask,
-      updateTask,
-      deleteTask,
-      addProject,
-      deleteProject,
-      setActiveProject,
-      setView,
-      addTemplate,
-      deleteTemplate,
-      saveTaskToDb,
-      saveDraft,
-      loadDraft,
-      clearDraft,
+      addTask, updateTask, softDeleteTask, restoreTask, permDeleteTask,
+      addProject, updateProject, softDeleteProject, restoreProject, permDeleteProject,
+      setActiveProject, toggleCombinedProject, clearCombinedProjects,
+      setView, setViewFilter,
+      addTemplate, deleteTemplate,
+      saveTaskToDb, saveDraft, loadDraft, clearDraft,
     }}>
       {children}
     </KanbanContext.Provider>

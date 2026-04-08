@@ -1,11 +1,15 @@
 import { useKanban } from '../../context/KanbanContext';
 import { useAuth } from '../../hooks/useAuth';
 import { useTheme } from '../../hooks/useTheme';
+import { useRole } from '../../context/RoleContext';
 
-export default function Header({ onOpenTemplates, onOpenReport }) {
-  const { view, setView, syncStatus } = useKanban();
+export default function Header({ onOpenTemplates, onOpenReport, onOpenAdmin, onOpenTrash }) {
+  const { view, setView, syncStatus, trashedTasks, trashedProjects } = useKanban();
   const { signOut } = useAuth();
   const { theme, toggleTheme } = useTheme();
+  const { can } = useRole();
+
+  const trashCount = trashedTasks.length + trashedProjects.length;
 
   return (
     <div style={{
@@ -31,15 +35,8 @@ export default function Header({ onOpenTemplates, onOpenReport }) {
           {syncStatus}
         </span>
 
-        <button
-          onClick={toggleTheme}
-          title={theme === 'dark' ? 'Modo claro' : 'Modo escuro'}
-          style={{
-            background: 'none', border: '1px solid var(--border)',
-            borderRadius: 8, color: 'var(--text-muted)',
-            padding: '5px 10px', fontSize: '1rem', lineHeight: 1,
-          }}
-        >
+        <button onClick={toggleTheme} title={theme === 'dark' ? 'Modo claro' : 'Modo escuro'}
+          style={{ background: 'none', border: '1px solid var(--border)', borderRadius: 8, color: 'var(--text-muted)', padding: '5px 10px', fontSize: '1rem', lineHeight: 1 }}>
           {theme === 'dark' ? '☀️' : '🌙'}
         </button>
 
@@ -48,14 +45,28 @@ export default function Header({ onOpenTemplates, onOpenReport }) {
         <button className={`view-btn${view === 'board' ? ' active' : ''}`} onClick={() => setView('board')}>Board</button>
         <button className={`view-btn${view === 'gantt' ? ' active' : ''}`} onClick={() => setView('gantt')}>Gantt</button>
 
+        {can.admin && (
+          <button
+            onClick={onOpenTrash}
+            title="Lixeira"
+            style={{ background: 'none', border: '1px solid var(--border)', borderRadius: 8, color: trashCount > 0 ? 'var(--danger)' : 'var(--text-muted)', padding: '5px 10px', fontSize: '.85rem', position: 'relative' }}
+          >
+            🗑{trashCount > 0 && <span style={{ marginLeft: 4, fontSize: '.7rem', fontWeight: 700 }}>{trashCount}</span>}
+          </button>
+        )}
+
+        {can.admin && (
+          <button onClick={onOpenAdmin}
+            style={{ background: 'none', border: '1px solid var(--border)', borderRadius: 8, color: 'var(--text-muted)', padding: '5px 10px', fontSize: '.85rem' }}
+            title="Painel Admin"
+          >
+            🛡
+          </button>
+        )}
+
         <button
           onClick={signOut}
-          style={{
-            background: 'none', border: '1px solid var(--border)',
-            borderRadius: 8, color: 'var(--text-muted)',
-            padding: '5px 12px', fontSize: '.78rem',
-          }}
-          title="Sair"
+          style={{ background: 'none', border: '1px solid var(--border)', borderRadius: 8, color: 'var(--text-muted)', padding: '5px 12px', fontSize: '.78rem' }}
         >
           Sair
         </button>

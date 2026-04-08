@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useKanban } from '../../context/KanbanContext';
+import { useRole } from '../../context/RoleContext';
 
 // Auto-growing textarea — grows with content, no need to drag resize
 function AutoTextarea({ value, onChange, placeholder, style }) {
@@ -39,7 +40,8 @@ const EMPTY_FORM = {
 };
 
 export default function TaskModal({ taskId, defaultStatus, onClose }) {
-  const { tasks, projects, addTask, updateTask, deleteTask, saveDraft, loadDraft, clearDraft, saveTaskToDb } = useKanban();
+  const { tasks, projects, addTask, updateTask, softDeleteTask, saveDraft, loadDraft, clearDraft } = useKanban();
+  const { can, userId } = useRole();
 
   const isNew = !taskId;
   const task = taskId ? tasks.find(t => t.id === taskId) : null;
@@ -56,7 +58,7 @@ export default function TaskModal({ taskId, defaultStatus, onClose }) {
       setForm({
         title: task.title || '',
         description: task.description || '',
-        project: task.project || (projects[0] || ''),
+        project: task.project || (projects[0]?.name || ''),
         status: task.status || 'backlog',
         assignee: task.assignee || '',
         urgency: task.urgency || '',
@@ -79,7 +81,7 @@ export default function TaskModal({ taskId, defaultStatus, onClose }) {
         setForm({
           title: draft.title || '',
           description: draft.description || '',
-          project: draft.project || (projects[0] || ''),
+          project: draft.project || (projects[0]?.name || ''),
           status: draft.status || defaultStatus || 'backlog',
           assignee: draft.assignee || '',
           urgency: draft.urgency || '',
@@ -97,7 +99,7 @@ export default function TaskModal({ taskId, defaultStatus, onClose }) {
       } else {
         setForm(f => ({
           ...EMPTY_FORM,
-          project: projects[0] || '',
+          project: projects[0]?.name || '',
           status: defaultStatus || 'backlog',
         }));
         setChecklist([]);
@@ -154,9 +156,9 @@ export default function TaskModal({ taskId, defaultStatus, onClose }) {
     onClose();
   }
 
-  async function handleDelete() {
-    if (!task || !confirm('Excluir esta tarefa?')) return;
-    await deleteTask(task.id);
+  function handleDelete() {
+    if (!task || !confirm('Mover esta tarefa para a lixeira?')) return;
+    softDeleteTask(task.id, userId || '');
     clearDraft();
     onClose();
   }
@@ -235,7 +237,7 @@ export default function TaskModal({ taskId, defaultStatus, onClose }) {
             <div>
               <label className="field-label">Projeto</label>
               <select value={form.project} onChange={e => setField('project', e.target.value)}>
-                {projects.map(p => <option key={p} value={p}>{p}</option>)}
+                {projects.map(p => <option key={p.id} value={p.name}>{p.name}</option>)}
               </select>
             </div>
             <div>
@@ -410,8 +412,8 @@ export default function TaskModal({ taskId, defaultStatus, onClose }) {
 
           {/* Actions */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, paddingTop: 4 }}>
-            {!isNew && (
-              <button className="btn btn-danger" onClick={handleDelete}>Excluir</button>
+            {!isNew && can.delete && (
+              <button className="btn btn-danger" onClick={handleDelete}>🗑 Lixeira</button>
             )}
             <div style={{ marginLeft: 'auto', display: 'flex', gap: 10 }}>
               <button className="btn btn-ghost" onClick={onClose}>Cancelar</button>

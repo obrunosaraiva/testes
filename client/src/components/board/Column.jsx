@@ -12,13 +12,25 @@ const STATUS_CONFIG = {
 };
 
 export default function Column({ status, onOpenTask, onNewTask }) {
-  const { tasks, projects, activeProject, updateTask } = useKanban();
+  const { tasks, projects, activeProject, combinedProjects, viewFilter, updateTask } = useKanban();
   const [dragOver, setDragOver] = useState(false);
 
   const cfg = STATUS_CONFIG[status];
+
   const items = tasks.filter(t => {
     if (t.status !== status) return false;
-    if (activeProject !== '__all__' && t.project !== activeProject) return false;
+
+    // Project filter
+    if (combinedProjects.length > 0) {
+      if (!combinedProjects.includes(t.project)) return false;
+    } else if (activeProject !== '__all__' && t.project !== activeProject) {
+      return false;
+    }
+
+    // View filter
+    if (viewFilter === 'events' && !t.isEvent) return false;
+    if (viewFilter === 'tasks' && t.isEvent) return false;
+
     return true;
   });
 
@@ -33,9 +45,7 @@ export default function Column({ status, onOpenTask, onNewTask }) {
     setDragOver(false);
     const id = e.dataTransfer.getData('text/plain');
     const task = tasks.find(t => t.id === id);
-    if (task && task.status !== status) {
-      updateTask({ ...task, status });
-    }
+    if (task && task.status !== status) updateTask({ ...task, status });
   }
 
   return (
@@ -54,14 +64,12 @@ export default function Column({ status, onOpenTask, onNewTask }) {
         onDragLeave={() => setDragOver(false)}
         onDrop={handleDrop}
       >
-        {items.length === 0 && (
-          <div className="empty-state">Nenhuma tarefa</div>
-        )}
+        {items.length === 0 && <div className="empty-state">Nenhuma tarefa</div>}
         {items.map(task => (
           <TaskCard
             key={task.id}
             task={task}
-            projIndex={projects.indexOf(task.project)}
+            projIndex={projects.findIndex(p => p.name === task.project)}
             onOpen={onOpenTask}
           />
         ))}

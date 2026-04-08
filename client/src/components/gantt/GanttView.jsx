@@ -99,7 +99,7 @@ export default function GanttView({ onOpenTask }) {
 
           {/* Rows */}
           {filtered.map(t => {
-            const pi = projects.indexOf(t.project);
+            const pi = projects.findIndex(p => (p.name || p) === t.project);
             const pc = PROJ_COLORS[pi % PROJ_COLORS.length];
             const barColor = BAR_COLORS[pi % BAR_COLORS.length];
             const start = t.startDate ? new Date(t.startDate + 'T00:00:00') : t.deadline ? new Date(t.deadline + 'T00:00:00') : null;
@@ -189,7 +189,7 @@ function GanttControls({ projects, filterProj, setFilterProj, inputStart, setInp
     <div style={{ display: 'flex', gap: 12, marginBottom: 16, flexWrap: 'wrap', alignItems: 'center' }}>
       <select value={filterProj} onChange={e => setFilterProj(e.target.value)} style={{ width: 'auto' }}>
         <option value="__all__">Todos os projetos</option>
-        {projects.map(p => <option key={p} value={p}>{p}</option>)}
+        {projects.map(p => <option key={p.id || p} value={p.name || p}>{p.name || p}</option>)}
       </select>
       <input type="date" value={inputStart} onChange={e => setInputStart(e.target.value)}
         placeholder={fmtISO(autoStart)} style={{ width: 'auto' }} />

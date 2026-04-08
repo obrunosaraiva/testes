@@ -3,6 +3,7 @@ import './App.css';
 
 import { useAuth } from './hooks/useAuth';
 import { KanbanProvider, useKanban } from './context/KanbanContext';
+import { RoleProvider, useRole } from './context/RoleContext';
 
 import LoginScreen from './components/auth/LoginScreen';
 import Header from './components/layout/Header';
@@ -12,6 +13,8 @@ import GanttView from './components/gantt/GanttView';
 import TaskModal from './components/modals/TaskModal';
 import TemplatesModal from './components/modals/TemplatesModal';
 import ReportModal from './components/modals/ReportModal';
+import AdminPanel from './components/admin/AdminPanel';
+import TrashPanel from './components/admin/TrashPanel';
 
 export default function App() {
   const { user, loading } = useAuth();
@@ -27,18 +30,23 @@ export default function App() {
   if (!user) return <LoginScreen />;
 
   return (
-    <KanbanProvider>
-      <KanbanApp />
-    </KanbanProvider>
+    <RoleProvider>
+      <KanbanProvider>
+        <KanbanApp />
+      </KanbanProvider>
+    </RoleProvider>
   );
 }
 
 function KanbanApp() {
   const { view } = useKanban();
+  const { role, loading: roleLoading } = useRole();
   const [taskModalId, setTaskModalId] = useState(null);
   const [newTaskStatus, setNewTaskStatus] = useState('backlog');
   const [showTemplates, setShowTemplates] = useState(false);
   const [showReport, setShowReport] = useState(false);
+  const [showAdmin, setShowAdmin] = useState(false);
+  const [showTrash, setShowTrash] = useState(false);
   const [templateToApply, setTemplateToApply] = useState(null);
 
   useEffect(() => {
@@ -59,10 +67,6 @@ function KanbanApp() {
     setTemplateToApply(null);
   }
 
-  function openTaskById(id) {
-    setTaskModalId(id);
-  }
-
   function handleUseTemplate(tpl) {
     setTemplateToApply(tpl);
     setNewTaskStatus(tpl.status || 'backlog');
@@ -74,21 +78,21 @@ function KanbanApp() {
     setTemplateToApply(null);
   }
 
+  if (roleLoading) return null;
+
   return (
     <div className="app-layout">
       <Header
         onOpenTemplates={() => setShowTemplates(true)}
         onOpenReport={() => setShowReport(true)}
+        onOpenAdmin={() => setShowAdmin(true)}
+        onOpenTrash={() => setShowTrash(true)}
       />
       <ProjectBar />
 
       <div style={{ flex: 1, minHeight: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
-        {view === 'board' && (
-          <BoardView onOpenTask={openTaskById} onNewTask={openNewTask} />
-        )}
-        {view === 'gantt' && (
-          <GanttView onOpenTask={openTaskById} />
-        )}
+        {view === 'board' && <BoardView onOpenTask={id => setTaskModalId(id)} onNewTask={openNewTask} />}
+        {view === 'gantt' && <GanttView onOpenTask={id => setTaskModalId(id)} />}
       </div>
 
       {taskModalId !== null && (
@@ -99,17 +103,10 @@ function KanbanApp() {
           onClose={closeTaskModal}
         />
       )}
-
-      {showTemplates && (
-        <TemplatesModal
-          onClose={() => setShowTemplates(false)}
-          onUseTemplate={handleUseTemplate}
-        />
-      )}
-
-      {showReport && (
-        <ReportModal onClose={() => setShowReport(false)} />
-      )}
+      {showTemplates && <TemplatesModal onClose={() => setShowTemplates(false)} onUseTemplate={handleUseTemplate} />}
+      {showReport && <ReportModal onClose={() => setShowReport(false)} />}
+      {showAdmin && <AdminPanel onClose={() => setShowAdmin(false)} />}
+      {showTrash && <TrashPanel onClose={() => setShowTrash(false)} />}
     </div>
   );
 }

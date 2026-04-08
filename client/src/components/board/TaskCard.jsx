@@ -1,7 +1,7 @@
 import { useKanban } from '../../context/KanbanContext';
+import { useRole } from '../../context/RoleContext';
 
 const PROJ_COLORS = ['pc0','pc1','pc2','pc3','pc4','pc5','pc6','pc7'];
-
 const URGENCY_LABEL = { low: 'Baixa', medium: 'Média', high: 'Alta', critical: 'Crítica' };
 
 function formatDateShort(iso) {
@@ -11,10 +11,11 @@ function formatDateShort(iso) {
 }
 
 export default function TaskCard({ task, projIndex, onOpen }) {
-  const { deleteTask, updateTask, projects } = useKanban();
+  const { softDeleteTask } = useKanban();
+  const { can, userId } = useRole();
   const cl = task.checklist || [];
   const done = cl.filter(x => x.done).length;
-  const pc = PROJ_COLORS[projIndex % PROJ_COLORS.length];
+  const pc = PROJ_COLORS[Math.max(0, projIndex) % PROJ_COLORS.length];
   const isOverdue = task.deadline && new Date(task.deadline + 'T23:59:59') < new Date() && task.status !== 'done';
   const lateChecklistItems = cl.filter(c => c.deadline && !c.done && new Date(c.deadline + 'T23:59:59') < new Date()).length;
   const attCount = (task.attachments || []).length;
@@ -24,10 +25,10 @@ export default function TaskCard({ task, projIndex, onOpen }) {
     e.dataTransfer.effectAllowed = 'move';
   }
 
-  async function handleDelete(e) {
+  function handleDelete(e) {
     e.stopPropagation();
-    if (!confirm(`Excluir "${task.title}"?`)) return;
-    await deleteTask(task.id);
+    if (!confirm(`Mover "${task.title}" para a lixeira?`)) return;
+    softDeleteTask(task.id, userId || '');
   }
 
   return (
@@ -42,10 +43,9 @@ export default function TaskCard({ task, projIndex, onOpen }) {
       <div className="card-top">
         <span className={`card-proj-tag ${pc}`}>{task.project}</span>
         {task.urgency && task.urgency !== 'medium' && (
-          <span className={`urgency-badge urgency-${task.urgency}`}>
-            {URGENCY_LABEL[task.urgency]}
-          </span>
+          <span className={`urgency-badge urgency-${task.urgency}`}>{URGENCY_LABEL[task.urgency]}</span>
         )}
+        {task.isEvent && <span style={{ fontSize: '.65rem', padding: '2px 6px', borderRadius: 10, background: 'rgba(245,158,11,.15)', color: '#f59e0b' }}>🎟 Evento</span>}
       </div>
       <div className="card-title">{task.title}</div>
       {task.description && <div className="card-desc">{task.description}</div>}
@@ -55,16 +55,12 @@ export default function TaskCard({ task, projIndex, onOpen }) {
         </div>
       )}
       {lateChecklistItems > 0 && (
-        <span style={{ fontSize: '.7rem', color: 'var(--danger)', fontWeight: 600 }}>
-          🔴 {lateChecklistItems} item(s) atrasado(s)
-        </span>
+        <span style={{ fontSize: '.7rem', color: 'var(--danger)', fontWeight: 600 }}>🔴 {lateChecklistItems} item(s) atrasado(s)</span>
       )}
       <div className="card-meta">
         {task.deadline && (
           <span className={isOverdue ? 'overdue' : ''}>
-            📅 {formatDateShort(task.deadline)}
-            {task.deadlineTime ? ' ' + task.deadlineTime : ''}
-            {isOverdue ? ' (atrasada)' : ''}
+            📅 {formatDateShort(task.deadline)}{task.deadlineTime ? ' ' + task.deadlineTime : ''}{isOverdue ? ' (atrasada)' : ''}
           </span>
         )}
         {task.assignee && <span>👤 {task.assignee}</span>}
@@ -74,7 +70,9 @@ export default function TaskCard({ task, projIndex, onOpen }) {
       <div className="card-footer">
         <span className="card-date">{formatDateShort(task.createdAt)}</span>
         <div className="card-actions">
-          <button className="card-btn del" onClick={handleDelete} title="Excluir">✕</button>
+          {can.delete && (
+            <button className="card-btn del" onClick={handleDelete} title="Mover para lixeira">✕</button>
+          )}
         </div>
       </div>
     </div>
