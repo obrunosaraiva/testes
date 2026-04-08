@@ -242,7 +242,7 @@ export default function TaskModal({ taskId, defaultStatus, onClose }) {
           />
 
           {/* Row: Project + Status */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+          <div className="form-grid-2">
             <div>
               <label className="field-label">Projeto</label>
               <select value={form.project} onChange={e => setField('project', e.target.value)}>
@@ -263,7 +263,7 @@ export default function TaskModal({ taskId, defaultStatus, onClose }) {
           </div>
 
           {/* Row: Assignee + Urgency */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+          <div className="form-grid-2">
             <div>
               <label className="field-label">Responsável</label>
               <input value={form.assignee} onChange={e => setField('assignee', e.target.value)} placeholder="Nome..." />
@@ -281,7 +281,7 @@ export default function TaskModal({ taskId, defaultStatus, onClose }) {
           </div>
 
           {/* Row: Start + Deadline + Time */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 140px', gap: 12 }}>
+          <div className="form-grid-3">
             <div>
               <label className="field-label">Data de início</label>
               <input type="date" value={form.startDate} onChange={e => setField('startDate', e.target.value)} />
@@ -310,7 +310,7 @@ export default function TaskModal({ taskId, defaultStatus, onClose }) {
           </div>
           {form.isEvent && (
             <>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+              <div className="form-grid-2">
                 <div>
                   <label className="field-label">Início do evento</label>
                   <input type="date" value={form.eventStartDate} onChange={e => setField('eventStartDate', e.target.value)} />
@@ -374,7 +374,7 @@ export default function TaskModal({ taskId, defaultStatus, onClose }) {
                     />
                     <button onClick={() => removeCL(i)} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', fontSize: '1.1rem' }}>×</button>
                   </div>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 140px 110px', gap: 6, marginTop: 6 }}>
+                  <div className="form-grid-cl">
                     <input value={item.assignee || ''} onChange={e => updateCL(i, { assignee: e.target.value })} placeholder="Responsável..." />
                     <input type="date" value={item.deadline || ''} onChange={e => updateCL(i, { deadline: e.target.value })} />
                     <input type="time" value={item.time || ''} onChange={e => updateCL(i, { time: e.target.value })} title="Hora da entrega" />
