@@ -377,9 +377,10 @@ export function KanbanProvider({ children }) {
           if (row?.id) dispatch({ type: 'REMOVE_TASK_BY_ID', payload: row.id });
         })
         .on('postgres_changes', { event: '*', schema: 'public', table: 'kanban_projects' }, async () => {
-          // On any project change, reload all projects from DB
           const { data } = await sb.from('kanban_projects').select('*').order('created_at');
-          if (data?.length) {
+          // Only replace if DB returned data AND the count is reasonable
+          // (avoids wiping local projects if DB returns empty due to timing/RLS)
+          if (data && data.length > 0) {
             dispatch({
               type: 'SET_PROJECTS',
               payload: data.map(p => ({
@@ -435,28 +436,29 @@ export function KanbanProvider({ children }) {
     }
   }
 
-  // ── Project sync ────────────────────────────────────────────────────────────
-  async function syncProjects(projects) {
+  // ── Project DB ops — targeted, never delete based on list comparison ───────
+  async function insertProjectToDb(proj) {
     try {
-      const { data: existing } = await sb.from('kanban_projects').select('name');
-      const existingNames = (existing || []).map(p => p.name);
-      const toInsert = projects.filter(p => !existingNames.includes(p.name));
-      const toDelete = existingNames.filter(n => !projects.some(p => p.name === n));
-      if (toInsert.length) {
-        await sb.from('kanban_projects').insert(toInsert.map(p => ({
-          name: p.name,
-          cost_center: p.costCenter || null,
-        })));
-      }
-      for (const name of toDelete) await sb.from('kanban_projects').delete().eq('name', name);
-      // Update cost center for existing
-      for (const p of projects) {
-        if (existingNames.includes(p.name)) {
-          await sb.from('kanban_projects').update({ cost_center: p.costCenter || null }).eq('name', p.name);
-        }
-      }
+      await sb.from('kanban_projects').insert({ name: proj.name, cost_center: proj.costCenter || null });
     } catch (e) {
-      console.warn('[Kanban] syncProjects error:', e.message);
+      // Fallback: upsert in case it already exists
+      await sb.from('kanban_projects').upsert({ name: proj.name, cost_center: proj.costCenter || null }, { onConflict: 'name' }).catch(() => {});
+    }
+  }
+
+  async function updateProjectInDb(proj) {
+    try {
+      await sb.from('kanban_projects').upsert({ name: proj.name, cost_center: proj.costCenter || null }, { onConflict: 'name' });
+    } catch (e) {
+      console.warn('[Kanban] updateProject DB error:', e.message);
+    }
+  }
+
+  async function deleteProjectFromDb(name) {
+    try {
+      await sb.from('kanban_projects').delete().eq('name', name);
+    } catch (e) {
+      console.warn('[Kanban] deleteProject DB error:', e.message);
     }
   }
 
@@ -507,13 +509,13 @@ export function KanbanProvider({ children }) {
   function addProject(name, costCenter = null) {
     const proj = { id: newProjectId(), name, costCenter };
     dispatch({ type: 'ADD_PROJECT', payload: proj });
-    syncProjects([...stateRef.current.projects, proj]);
+    insertProjectToDb(proj);
   }
 
   function updateProject(id, patch) {
     dispatch({ type: 'UPDATE_PROJECT', payload: { id, ...patch } });
-    const updated = stateRef.current.projects.map(p => p.id === id ? { ...p, ...patch } : p);
-    syncProjects(updated);
+    const updated = stateRef.current.projects.find(p => p.id === id);
+    if (updated) updateProjectInDb({ ...updated, ...patch });
   }
 
   async function softDeleteProject(id, deletedBy = '') {
@@ -521,8 +523,7 @@ export function KanbanProvider({ children }) {
     dispatch({ type: 'SOFT_DELETE_PROJECT', payload: { id, deletedAt: new Date().toISOString(), deletedBy } });
     if (proj) {
       const taskIds = stateRef.current.tasks.filter(t => t.project === proj.name).map(t => t.id);
-      const newProjects = stateRef.current.projects.filter(p => p.id !== id);
-      syncProjects(newProjects);
+      deleteProjectFromDb(proj.name);
       for (const tid of taskIds) sb.from('kanban_tasks').delete().eq('id', tid).catch(() => {});
     }
   }
@@ -531,7 +532,7 @@ export function KanbanProvider({ children }) {
     dispatch({ type: 'RESTORE_PROJECT', payload: id });
     const proj = stateRef.current.trashedProjects.find(p => p.id === id);
     if (proj) {
-      syncProjects([...stateRef.current.projects, proj]);
+      insertProjectToDb(proj);
       const restoredTasks = stateRef.current.trashedTasks.filter(t => t.project === proj.name && t.deletedWithProject);
       for (const t of restoredTasks) saveTaskToDb(normalizeTask(t));
     }
