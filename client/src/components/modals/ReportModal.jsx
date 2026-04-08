@@ -142,7 +142,6 @@ export default function ReportModal({ onClose }) {
       lines.push(`${i + 1}. 🎫 *${t.title}*`);
       lines.push(`   📁 Projeto: ${t.project || '—'}`);
       lines.push(`   👤 Responsável: ${t.assignee || '—'}`);
-      lines.push(`   🔄 Status: ${STATUS_LABEL[t.status] || t.status}`);
       lines.push(`   📅 Data do evento: ${evStart}${t.eventEndDate ? ` até ${evEnd}` : ''}`);
       lines.push('');
       lines.push(`   🎯 Meta de ingressos: ${goal || '—'}`);
