@@ -346,47 +346,16 @@ export function KanbanProvider({ children }) {
         dispatch({ type: 'SET_SYNC_STATUS', payload: '○ Offline' });
       }
     }
-    loadSupabase().then(() => {
-      // ── Supabase Realtime ─────────────────────────────────────────────────────
-      // NOTE: tables must be added to supabase_realtime publication in Supabase
-      // Dashboard → Database → Replication → kanban_tasks + kanban_projects
-      const channel = sb.channel('kanban-realtime')
-        .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'kanban_tasks' }, ({ new: row }) => {
-          dispatch({ type: 'UPSERT_TASK', payload: normalizeTask(row) });
-        })
-        .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'kanban_tasks' }, ({ new: row }) => {
-          // If the row was soft-deleted, remove it from the board on all devices immediately
-          if (row?.deleted) {
-            if (row.id) dispatch({ type: 'REMOVE_TASK_BY_ID', payload: row.id });
-          } else {
-            dispatch({ type: 'UPSERT_TASK', payload: normalizeTask(row) });
-          }
-        })
-        .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'kanban_tasks' }, ({ old: row }) => {
-          if (row?.id) dispatch({ type: 'REMOVE_TASK_BY_ID', payload: row.id });
-        })
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'kanban_projects' }, async () => {
-          const { data } = await sb.from('kanban_projects').select('*').order('created_at');
-          // Only replace if DB returned data AND the count is reasonable
-          // (avoids wiping local projects if DB returns empty due to timing/RLS)
-          if (data && data.length > 0) {
-            dispatch({
-              type: 'SET_PROJECTS',
-              payload: data.map(p => ({
-                id: p.id || ('p_' + p.name.replace(/[^a-z0-9]/gi, '_')),
-                name: p.name,
-                costCenter: p.cost_center || null,
-              })),
-            });
-          }
-        })
-        .subscribe((status) => {
-          if (status === 'SUBSCRIBED') dispatch({ type: 'SET_SYNC_STATUS', payload: '● Online' });
-          if (status === 'CHANNEL_ERROR') dispatch({ type: 'SET_SYNC_STATUS', payload: '○ Sync Error' });
-        });
+    loadSupabase();
 
-      // Fallback: re-fetch projects whenever the user comes back to the tab
-      // Handles cases where kanban_projects is not in the Realtime publication
+    let channel = null;
+    let onVisibility = null;
+
+    async function setupRealtime() {
+      // Wait briefly to ensure loadSupabase has started (not strictly required but avoids
+      // processing Realtime events before initial state is dispatched)
+      await new Promise(r => setTimeout(r, 0));
+
       async function refreshProjectsFromDb() {
         const { data } = await sb.from('kanban_projects').select('*').order('created_at');
         if (data && data.length > 0) {
@@ -401,16 +370,42 @@ export function KanbanProvider({ children }) {
         }
       }
 
-      function onVisibility() {
-        if (document.visibilityState === 'visible') refreshProjectsFromDb();
-      }
-      document.addEventListener('visibilitychange', onVisibility);
+      channel = sb.channel('kanban-realtime')
+        .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'kanban_tasks' }, ({ new: row }) => {
+          dispatch({ type: 'UPSERT_TASK', payload: normalizeTask(row) });
+        })
+        .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'kanban_tasks' }, ({ new: row }) => {
+          if (row?.deleted) {
+            if (row.id) dispatch({ type: 'REMOVE_TASK_BY_ID', payload: row.id });
+          } else {
+            dispatch({ type: 'UPSERT_TASK', payload: normalizeTask(row) });
+          }
+        })
+        .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'kanban_tasks' }, ({ old: row }) => {
+          if (row?.id) dispatch({ type: 'REMOVE_TASK_BY_ID', payload: row.id });
+        })
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'kanban_projects' }, async () => {
+          refreshProjectsFromDb();
+        })
+        .subscribe((status) => {
+          if (status === 'SUBSCRIBED') dispatch({ type: 'SET_SYNC_STATUS', payload: '● Online' });
+          if (status === 'CHANNEL_ERROR') dispatch({ type: 'SET_SYNC_STATUS', payload: '○ Sync Error' });
+        });
 
-      return () => {
-        sb.removeChannel(channel);
-        document.removeEventListener('visibilitychange', onVisibility);
+      // Fallback: re-fetch projects when user tabs back (covers Realtime not enabled for table)
+      onVisibility = () => {
+        if (document.visibilityState === 'visible') refreshProjectsFromDb();
       };
-    });
+      document.addEventListener('visibilitychange', onVisibility);
+    }
+
+    setupRealtime();
+
+    // Cleanup runs when component unmounts — removes channel so re-mount starts fresh
+    return () => {
+      if (channel) sb.removeChannel(channel);
+      if (onVisibility) document.removeEventListener('visibilitychange', onVisibility);
+    };
   }, []);
 
   // ── Supabase task save ──────────────────────────────────────────────────────
