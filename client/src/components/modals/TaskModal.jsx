@@ -52,6 +52,7 @@ export default function TaskModal({ taskId, defaultStatus, onClose }) {
   const [checklist, setChecklist] = useState([]);
   const [attachments, setAttachments] = useState([]);
   const [autosaveStatus, setAutosaveStatus] = useState('');
+  const [showDoneItems, setShowDoneItems] = useState(false);
   const autosaveTimer = useRef(null);
 
   // Initialize form
@@ -350,9 +351,7 @@ export default function TaskModal({ taskId, defaultStatus, onClose }) {
               <span style={{ fontSize: '.75rem', color: 'var(--text-muted)' }}>{clDone}/{checklist.length}</span>
             </div>
             {checklist.length > 0 && (
-              <div style={{
-                height: 4, background: 'var(--surface3)', borderRadius: 2, marginBottom: 12,
-              }}>
+              <div style={{ height: 4, background: 'var(--surface3)', borderRadius: 2, marginBottom: 12 }}>
                 <div style={{
                   height: '100%', borderRadius: 2, background: 'var(--success)',
                   width: `${checklist.length ? (clDone / checklist.length) * 100 : 0}%`,
@@ -360,17 +359,20 @@ export default function TaskModal({ taskId, defaultStatus, onClose }) {
                 }} />
               </div>
             )}
+
+            {/* Pending items */}
             {checklist.map((item, i) => {
-              const isOverdue = item.deadline && !item.done && new Date(item.deadline + 'T23:59:59') < new Date();
+              if (item.done) return null;
+              const isOverdue = item.deadline && new Date(item.deadline + 'T23:59:59') < new Date();
               return (
                 <div key={i} style={{ background: 'var(--surface2)', borderRadius: 8, padding: '8px 10px', marginBottom: 8 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <input type="checkbox" checked={item.done} onChange={() => updateCL(i, { done: !item.done })} />
+                    <input type="checkbox" checked={false} onChange={() => updateCL(i, { done: true })} />
                     <input
                       value={item.text}
                       onChange={e => updateCL(i, { text: e.target.value })}
                       placeholder="Nome do item..."
-                      style={{ flex: 1, textDecoration: item.done ? 'line-through' : 'none', opacity: item.done ? 0.5 : 1 }}
+                      style={{ flex: 1 }}
                     />
                     <button onClick={() => removeCL(i)} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', fontSize: '1.1rem' }}>×</button>
                   </div>
@@ -383,12 +385,62 @@ export default function TaskModal({ taskId, defaultStatus, onClose }) {
                 </div>
               );
             })}
+
             <button
               onClick={addCLItem}
-              style={{ background: 'none', border: '1px dashed var(--border)', borderRadius: 8, color: 'var(--text-muted)', padding: '6px 14px', fontSize: '.82rem', width: '100%' }}
+              style={{ background: 'none', border: '1px dashed var(--border)', borderRadius: 8, color: 'var(--text-muted)', padding: '6px 14px', fontSize: '.82rem', width: '100%', marginBottom: clDone > 0 ? 10 : 0 }}
             >
               + Item
             </button>
+
+            {/* Finalizados — accordion */}
+            {clDone > 0 && (
+              <div>
+                <button
+                  onClick={() => setShowDoneItems(v => !v)}
+                  style={{
+                    width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                    background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: showDoneItems ? '8px 8px 0 0' : 8,
+                    padding: '7px 12px', cursor: 'pointer', color: 'var(--text-muted)', fontSize: '.82rem',
+                    fontFamily: 'inherit', transition: 'border-radius .2s',
+                  }}
+                >
+                  <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <span style={{ fontSize: '.7rem' }}>{showDoneItems ? '▼' : '▶'}</span>
+                    Finalizados
+                    <span style={{
+                      background: 'var(--success)', color: '#fff', borderRadius: 10,
+                      fontSize: '.68rem', fontWeight: 700, padding: '1px 7px',
+                    }}>{clDone}</span>
+                  </span>
+                  <span style={{ fontSize: '.72rem' }}>{showDoneItems ? 'recolher' : 'ver todos'}</span>
+                </button>
+
+                {showDoneItems && (
+                  <div style={{ border: '1px solid var(--border)', borderTop: 'none', borderRadius: '0 0 8px 8px', overflow: 'hidden' }}>
+                    {checklist.map((item, i) => {
+                      if (!item.done) return null;
+                      return (
+                        <div key={i} style={{ background: 'var(--surface2)', padding: '8px 10px', borderTop: '1px solid var(--border)' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                            <input type="checkbox" checked={true} onChange={() => updateCL(i, { done: false })} />
+                            <span style={{ flex: 1, fontSize: '.85rem', textDecoration: 'line-through', opacity: 0.5, color: 'var(--text)' }}>
+                              {item.text || '(sem título)'}
+                            </span>
+                            <button onClick={() => removeCL(i)} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', fontSize: '1.1rem' }}>×</button>
+                          </div>
+                          {item.assignee && (
+                            <div style={{ fontSize: '.72rem', color: 'var(--text-muted)', marginTop: 3, paddingLeft: 26 }}>
+                              {item.assignee}{item.deadline ? ` · ${new Date(item.deadline + 'T00:00:00').toLocaleDateString('pt-BR')}` : ''}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Attachments */}
