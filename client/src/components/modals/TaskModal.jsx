@@ -36,8 +36,9 @@ function newId() {
 const EMPTY_FORM = {
   title: '', description: '', project: '', status: 'backlog',
   assignee: '', urgency: '', startDate: '', deadline: '', deadlineTime: '',
-  isEvent: false, eventStartDate: '', eventEndDate: '', cardColor: 'none',
+  isEvent: false, eventType: 'presencial', eventStartDate: '', eventEndDate: '', cardColor: 'none',
   ticketGoal: '', ticketsSold: '',
+  links: [],
 };
 
 export default function TaskModal({ taskId, defaultStatus, onClose }) {
@@ -53,6 +54,7 @@ export default function TaskModal({ taskId, defaultStatus, onClose }) {
   const [attachments, setAttachments] = useState([]);
   const [autosaveStatus, setAutosaveStatus] = useState('');
   const [showDoneItems, setShowDoneItems] = useState(false);
+  const [editingDesc, setEditingDesc] = useState(!taskId); // new tasks start in edit, existing in read
   const autosaveTimer = useRef(null);
 
   // Initialize form
@@ -69,11 +71,13 @@ export default function TaskModal({ taskId, defaultStatus, onClose }) {
         deadline: task.deadline || '',
         deadlineTime: task.deadlineTime || '',
         isEvent: task.isEvent || false,
+        eventType: task.eventType || 'presencial',
         eventStartDate: task.eventStartDate || '',
         eventEndDate: task.eventEndDate || '',
         cardColor: task.cardColor || 'none',
         ticketGoal: task.ticketGoal ?? '',
         ticketsSold: task.ticketsSold ?? '',
+        links: task.links || [],
       });
       setChecklist(JSON.parse(JSON.stringify(task.checklist || [])));
       setAttachments(JSON.parse(JSON.stringify(task.attachments || [])));
@@ -92,11 +96,13 @@ export default function TaskModal({ taskId, defaultStatus, onClose }) {
           deadline: draft.deadline || '',
           deadlineTime: draft.deadlineTime || '',
           isEvent: draft.isEvent || false,
+          eventType: draft.eventType || 'presencial',
           eventStartDate: draft.eventStartDate || '',
           eventEndDate: draft.eventEndDate || '',
           cardColor: draft.cardColor || 'none',
           ticketGoal: draft.ticketGoal ?? '',
           ticketsSold: draft.ticketsSold ?? '',
+          links: draft.links || [],
         });
         setChecklist(draft.checklist || []);
       } else {
@@ -236,12 +242,32 @@ export default function TaskModal({ taskId, defaultStatus, onClose }) {
             style={{ fontSize: '1rem', fontWeight: 600 }}
           />
 
-          {/* Description */}
-          <AutoTextarea
-            value={form.description}
-            onChange={e => setField('description', e.target.value)}
-            placeholder="Descrição..."
-          />
+          {/* Description — locked until user clicks edit */}
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+              <label className="field-label" style={{ margin: 0 }}>Descrição</label>
+              {editingDesc
+                ? <button onClick={() => setEditingDesc(false)} style={{ background: 'none', border: 'none', fontSize: '.75rem', color: 'var(--accent)', cursor: 'pointer', padding: 0 }}>✔ Feito</button>
+                : <button onClick={() => setEditingDesc(true)} style={{ background: 'none', border: 'none', fontSize: '.75rem', color: 'var(--text-muted)', cursor: 'pointer', padding: 0 }}>✏️ Editar</button>
+              }
+            </div>
+            {editingDesc
+              ? <AutoTextarea value={form.description} onChange={e => setField('description', e.target.value)} placeholder="Descrição..." />
+              : (
+                <div
+                  onClick={() => setEditingDesc(true)}
+                  style={{
+                    minHeight: 60, padding: '8px 12px', borderRadius: 8,
+                    background: 'var(--surface2)', border: '1px solid var(--border)',
+                    fontSize: '.9rem', color: form.description ? 'var(--text)' : 'var(--text-muted)',
+                    whiteSpace: 'pre-wrap', wordBreak: 'break-word', cursor: 'pointer', lineHeight: 1.5,
+                  }}
+                >
+                  {form.description || 'Clique em Editar para adicionar uma descrição...'}
+                </div>
+              )
+            }
+          </div>
 
           {/* Row: Project + Status */}
           <div className="form-grid-2">
@@ -312,6 +338,30 @@ export default function TaskModal({ taskId, defaultStatus, onClose }) {
           </div>
           {form.isEvent && (
             <>
+              {/* Event type */}
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                {[
+                  { value: 'presencial',   label: '🏟 Presencial' },
+                  { value: 'sala_secreta', label: '🔒 Sala Secreta' },
+                  { value: 'meteorico',    label: '☄️ Meteórico' },
+                ].map(opt => (
+                  <label key={opt.value} style={{
+                    display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer',
+                    padding: '5px 14px', borderRadius: 20, fontSize: '.82rem',
+                    background: form.eventType === opt.value ? 'var(--accent)' : 'var(--surface2)',
+                    border: `1px solid ${form.eventType === opt.value ? 'var(--accent)' : 'var(--border)'}`,
+                    color: form.eventType === opt.value ? '#fff' : 'var(--text-muted)',
+                    transition: 'all .15s',
+                  }}>
+                    <input type="radio" name="eventType" value={opt.value}
+                      checked={form.eventType === opt.value}
+                      onChange={() => setField('eventType', opt.value)}
+                      style={{ display: 'none' }} />
+                    {opt.label}
+                  </label>
+                ))}
+              </div>
+
               <div className="form-grid-2">
                 <div>
                   <label className="field-label">Início do evento</label>
@@ -444,6 +494,45 @@ export default function TaskModal({ taskId, defaultStatus, onClose }) {
             )}
           </div>
 
+          {/* Links */}
+          <div>
+            <h3 style={{ fontSize: '.9rem', fontWeight: 600, marginBottom: 8 }}>🔗 Links</h3>
+            {(form.links || []).map((lk, i) => (
+              <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
+                <input
+                  value={lk.label}
+                  onChange={e => setField('links', form.links.map((l, idx) => idx === i ? { ...l, label: e.target.value } : l))}
+                  placeholder="Rótulo..."
+                  style={{ width: 110, flexShrink: 0 }}
+                />
+                <input
+                  value={lk.url}
+                  onChange={e => setField('links', form.links.map((l, idx) => idx === i ? { ...l, url: e.target.value } : l))}
+                  placeholder="https://..."
+                  style={{ flex: 1 }}
+                />
+                <button
+                  onClick={() => navigator.clipboard.writeText(lk.url).catch(() => {})}
+                  title="Copiar link"
+                  style={{ background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 7, padding: '5px 8px', cursor: 'pointer', fontSize: '.78rem', flexShrink: 0 }}
+                >📋</button>
+                {lk.url && (
+                  <a href={lk.url.startsWith('http') ? lk.url : 'https://' + lk.url} target="_blank" rel="noopener noreferrer"
+                    style={{ color: 'var(--text-muted)', fontSize: '1rem', lineHeight: 1, flexShrink: 0 }}
+                    title="Abrir link">↗</a>
+                )}
+                <button
+                  onClick={() => setField('links', form.links.filter((_, idx) => idx !== i))}
+                  style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', flexShrink: 0 }}
+                >×</button>
+              </div>
+            ))}
+            <button
+              onClick={() => setField('links', [...(form.links || []), { label: '', url: '' }])}
+              style={{ background: 'none', border: '1px dashed var(--border)', borderRadius: 8, color: 'var(--text-muted)', padding: '5px 14px', fontSize: '.82rem', width: '100%' }}
+            >+ Adicionar link</button>
+          </div>
+
           {/* Attachments */}
           <div>
             <h3 style={{ fontSize: '.9rem', fontWeight: 600, marginBottom: 8 }}>Anexos</h3>
@@ -488,6 +577,10 @@ export default function TaskModal({ taskId, defaultStatus, onClose }) {
 }
 
 function EventSalesTracker({ form, setField }) {
+  const isMeteoric = form.eventType === 'meteorico';
+  const LABELS = isMeteoric
+    ? { unit: 'leads', goal: 'Meta de leads', sold: 'Leads captados', soldShort: 'captados', pace: 'leads/dia', panel: '☄️ Painel de Captação', progress: '📡 Progresso de captação' }
+    : { unit: 'ingressos', goal: 'Meta de ingressos', sold: 'Ingressos vendidos', soldShort: 'vendidos', pace: 'ingressos/dia', panel: '🎟 Painel de Vendas', progress: '🎫 Progresso de vendas' };
   const today = new Date(); today.setHours(0, 0, 0, 0);
   const MS = 86400000;
 
@@ -529,7 +622,7 @@ function EventSalesTracker({ form, setField }) {
     <div style={{ background: 'var(--surface2)', border: `1px solid ${barColor}40`, borderRadius: 12, padding: 16, display: 'flex', flexDirection: 'column', gap: 14 }}>
 
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <span style={{ fontWeight: 700, fontSize: '.92rem' }}>🎟 Painel de Vendas</span>
+        <span style={{ fontWeight: 700, fontSize: '.92rem' }}>{LABELS.panel}</span>
         <span style={{ fontSize: '.78rem', fontWeight: 600, color: barColor }}>{statusText}</span>
       </div>
 
@@ -538,7 +631,7 @@ function EventSalesTracker({ form, setField }) {
         {[
           { value: daysRemaining, label: 'dias restantes', color: daysRemaining <= 7 ? '#ef4444' : 'var(--text)' },
           { value: goal || '—', label: 'meta', color: 'var(--text)' },
-          { value: sold, label: 'vendidos', color: 'var(--text)' },
+          { value: sold, label: LABELS.soldShort, color: 'var(--text)' },
           { value: goal > 0 ? remaining : '—', label: 'faltam', color: barColor },
         ].map(({ value, label, color }) => (
           <div key={label} style={{ background: 'var(--surface3)', borderRadius: 8, padding: '8px 4px' }}>
@@ -551,7 +644,7 @@ function EventSalesTracker({ form, setField }) {
       {/* Sales progress bar */}
       <div>
         <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '.72rem', color: 'var(--text-muted)', marginBottom: 5 }}>
-          <span>🎫 Progresso de vendas</span>
+          <span>{LABELS.progress}</span>
           <span style={{ fontWeight: 600, color: barColor }}>{salesPct.toFixed(1)}%</span>
         </div>
         <div style={{ height: 14, background: 'var(--surface3)', borderRadius: 7, overflow: 'hidden', position: 'relative' }}>
@@ -596,7 +689,7 @@ function EventSalesTracker({ form, setField }) {
             <div style={{ fontSize: '1.6rem', fontWeight: 700, color: barColor, lineHeight: 1 }}>
               {daysRemaining > 0 ? Math.ceil(remaining / daysRemaining) : '—'}
             </div>
-            <div style={{ fontSize: '.68rem', color: 'var(--text-muted)' }}>ingressos/dia</div>
+            <div style={{ fontSize: '.68rem', color: 'var(--text-muted)' }}>{LABELS.pace}</div>
           </div>
         </div>
       )}
@@ -604,11 +697,11 @@ function EventSalesTracker({ form, setField }) {
       {/* Inputs */}
       <div className="form-grid-2">
         <div>
-          <label className="field-label">🎯 Meta de ingressos</label>
+          <label className="field-label">{isMeteoric ? '🎯 Meta de leads' : '🎯 Meta de ingressos'}</label>
           <input type="number" min="0" value={form.ticketGoal} onChange={e => setField('ticketGoal', e.target.value)} placeholder="Ex: 500" />
         </div>
         <div>
-          <label className="field-label">✅ Ingressos vendidos</label>
+          <label className="field-label">{isMeteoric ? '📡 Leads captados' : '✅ Ingressos vendidos'}</label>
           <input type="number" min="0" value={form.ticketsSold} onChange={e => setField('ticketsSold', e.target.value)} placeholder="Ex: 150" />
         </div>
       </div>

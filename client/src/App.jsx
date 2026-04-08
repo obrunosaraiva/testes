@@ -13,6 +13,7 @@ import BoardView from './components/board/BoardView';
 import MobileBottomNav from './components/board/MobileBottomNav';
 import GanttView from './components/gantt/GanttView';
 import TaskModal from './components/modals/TaskModal';
+import ResourceLibrary from './components/modals/ResourceLibrary';
 import TemplatesModal from './components/modals/TemplatesModal';
 import ReportModal from './components/modals/ReportModal';
 import AdminPanel from './components/admin/AdminPanel';
@@ -51,6 +52,7 @@ function KanbanApp() {
   const [showReport, setShowReport] = useState(false);
   const [showAdmin, setShowAdmin] = useState(false);
   const [showTrash, setShowTrash] = useState(false);
+  const [showRepository, setShowRepository] = useState(false);
   const [templateToApply, setTemplateToApply] = useState(null);
 
   useEffect(() => {
@@ -91,6 +93,7 @@ function KanbanApp() {
         onOpenReport={() => setShowReport(true)}
         onOpenAdmin={() => setShowAdmin(true)}
         onOpenTrash={() => setShowTrash(true)}
+        onOpenRepository={() => setShowRepository(true)}
       />
       <ProjectBar />
 
@@ -115,6 +118,7 @@ function KanbanApp() {
       {showReport && <ReportModal onClose={() => setShowReport(false)} />}
       {showAdmin && <AdminPanel onClose={() => setShowAdmin(false)} />}
       {showTrash && <TrashPanel onClose={() => setShowTrash(false)} />}
+      {showRepository && <ResourceLibrary onClose={() => setShowRepository(false)} />}
 
     </div>
   );

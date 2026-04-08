@@ -4,7 +4,7 @@ import { useAuth } from '../../hooks/useAuth';
 import { useTheme } from '../../hooks/useTheme';
 import { useRole } from '../../context/RoleContext';
 
-export default function Header({ onOpenTemplates, onOpenReport, onOpenAdmin, onOpenTrash }) {
+export default function Header({ onOpenTemplates, onOpenReport, onOpenAdmin, onOpenTrash, onOpenRepository }) {
   const { view, setView, syncStatus, trashedTasks, trashedProjects } = useKanban();
   const { signOut } = useAuth();
   const { theme, toggleTheme } = useTheme();
@@ -42,6 +42,7 @@ export default function Header({ onOpenTemplates, onOpenReport, onOpenAdmin, onO
           <button onClick={toggleTheme} className="icon-btn" title={theme === 'dark' ? 'Modo claro' : 'Modo escuro'}>
             {theme === 'dark' ? '☀️' : '🌙'}
           </button>
+          <button className="view-btn" onClick={onOpenRepository}>📁 Repositório</button>
           <button className="view-btn" onClick={onOpenTemplates}>Templates</button>
           {can.admin && <button className="view-btn" onClick={onOpenReport}>📋 Relatório</button>}
           <button className={`view-btn${view === 'board' ? ' active' : ''}`} onClick={() => setView('board')}>Board</button>
@@ -116,6 +117,7 @@ export default function Header({ onOpenTemplates, onOpenReport, onOpenAdmin, onO
             {/* Drawer items */}
             <div style={{ flex: 1, overflowY: 'auto', paddingTop: 8 }}>
               <DrawerItem icon={theme === 'dark' ? '☀️' : '🌙'} label={theme === 'dark' ? 'Modo Claro' : 'Modo Escuro'} onClick={() => { toggleTheme(); close(); }} />
+              <DrawerItem icon="📁" label="Repositório" onClick={() => { onOpenRepository(); close(); }} />
               <DrawerItem icon="📄" label="Templates" onClick={() => { onOpenTemplates(); close(); }} />
               {can.admin && <DrawerItem icon="📋" label="Relatório" onClick={() => { onOpenReport(); close(); }} />}
               {can.admin && (

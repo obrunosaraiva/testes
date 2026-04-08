@@ -13,8 +13,8 @@ const STATUS_CONFIG = {
 };
 
 export default function Column({ status, onOpenTask, onNewTask }) {
-  const { tasks, projects, activeProject, combinedProjects, viewFilter, costCenterFilter, updateTask } = useKanban();
-  const { can } = useRole();
+  const { tasks, projects, activeProject, combinedProjects, viewFilter, costCenterFilter, costCenters, updateTask } = useKanban();
+  const { can, userId } = useRole();
   const [dragOver, setDragOver] = useState(false);
 
   const cfg = STATUS_CONFIG[status];
@@ -33,9 +33,15 @@ export default function Column({ status, onOpenTask, onNewTask }) {
     if (viewFilter === 'events' && !t.isEvent) return false;
     if (viewFilter === 'tasks' && t.isEvent) return false;
 
+    // Hide tasks from private CCs not owned by current user
+    const proj = projects.find(p => p.name === t.project);
+    if (proj?.costCenter) {
+      const cc = costCenters.find(c => c.key === proj.costCenter);
+      if (cc?.isPrivate && cc.createdBy !== userId) return false;
+    }
+
     // Cost center filter
     if (costCenterFilter.length > 0) {
-      const proj = projects.find(p => p.name === t.project);
       if (!proj?.costCenter || !costCenterFilter.includes(proj.costCenter)) return false;
     }
 

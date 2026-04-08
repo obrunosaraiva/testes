@@ -11,10 +11,10 @@ export const COST_CENTERS = {
 };
 
 export const DEFAULT_COST_CENTERS = [
-  { key: 'IBEC',  label: 'IBEC',  color: '#eab308' },
-  { key: 'GH',    label: 'GH',    color: '#3b82f6' },
-  { key: 'Leanx', label: 'Leanx', color: '#ef4444' },
-  { key: 'Up3',   label: 'Up3',   color: '#22c55e' },
+  { key: 'IBEC',  label: 'IBEC',  color: '#eab308', isPrivate: false, createdBy: null },
+  { key: 'GH',    label: 'GH',    color: '#3b82f6', isPrivate: false, createdBy: null },
+  { key: 'Leanx', label: 'Leanx', color: '#ef4444', isPrivate: false, createdBy: null },
+  { key: 'Up3',   label: 'Up3',   color: '#22c55e', isPrivate: false, createdBy: null },
 ];
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -51,6 +51,8 @@ function normalizeTask(t) {
     createdAt: t.createdAt || t.created_at || '',
     ticketGoal: t.ticketGoal ?? t.ticket_goal ?? '',
     ticketsSold: t.ticketsSold ?? t.tickets_sold ?? '',
+    eventType: t.eventType || t.event_type || 'presencial',
+    links: parseJsonField(t.links),
   };
 }
 
@@ -66,6 +68,7 @@ const initialState = {
   trashedTasks: [],
   trashedProjects: [],
   templates: [],
+  resources: [],
   costCenters: DEFAULT_COST_CENTERS,
   activeProject: '__all__',
   combinedProjects: [],       // array of project names for multi-view
@@ -221,6 +224,12 @@ function reducer(state, action) {
     case 'DELETE_TEMPLATE':
       return { ...state, templates: state.templates.filter(t => t.id !== action.payload) };
 
+    // ── Resources ──
+    case 'ADD_RESOURCE':
+      return { ...state, resources: [...state.resources, action.payload] };
+    case 'DELETE_RESOURCE':
+      return { ...state, resources: state.resources.filter(r => r.id !== action.payload) };
+
     default:
       return state;
   }
@@ -242,6 +251,7 @@ export function KanbanProvider({ children }) {
         projects: s.projects,
         tasks: s.tasks,
         templates: s.templates,
+        resources: s.resources,
         activeProject: s.activeProject,
         view: s.view,
         viewFilter: s.viewFilter,
@@ -273,6 +283,7 @@ export function KanbanProvider({ children }) {
             projects: (p.projects || ['Projeto 1']).map(normalizeProject),
             tasks: (p.tasks || []).map(normalizeTask),
             templates: p.templates || [],
+            resources: p.resources || [],
             activeProject: p.activeProject || '__all__',
             view: p.view || 'board',
             viewFilter: p.viewFilter || 'all',
@@ -413,12 +424,13 @@ export function KanbanProvider({ children }) {
       attachments: JSON.stringify(task.attachments || []),
       ticket_goal: task.ticketGoal !== '' && task.ticketGoal != null ? Number(task.ticketGoal) : null,
       tickets_sold: task.ticketsSold !== '' && task.ticketsSold != null ? Number(task.ticketsSold) : null,
-      deleted: false, // explicitly mark as not deleted so a race upsert never revives a deleted task
+      event_type: task.eventType || 'presencial',
+      links: JSON.stringify(task.links || []),
+      deleted: false,
     };
     const { error } = await sb.from('kanban_tasks').upsert(row, { onConflict: 'id' });
     if (error) {
-      // Fallback: strip columns that may not exist in older DB schemas
-      const { deadline_time, is_event, event_start_date, event_end_date, card_color, ticket_goal, tickets_sold, deleted, ...basic } = row;
+      const { deadline_time, is_event, event_start_date, event_end_date, card_color, ticket_goal, tickets_sold, event_type, links, deleted, ...basic } = row;
       await sb.from('kanban_tasks').upsert(basic, { onConflict: 'id' }).catch(() => {});
     }
   }
@@ -546,13 +558,16 @@ export function KanbanProvider({ children }) {
   function toggleCostCenterFilter(cc) { dispatch({ type: 'TOGGLE_COST_CENTER_FILTER', payload: cc }); }
   function clearCostCenterFilter() { dispatch({ type: 'CLEAR_COST_CENTER_FILTER' }); }
 
-  function addCostCenter(label, color) {
+  function addCostCenter(label, color, isPrivate = false, createdBy = null) {
     const key = label.trim().replace(/\s+/g, '_').toUpperCase().slice(0, 20);
     const unique = stateRef.current.costCenters.some(cc => cc.key === key)
       ? key + '_' + Date.now().toString(36).slice(-4)
       : key;
-    dispatch({ type: 'ADD_COST_CENTER', payload: { key: unique, label: label.trim(), color } });
+    dispatch({ type: 'ADD_COST_CENTER', payload: { key: unique, label: label.trim(), color, isPrivate, createdBy } });
   }
+
+  function addResource(item) { dispatch({ type: 'ADD_RESOURCE', payload: { id: 'r_' + Date.now(), createdAt: new Date().toISOString(), ...item } }); }
+  function deleteResource(id) { dispatch({ type: 'DELETE_RESOURCE', payload: id }); }
 
   function deleteCostCenter(key) {
     dispatch({ type: 'DELETE_COST_CENTER', payload: key });
@@ -574,6 +589,7 @@ export function KanbanProvider({ children }) {
       setView, setViewFilter, toggleCostCenterFilter, clearCostCenterFilter,
       addCostCenter, deleteCostCenter,
       addTemplate, deleteTemplate,
+      addResource, deleteResource,
       saveTaskToDb, saveDraft, loadDraft, clearDraft,
     }}>
       {children}

@@ -16,7 +16,15 @@ export default function ProjectBar() {
     toggleCostCenterFilter, clearCostCenterFilter,
     addCostCenter, deleteCostCenter,
   } = useKanban();
-  const { can } = useRole();
+  const { can, userId } = useRole();
+
+  // Only show CCs that are public OR were created by the current user
+  const visibleCCs = costCenters.filter(cc => !cc.isPrivate || cc.createdBy === userId);
+  // Only show projects whose CC is visible (or has no CC)
+  const visibleProjects = projects.filter(proj => {
+    if (!proj.costCenter) return true;
+    return visibleCCs.some(cc => cc.key === proj.costCenter);
+  });
 
   const [showNewModal, setShowNewModal] = useState(false);
   const [editingProject, setEditingProject] = useState(null);
@@ -109,7 +117,7 @@ export default function ProjectBar() {
 
         <div className={`cc-filter-row${showFilters ? ' cc-filter-open' : ''}`} style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
           <span className="desktop-only" style={{ fontSize: '.72rem', color: 'var(--text-muted)', marginRight: 2 }}>CC:</span>
-          {costCenters.map(cc => {
+          {visibleCCs.map(cc => {
             const active = costCenterFilter.includes(cc.key);
             return (
               <button
@@ -180,13 +188,13 @@ export default function ProjectBar() {
             />
           )}
 
-          {projects.map(proj => (
+          {visibleProjects.map(proj => (
             <ProjectTab
               key={proj.id}
               label={proj.name}
               count={tasks.filter(t => t.project === proj.name).length}
               costCenter={proj.costCenter}
-              costCenters={costCenters}
+              costCenters={visibleCCs}
               active={combineMode || isCombining ? combinedProjects.includes(proj.name) : activeProject === proj.name}
               onClick={() => {
                 if (combineMode || isCombining) {
@@ -222,7 +230,7 @@ export default function ProjectBar() {
 
       {showNewModal && (
         <NewProjectModal
-          costCenters={costCenters}
+          costCenters={visibleCCs}
           onClose={() => setShowNewModal(false)}
           onCreate={(name, cc) => { addProject(name, cc); setShowNewModal(false); }}
         />
@@ -231,7 +239,7 @@ export default function ProjectBar() {
       {editingProject && (
         <EditProjectModal
           project={editingProject}
-          costCenters={costCenters}
+          costCenters={visibleCCs}
           onClose={() => setEditingProject(null)}
           onSave={(patch) => { updateProject(editingProject.id, patch); setEditingProject(null); }}
         />
@@ -240,7 +248,7 @@ export default function ProjectBar() {
       {showNewCC && (
         <NewCostCenterModal
           onClose={() => setShowNewCC(false)}
-          onCreate={(label, color) => { addCostCenter(label, color); setShowNewCC(false); }}
+          onCreate={(label, color, isPrivate) => { addCostCenter(label, color, isPrivate, userId); setShowNewCC(false); }}
         />
       )}
       {ConfirmDialog}
@@ -408,11 +416,12 @@ function CostCenterPicker({ costCenters, value, onChange }) {
 function NewCostCenterModal({ onClose, onCreate }) {
   const [label, setLabel] = useState('');
   const [color, setColor] = useState(PRESET_COLORS[0]);
+  const [isPrivate, setIsPrivate] = useState(false);
 
   function handleSubmit(e) {
     e.preventDefault();
     if (!label.trim()) return;
-    onCreate(label.trim(), color);
+    onCreate(label.trim(), color, isPrivate);
   }
 
   return (
@@ -456,6 +465,16 @@ function NewCostCenterModal({ onClose, onCreate }) {
               <span style={{ width: 12, height: 12, borderRadius: '50%', background: color, flexShrink: 0 }} />
               <span style={{ fontSize: '.85rem', color: 'var(--text-muted)' }}>{label || 'Prévia'}</span>
             </div>
+            {/* Privacy toggle */}
+            <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', padding: '8px 12px', borderRadius: 8, background: isPrivate ? 'var(--surface3)' : 'var(--surface2)', border: `1px solid ${isPrivate ? 'var(--accent)' : 'var(--border)'}`, transition: 'all .15s' }}>
+              <input type="checkbox" checked={isPrivate} onChange={e => setIsPrivate(e.target.checked)} />
+              <div>
+                <div style={{ fontSize: '.85rem', fontWeight: 600 }}>{isPrivate ? '🔒 Privado' : '🌐 Público'}</div>
+                <div style={{ fontSize: '.72rem', color: 'var(--text-muted)' }}>
+                  {isPrivate ? 'Só você vê este CC, seus projetos e tarefas' : 'Todos os usuários visualizam este CC'}
+                </div>
+              </div>
+            </label>
             <div style={{ display: 'flex', gap: 10, paddingTop: 4 }}>
               <button type="button" className="btn btn-ghost" style={{ flex: 1 }} onClick={onClose}>Cancelar</button>
               <button type="submit" className="btn btn-primary" style={{ flex: 1 }}>Criar CC</button>
