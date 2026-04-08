@@ -3,6 +3,22 @@ import { useKanban } from '../../context/KanbanContext';
 import { useRole } from '../../context/RoleContext';
 import { useConfirm } from '../../hooks/useConfirm';
 
+// Seletor de usuários do sistema — substitui campos de texto livre de responsável
+function UserSelect({ value, onChange, placeholder = 'Sem responsável' }) {
+  const { allProfiles, loadAllProfiles } = useRole();
+  useEffect(() => { loadAllProfiles(); }, []);
+  return (
+    <select value={value || ''} onChange={e => onChange(e.target.value)}>
+      <option value="">{placeholder}</option>
+      {allProfiles.map(u => (
+        <option key={u.id} value={u.email}>
+          {u.name ? `${u.name} (${u.email})` : u.email}
+        </option>
+      ))}
+    </select>
+  );
+}
+
 // Auto-growing textarea — grows with content, no need to drag resize
 function AutoTextarea({ value, onChange, placeholder, style }) {
   const ref = useRef(null);
@@ -297,7 +313,7 @@ export default function TaskModal({ taskId, defaultStatus, templateData, onClose
           <div className="form-grid-2">
             <div>
               <label className="field-label">Responsável</label>
-              <input value={form.assignee} onChange={e => setField('assignee', e.target.value)} placeholder="Nome..." />
+              <UserSelect value={form.assignee} onChange={v => setField('assignee', v)} />
             </div>
             <div>
               <label className="field-label">Urgência</label>
@@ -431,7 +447,7 @@ export default function TaskModal({ taskId, defaultStatus, templateData, onClose
                     <button onClick={() => removeCL(i)} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', fontSize: '1.1rem' }}>×</button>
                   </div>
                   <div className="form-grid-cl">
-                    <input value={item.assignee || ''} onChange={e => updateCL(i, { assignee: e.target.value })} placeholder="Responsável..." />
+                    <UserSelect value={item.assignee || ''} onChange={v => updateCL(i, { assignee: v })} placeholder="Responsável..." />
                     <input type="date" value={item.deadline || ''} onChange={e => updateCL(i, { deadline: e.target.value })} />
                     <input type="time" value={item.time || ''} onChange={e => updateCL(i, { time: e.target.value })} title="Hora da entrega" />
                   </div>

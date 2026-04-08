@@ -71,7 +71,7 @@ export default function TaskCard({ task, projIndex, onOpen }) {
             📅 {formatDateShort(task.deadline)}{task.deadlineTime ? ' ' + task.deadlineTime : ''}{isOverdue ? ' (atrasada)' : ''}
           </span>
         )}
-        {task.assignee && <span>👤 {task.assignee}</span>}
+        {task.assignee && <span>👤 {task.assignee.includes('@') ? task.assignee.split('@')[0] : task.assignee}</span>}
         {attCount > 0 && <span>📎 {attCount}</span>}
         {cl.length > 0 && <span>☑ {done}/{cl.length}</span>}
       </div>
