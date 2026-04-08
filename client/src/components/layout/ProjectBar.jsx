@@ -136,22 +136,22 @@ export default function ProjectBar() {
               >
                 <span style={{ width: 7, height: 7, borderRadius: '50%', background: cc.color, flexShrink: 0 }} />
                 {cc.label}
-                {cc.isPrivate && <span title="Privado" style={{ fontSize: '.65rem', opacity: 0.6 }}>🔒</span>}
-                {(can.admin || cc.createdBy === userId) && (
+                {cc.isPrivate && <span title="Privado" style={{ fontSize: '.65rem', opacity: 0.7 }}>🔒</span>}
+                {can.admin && (
                   <span
                     onClick={e => { e.stopPropagation(); setEditingCC(cc); }}
-                    style={{ marginLeft: 1, opacity: 0.4, fontSize: '.7rem', lineHeight: 1, cursor: 'pointer' }}
+                    style={{ marginLeft: 2, fontSize: '.75rem', lineHeight: 1, cursor: 'pointer', opacity: 0.7 }}
                     onMouseEnter={e => e.currentTarget.style.opacity = '1'}
-                    onMouseLeave={e => e.currentTarget.style.opacity = '0.4'}
+                    onMouseLeave={e => e.currentTarget.style.opacity = '0.7'}
                     title="Editar CC"
                   >✎</span>
                 )}
-                {(can.admin || cc.createdBy === userId) && (
+                {can.admin && (
                   <span
                     onClick={async e => { e.stopPropagation(); const ok = await confirm(`Remover "${cc.label}" dos centros de custo?`, { title: 'Remover CC', confirmLabel: 'Remover' }); if (ok) deleteCostCenter(cc.key); }}
-                    style={{ marginLeft: 1, opacity: 0.4, fontSize: '.7rem', lineHeight: 1, cursor: 'pointer' }}
+                    style={{ marginLeft: 1, fontSize: '.8rem', lineHeight: 1, cursor: 'pointer', opacity: 0.6 }}
                     onMouseEnter={e => e.currentTarget.style.opacity = '1'}
-                    onMouseLeave={e => e.currentTarget.style.opacity = '0.4'}
+                    onMouseLeave={e => e.currentTarget.style.opacity = '0.6'}
                     title="Remover CC"
                   >×</span>
                 )}
