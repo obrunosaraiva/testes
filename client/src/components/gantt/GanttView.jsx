@@ -16,7 +16,7 @@ function daysBetween(a, b) {
 }
 
 export default function GanttView({ onOpenTask }) {
-  const { tasks, projects, activeProject } = useKanban();
+  const { tasks, projects, activeProject, costCenterFilter } = useKanban();
   const [filterProj, setFilterProj] = useState('__all__');
   const [inputStart, setInputStart] = useState('');
   const [inputEnd, setInputEnd] = useState('');
@@ -25,8 +25,14 @@ export default function GanttView({ onOpenTask }) {
     let t = tasks.filter(t => t.startDate || t.deadline);
     if (filterProj !== '__all__') t = t.filter(t => t.project === filterProj);
     else if (activeProject !== '__all__') t = t.filter(t => t.project === activeProject);
+    if (costCenterFilter.length > 0) {
+      t = t.filter(task => {
+        const proj = projects.find(p => p.name === task.project);
+        return proj?.costCenter && costCenterFilter.includes(proj.costCenter);
+      });
+    }
     return t;
-  }, [tasks, filterProj, activeProject]);
+  }, [tasks, filterProj, activeProject, costCenterFilter, projects]);
 
   const { rangeStart, rangeEnd, autoStart, autoEnd } = useMemo(() => {
     if (!filtered.length) return { rangeStart: new Date(), rangeEnd: new Date(), autoStart: new Date(), autoEnd: new Date() };

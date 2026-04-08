@@ -12,7 +12,7 @@ const STATUS_CONFIG = {
 };
 
 export default function Column({ status, onOpenTask, onNewTask }) {
-  const { tasks, projects, activeProject, combinedProjects, viewFilter, updateTask } = useKanban();
+  const { tasks, projects, activeProject, combinedProjects, viewFilter, costCenterFilter, updateTask } = useKanban();
   const [dragOver, setDragOver] = useState(false);
 
   const cfg = STATUS_CONFIG[status];
@@ -30,6 +30,12 @@ export default function Column({ status, onOpenTask, onNewTask }) {
     // View filter
     if (viewFilter === 'events' && !t.isEvent) return false;
     if (viewFilter === 'tasks' && t.isEvent) return false;
+
+    // Cost center filter
+    if (costCenterFilter.length > 0) {
+      const proj = projects.find(p => p.name === t.project);
+      if (!proj?.costCenter || !costCenterFilter.includes(proj.costCenter)) return false;
+    }
 
     return true;
   });

@@ -59,8 +59,9 @@ const initialState = {
   trashedProjects: [],
   templates: [],
   activeProject: '__all__',
-  combinedProjects: [],   // array of project names for multi-view
-  viewFilter: 'all',      // 'all' | 'events' | 'tasks'
+  combinedProjects: [],       // array of project names for multi-view
+  viewFilter: 'all',          // 'all' | 'events' | 'tasks'
+  costCenterFilter: [],       // array of cost center keys, empty = all
   view: 'board',
   dbReady: false,
   syncStatus: 'Conectando...',
@@ -173,6 +174,14 @@ function reducer(state, action) {
       return { ...state, view: action.payload };
     case 'SET_VIEW_FILTER':
       return { ...state, viewFilter: action.payload };
+    case 'TOGGLE_COST_CENTER_FILTER': {
+      const cc = action.payload;
+      const cur = state.costCenterFilter;
+      const next = cur.includes(cc) ? cur.filter(c => c !== cc) : [...cur, cc];
+      return { ...state, costCenterFilter: next };
+    }
+    case 'CLEAR_COST_CENTER_FILTER':
+      return { ...state, costCenterFilter: [] };
 
     // ── Templates ──
     case 'ADD_TEMPLATE':
@@ -203,6 +212,7 @@ export function KanbanProvider({ children }) {
         activeProject: s.activeProject,
         view: s.view,
         viewFilter: s.viewFilter,
+        costCenterFilter: s.costCenterFilter,
       }));
       localStorage.setItem(TRASH_KEY, JSON.stringify({
         trashedTasks: s.trashedTasks,
@@ -232,6 +242,7 @@ export function KanbanProvider({ children }) {
             activeProject: p.activeProject || '__all__',
             view: p.view || 'board',
             viewFilter: p.viewFilter || 'all',
+        costCenterFilter: p.costCenterFilter || [],
           },
         });
       }
@@ -427,6 +438,8 @@ export function KanbanProvider({ children }) {
 
   function setView(v) { dispatch({ type: 'SET_VIEW', payload: v }); }
   function setViewFilter(f) { dispatch({ type: 'SET_VIEW_FILTER', payload: f }); }
+  function toggleCostCenterFilter(cc) { dispatch({ type: 'TOGGLE_COST_CENTER_FILTER', payload: cc }); }
+  function clearCostCenterFilter() { dispatch({ type: 'CLEAR_COST_CENTER_FILTER' }); }
   function addTemplate(tpl) { dispatch({ type: 'ADD_TEMPLATE', payload: tpl }); }
   function deleteTemplate(id) { dispatch({ type: 'DELETE_TEMPLATE', payload: id }); }
 
@@ -441,7 +454,7 @@ export function KanbanProvider({ children }) {
       addTask, updateTask, softDeleteTask, restoreTask, permDeleteTask,
       addProject, updateProject, softDeleteProject, restoreProject, permDeleteProject,
       setActiveProject, toggleCombinedProject, clearCombinedProjects,
-      setView, setViewFilter,
+      setView, setViewFilter, toggleCostCenterFilter, clearCostCenterFilter,
       addTemplate, deleteTemplate,
       saveTaskToDb, saveDraft, loadDraft, clearDraft,
     }}>

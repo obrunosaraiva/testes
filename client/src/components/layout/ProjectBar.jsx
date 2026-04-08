@@ -6,9 +6,10 @@ const CC_KEYS = Object.keys(COST_CENTERS);
 
 export default function ProjectBar() {
   const {
-    projects, tasks, activeProject, combinedProjects, viewFilter,
+    projects, tasks, activeProject, combinedProjects, viewFilter, costCenterFilter,
     setActiveProject, toggleCombinedProject, clearCombinedProjects,
     addProject, updateProject, softDeleteProject, setViewFilter,
+    toggleCostCenterFilter, clearCostCenterFilter,
   } = useKanban();
   const { can } = useRole();
 
@@ -75,6 +76,41 @@ export default function ProjectBar() {
           </button>
           {isCombining && (
             <button onClick={exitCombineMode} style={{ padding: '3px 10px', borderRadius: 20, fontSize: '.73rem', background: 'none', border: '1px solid var(--border)', color: 'var(--text-muted)', cursor: 'pointer', marginBottom: 4 }}>
+              ✕ Limpar
+            </button>
+          )}
+        </div>
+
+        {/* Cost center filter */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '0 24px 8px', flexWrap: 'wrap' }}>
+          <span style={{ fontSize: '.72rem', color: 'var(--text-muted)', marginRight: 2 }}>CC:</span>
+          {CC_KEYS.map(cc => {
+            const active = costCenterFilter.includes(cc);
+            const { color, label } = COST_CENTERS[cc];
+            return (
+              <button
+                key={cc}
+                onClick={() => toggleCostCenterFilter(cc)}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 5,
+                  padding: '2px 10px', borderRadius: 20, cursor: 'pointer', fontSize: '.75rem',
+                  background: active ? color + '22' : 'var(--surface2)',
+                  border: `1px solid ${active ? color : 'var(--border)'}`,
+                  color: active ? color : 'var(--text-muted)',
+                  fontWeight: active ? 700 : 400,
+                  transition: 'all .15s',
+                }}
+              >
+                <span style={{ width: 7, height: 7, borderRadius: '50%', background: color, flexShrink: 0 }} />
+                {label}
+              </button>
+            );
+          })}
+          {costCenterFilter.length > 0 && (
+            <button
+              onClick={clearCostCenterFilter}
+              style={{ padding: '2px 10px', borderRadius: 20, fontSize: '.73rem', background: 'none', border: '1px solid var(--border)', color: 'var(--text-muted)', cursor: 'pointer' }}
+            >
               ✕ Limpar
             </button>
           )}
