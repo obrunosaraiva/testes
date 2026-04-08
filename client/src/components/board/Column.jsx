@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useKanban } from '../../context/KanbanContext';
+import { useRole } from '../../context/RoleContext';
 import TaskCard from './TaskCard';
 
 const STATUS_CONFIG = {
@@ -13,6 +14,7 @@ const STATUS_CONFIG = {
 
 export default function Column({ status, onOpenTask, onNewTask }) {
   const { tasks, projects, activeProject, combinedProjects, viewFilter, costCenterFilter, updateTask } = useKanban();
+  const { can } = useRole();
   const [dragOver, setDragOver] = useState(false);
 
   const cfg = STATUS_CONFIG[status];
@@ -81,9 +83,11 @@ export default function Column({ status, onOpenTask, onNewTask }) {
         ))}
       </div>
 
-      <button className="add-card-btn" onClick={() => onNewTask(status)}>
-        + Tarefa
-      </button>
+      {can.create && (
+        <button className="add-card-btn" onClick={() => onNewTask(status)}>
+          + Tarefa
+        </button>
+      )}
     </div>
   );
 }

@@ -41,7 +41,7 @@ export default function Header({ onOpenTemplates, onOpenReport, onOpenAdmin, onO
         </button>
 
         <button className="view-btn" onClick={onOpenTemplates}>Templates</button>
-        <button className="view-btn" onClick={onOpenReport}>📋 Relatório</button>
+        {can.admin && <button className="view-btn" onClick={onOpenReport}>📋 Relatório</button>}
         <button className={`view-btn${view === 'board' ? ' active' : ''}`} onClick={() => setView('board')}>Board</button>
         <button className={`view-btn${view === 'gantt' ? ' active' : ''}`} onClick={() => setView('gantt')}>Gantt</button>
 
