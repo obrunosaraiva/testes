@@ -522,9 +522,19 @@ function EventSalesTracker({ form, setField }) {
 
       {/* Pace */}
       {goal > 0 && (
-        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '.8rem', background: 'var(--surface3)', borderRadius: 8, padding: '8px 12px' }}>
-          <span style={{ color: 'var(--text-muted)' }}>📈 Ritmo atual: <strong style={{ color: 'var(--text)' }}>{dailyCurrent}/dia</strong></span>
-          <span style={{ color: 'var(--text-muted)' }}>🎯 Precisa vender: <strong style={{ color: barColor }}>{dailyNeeded}/dia</strong></span>
+        <div style={{ background: 'var(--surface3)', borderRadius: 8, padding: '10px 14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div>
+            <div style={{ fontSize: '.7rem', color: 'var(--text-muted)', marginBottom: 2 }}>📊 Pacing diário necessário</div>
+            <div style={{ fontSize: '.72rem', color: 'var(--text-muted)' }}>
+              ({goal} - {sold}) ÷ {daysRemaining}d =
+            </div>
+          </div>
+          <div style={{ textAlign: 'right' }}>
+            <div style={{ fontSize: '1.6rem', fontWeight: 700, color: barColor, lineHeight: 1 }}>
+              {daysRemaining > 0 ? Math.ceil(remaining / daysRemaining) : '—'}
+            </div>
+            <div style={{ fontSize: '.68rem', color: 'var(--text-muted)' }}>ingressos/dia</div>
+          </div>
         </div>
       )}
 
