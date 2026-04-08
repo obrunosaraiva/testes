@@ -87,8 +87,13 @@ function reducer(state, action) {
       return { ...state, dbReady: true, syncStatus: '● Online' };
     case 'SET_SYNC_STATUS':
       return { ...state, syncStatus: action.payload };
-    case 'SET_TASKS':
-      return { ...state, tasks: action.payload };
+    case 'SET_TASKS': {
+      // Never restore tasks that are already in the local trash.
+      // This prevents deleted tasks from reappearing when Supabase loads
+      // before the DB delete completes (or after a quick page refresh).
+      const trashedIds = new Set(state.trashedTasks.map(t => t.id));
+      return { ...state, tasks: action.payload.filter(t => !trashedIds.has(t.id)) };
+    }
     case 'SET_PROJECTS':
       return { ...state, projects: action.payload.map(normalizeProject) };
     case 'SET_TEMPLATES':
@@ -389,10 +394,13 @@ export function KanbanProvider({ children }) {
       card_color: task.cardColor || 'none',
       checklist: JSON.stringify(task.checklist || []),
       attachments: JSON.stringify(task.attachments || []),
+      ticket_goal: task.ticketGoal !== '' && task.ticketGoal != null ? Number(task.ticketGoal) : null,
+      tickets_sold: task.ticketsSold !== '' && task.ticketsSold != null ? Number(task.ticketsSold) : null,
     };
     const { error } = await sb.from('kanban_tasks').upsert(row, { onConflict: 'id' });
     if (error) {
-      const { deadline_time, is_event, event_start_date, event_end_date, ...basic } = row;
+      // Fallback: strip columns that may not exist in older DB schemas
+      const { deadline_time, is_event, event_start_date, event_end_date, card_color, ticket_goal, tickets_sold, ...basic } = row;
       await sb.from('kanban_tasks').upsert(basic, { onConflict: 'id' }).catch(() => {});
     }
   }
@@ -435,11 +443,9 @@ export function KanbanProvider({ children }) {
 
   function softDeleteTask(id, deletedBy = '') {
     dispatch({ type: 'SOFT_DELETE_TASK', payload: { id, deletedAt: new Date().toISOString(), deletedBy } });
-    // Small delay so any in-flight upsert (autosave) completes first,
-    // then the guard in saveTaskToDb blocks it, and the delete wins.
-    setTimeout(() => {
-      sb.from('kanban_tasks').delete().eq('id', id).catch(() => {});
-    }, 300);
+    // Delete immediately — the guard in saveTaskToDb (checks stateRef) prevents
+    // any in-flight autosave from re-inserting it. SET_TASKS also filters trashed IDs.
+    sb.from('kanban_tasks').delete().eq('id', id).catch(() => {});
   }
 
   function restoreTask(id) {
