@@ -99,6 +99,16 @@ function reducer(state, action) {
       return { ...state, tasks: [...state.tasks, action.payload] };
     case 'UPDATE_TASK':
       return { ...state, tasks: state.tasks.map(t => t.id === action.payload.id ? action.payload : t) };
+    // Realtime: insert or update from another device
+    case 'UPSERT_TASK': {
+      const exists = state.tasks.some(t => t.id === action.payload.id);
+      return { ...state, tasks: exists
+        ? state.tasks.map(t => t.id === action.payload.id ? action.payload : t)
+        : [...state.tasks, action.payload] };
+    }
+    // Realtime: delete from another device
+    case 'REMOVE_TASK_BY_ID':
+      return { ...state, tasks: state.tasks.filter(t => t.id !== action.payload) };
     case 'SOFT_DELETE_TASK': {
       const task = state.tasks.find(t => t.id === action.payload.id);
       if (!task) return state;
@@ -297,9 +307,9 @@ export function KanbanProvider({ children }) {
           ticketsSold: t.tickets_sold,
         }));
 
-        const supabaseIds = new Set(mapped.map(t => t.id));
-        const localOnly = stateRef.current.tasks.filter(t => !supabaseIds.has(t.id)).map(normalizeTask);
-        dispatch({ type: 'SET_TASKS', payload: [...mapped, ...localOnly] });
+        // Supabase is the source of truth — do NOT merge localStorage tasks
+        // (merged tasks from deleted-on-another-device would come back)
+        dispatch({ type: 'SET_TASKS', payload: mapped });
 
         if (dbProjects && dbProjects.length) {
           dispatch({
@@ -312,14 +322,47 @@ export function KanbanProvider({ children }) {
           });
         }
 
-        for (const t of localOnly) saveTaskToDb(t);
         dispatch({ type: 'SET_DB_READY' });
       } catch (e) {
         console.warn('[Kanban] Supabase load error:', e.message);
         dispatch({ type: 'SET_SYNC_STATUS', payload: '○ Offline' });
       }
     }
-    loadSupabase();
+    loadSupabase().then(() => {
+      // ── Supabase Realtime ─────────────────────────────────────────────────────
+      // NOTE: tables must be added to supabase_realtime publication in Supabase
+      // Dashboard → Database → Replication → kanban_tasks + kanban_projects
+      const channel = sb.channel('kanban-realtime')
+        .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'kanban_tasks' }, ({ new: row }) => {
+          dispatch({ type: 'UPSERT_TASK', payload: normalizeTask(row) });
+        })
+        .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'kanban_tasks' }, ({ new: row }) => {
+          dispatch({ type: 'UPSERT_TASK', payload: normalizeTask(row) });
+        })
+        .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'kanban_tasks' }, ({ old: row }) => {
+          if (row?.id) dispatch({ type: 'REMOVE_TASK_BY_ID', payload: row.id });
+        })
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'kanban_projects' }, async () => {
+          // On any project change, reload all projects from DB
+          const { data } = await sb.from('kanban_projects').select('*').order('created_at');
+          if (data?.length) {
+            dispatch({
+              type: 'SET_PROJECTS',
+              payload: data.map(p => ({
+                id: p.id || ('p_' + p.name.replace(/[^a-z0-9]/gi, '_')),
+                name: p.name,
+                costCenter: p.cost_center || null,
+              })),
+            });
+          }
+        })
+        .subscribe((status) => {
+          if (status === 'SUBSCRIBED') dispatch({ type: 'SET_SYNC_STATUS', payload: '● Online' });
+          if (status === 'CHANNEL_ERROR') dispatch({ type: 'SET_SYNC_STATUS', payload: '○ Sync Error' });
+        });
+
+      return () => sb.removeChannel(channel);
+    });
   }, []);
 
   // ── Supabase task save ──────────────────────────────────────────────────────
