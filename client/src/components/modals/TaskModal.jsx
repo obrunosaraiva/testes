@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useKanban } from '../../context/KanbanContext';
 import { useRole } from '../../context/RoleContext';
+import { useConfirm } from '../../hooks/useConfirm';
 
 // Auto-growing textarea — grows with content, no need to drag resize
 function AutoTextarea({ value, onChange, placeholder, style }) {
@@ -42,6 +43,7 @@ const EMPTY_FORM = {
 export default function TaskModal({ taskId, defaultStatus, onClose }) {
   const { tasks, projects, addTask, updateTask, softDeleteTask, saveDraft, loadDraft, clearDraft } = useKanban();
   const { can, userId } = useRole();
+  const [ConfirmDialog, confirm] = useConfirm();
 
   const isNew = !taskId;
   const task = taskId ? tasks.find(t => t.id === taskId) : null;
@@ -156,8 +158,13 @@ export default function TaskModal({ taskId, defaultStatus, onClose }) {
     onClose();
   }
 
-  function handleDelete() {
-    if (!task || !confirm('Mover esta tarefa para a lixeira?')) return;
+  async function handleDelete() {
+    if (!task) return;
+    const ok = await confirm(`Mover "${task.title}" para a lixeira?`, {
+      title: 'Mover para lixeira',
+      confirmLabel: 'Mover',
+    });
+    if (!ok) return;
     softDeleteTask(task.id, userId || '');
     clearDraft();
     onClose();
@@ -201,6 +208,8 @@ export default function TaskModal({ taskId, defaultStatus, onClose }) {
   const clDone = checklist.filter(x => x.done).length;
 
   return (
+    <>
+    {ConfirmDialog}
     <div className="modal-overlay active" onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
       <div className="modal" style={{ maxWidth: 700 }} onClick={e => e.stopPropagation()}>
         <div className="modal-head">
@@ -423,6 +432,7 @@ export default function TaskModal({ taskId, defaultStatus, onClose }) {
         </div>
       </div>
     </div>
+    </>
   );
 }
 

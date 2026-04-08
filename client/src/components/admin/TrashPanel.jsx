@@ -1,4 +1,5 @@
 import { useKanban } from '../../context/KanbanContext';
+import { useConfirm } from '../../hooks/useConfirm';
 
 function fmtDate(iso) {
   if (!iso) return '—';
@@ -7,9 +8,12 @@ function fmtDate(iso) {
 
 export default function TrashPanel({ onClose }) {
   const { trashedTasks, trashedProjects, restoreTask, permDeleteTask, restoreProject, permDeleteProject } = useKanban();
+  const [ConfirmDialog, confirm] = useConfirm();
   const total = trashedTasks.length + trashedProjects.length;
 
   return (
+    <>
+    {ConfirmDialog}
     <div className="modal-overlay active" onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
       <div className="modal" style={{ maxWidth: 600 }} onClick={e => e.stopPropagation()}>
         <div className="modal-head">
@@ -39,10 +43,12 @@ export default function TrashPanel({ onClose }) {
                           subtitle={`${taskCount} tarefa${taskCount !== 1 ? 's' : ''} · Excluído em ${fmtDate(proj.deletedAt)}`}
                           badge={proj.costCenter}
                           onRestore={() => restoreProject(proj.id)}
-                          onDelete={() => {
-                            if (confirm(`Excluir "${proj.name}" permanentemente? Isso removerá também as ${taskCount} tarefa(s) do projeto.`)) {
-                              permDeleteProject(proj.id);
-                            }
+                          onDelete={async () => {
+                            const ok = await confirm(`Excluir "${proj.name}" permanentemente? As ${taskCount} tarefa(s) do projeto também serão removidas.`, {
+                              title: 'Excluir permanentemente',
+                              confirmLabel: 'Excluir',
+                            });
+                            if (ok) permDeleteProject(proj.id);
                           }}
                         />
                       );
@@ -63,8 +69,12 @@ export default function TrashPanel({ onClose }) {
                         title={task.title}
                         subtitle={`${task.project || 'Sem projeto'} · ${task.assignee || '—'} · Excluída em ${fmtDate(task.deletedAt)}`}
                         onRestore={() => restoreTask(task.id)}
-                        onDelete={() => {
-                          if (confirm(`Excluir "${task.title}" permanentemente?`)) permDeleteTask(task.id);
+                        onDelete={async () => {
+                          const ok = await confirm(`Excluir "${task.title}" permanentemente?`, {
+                            title: 'Excluir permanentemente',
+                            confirmLabel: 'Excluir',
+                          });
+                          if (ok) permDeleteTask(task.id);
                         }}
                       />
                     ))}
@@ -82,6 +92,7 @@ export default function TrashPanel({ onClose }) {
         </div>
       </div>
     </div>
+    </>
   );
 }
 

@@ -1,9 +1,13 @@
 import { useKanban } from '../../context/KanbanContext';
+import { useConfirm } from '../../hooks/useConfirm';
 
 export default function TemplatesModal({ onClose, onUseTemplate }) {
   const { templates, deleteTemplate } = useKanban();
+  const [ConfirmDialog, confirm] = useConfirm();
 
   return (
+    <>
+    {ConfirmDialog}
     <div className="modal-overlay active" onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
       <div className="modal" onClick={e => e.stopPropagation()}>
         <div className="modal-head">
@@ -41,7 +45,7 @@ export default function TemplatesModal({ onClose, onUseTemplate }) {
                   </div>
                 )}
                 <button
-                  onClick={e => { e.stopPropagation(); if (confirm(`Excluir template "${tpl.name}"?`)) deleteTemplate(tpl.id); }}
+                  onClick={async e => { e.stopPropagation(); const ok = await confirm(`Excluir o template "${tpl.name}"?`, { title: 'Excluir template', confirmLabel: 'Excluir' }); if (ok) deleteTemplate(tpl.id); }}
                   style={{
                     position: 'absolute', top: 8, right: 8,
                     background: 'none', border: 'none', color: 'var(--text-muted)',
@@ -59,5 +63,6 @@ export default function TemplatesModal({ onClose, onUseTemplate }) {
         </div>
       </div>
     </div>
+    </>
   );
 }

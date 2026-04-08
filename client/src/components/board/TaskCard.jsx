@@ -1,5 +1,6 @@
 import { useKanban } from '../../context/KanbanContext';
 import { useRole } from '../../context/RoleContext';
+import { useConfirm } from '../../hooks/useConfirm';
 
 const PROJ_COLORS = ['pc0','pc1','pc2','pc3','pc4','pc5','pc6','pc7'];
 const URGENCY_LABEL = { low: 'Baixa', medium: 'Média', high: 'Alta', critical: 'Crítica' };
@@ -13,6 +14,7 @@ function formatDateShort(iso) {
 export default function TaskCard({ task, projIndex, onOpen }) {
   const { softDeleteTask } = useKanban();
   const { can, userId } = useRole();
+  const [ConfirmDialog, confirm] = useConfirm();
   const cl = task.checklist || [];
   const done = cl.filter(x => x.done).length;
   const pc = PROJ_COLORS[Math.max(0, projIndex) % PROJ_COLORS.length];
@@ -25,13 +27,19 @@ export default function TaskCard({ task, projIndex, onOpen }) {
     e.dataTransfer.effectAllowed = 'move';
   }
 
-  function handleDelete(e) {
+  async function handleDelete(e) {
     e.stopPropagation();
-    if (!confirm(`Mover "${task.title}" para a lixeira?`)) return;
+    const ok = await confirm(`Mover "${task.title}" para a lixeira?`, {
+      title: 'Mover para lixeira',
+      confirmLabel: 'Mover',
+    });
+    if (!ok) return;
     softDeleteTask(task.id, userId || '');
   }
 
   return (
+    <>
+      {ConfirmDialog}
     <div
       draggable
       onDragStart={handleDragStart}
@@ -76,5 +84,6 @@ export default function TaskCard({ task, projIndex, onOpen }) {
         </div>
       </div>
     </div>
+    </>
   );
 }

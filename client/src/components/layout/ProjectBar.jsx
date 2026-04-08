@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useKanban } from '../../context/KanbanContext';
 import { useRole } from '../../context/RoleContext';
+import { useConfirm } from '../../hooks/useConfirm';
 
 const PRESET_COLORS = [
   '#eab308','#f59e0b','#ef4444','#ec4899','#a855f7',
@@ -21,12 +22,17 @@ export default function ProjectBar() {
   const [editingProject, setEditingProject] = useState(null);
   const [combineMode, setCombineMode] = useState(false);
   const [showNewCC, setShowNewCC] = useState(false);
+  const [ConfirmDialog, confirm] = useConfirm();
 
   const allCount = tasks.length;
   const isCombining = combinedProjects.length > 0;
 
-  function handleDeleteProject(proj) {
-    if (!confirm(`Mover "${proj.name}" para a lixeira?`)) return;
+  async function handleDeleteProject(proj) {
+    const ok = await confirm(`Mover "${proj.name}" para a lixeira?`, {
+      title: 'Mover projeto para lixeira',
+      confirmLabel: 'Mover',
+    });
+    if (!ok) return;
     softDeleteProject(proj.id);
   }
 
@@ -103,7 +109,7 @@ export default function ProjectBar() {
                 {cc.label}
                 {can.admin && (
                   <span
-                    onClick={e => { e.stopPropagation(); if (confirm(`Remover centro de custo "${cc.label}"?`)) deleteCostCenter(cc.key); }}
+                    onClick={async e => { e.stopPropagation(); const ok = await confirm(`Remover "${cc.label}" dos centros de custo?`, { title: 'Remover CC', confirmLabel: 'Remover' }); if (ok) deleteCostCenter(cc.key); }}
                     style={{ marginLeft: 2, opacity: 0.4, fontSize: '.7rem', lineHeight: 1, cursor: 'pointer' }}
                     onMouseEnter={e => e.currentTarget.style.opacity = '1'}
                     onMouseLeave={e => e.currentTarget.style.opacity = '0.4'}
@@ -216,6 +222,7 @@ export default function ProjectBar() {
           onCreate={(label, color) => { addCostCenter(label, color); setShowNewCC(false); }}
         />
       )}
+      {ConfirmDialog}
     </>
   );
 }
