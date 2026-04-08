@@ -152,15 +152,6 @@ export default function ReportModal({ onClose }) {
       lines.push(`   📈 Pacing diário: ${pacing !== null ? pacing + ' ingressos/dia' : '—'}`);
       lines.push(`   ${status}`);
 
-      if ((t.checklist || []).length > 0) {
-        lines.push('');
-        lines.push('   📋 Checklist:');
-        t.checklist.forEach(c => {
-          const clA = c.assignee ? ` · 👤 ${c.assignee}` : '';
-          const clDl = c.deadline ? ` · 📅 ${new Date(c.deadline + 'T00:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}` : '';
-          lines.push(`      ${c.done ? '☑' : '☐'} ${c.text || '—'}${clA}${clDl}`);
-        });
-      }
       lines.push('');
     });
 
