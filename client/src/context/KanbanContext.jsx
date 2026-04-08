@@ -296,11 +296,18 @@ export function KanbanProvider({ children }) {
   useEffect(() => {
     async function loadSupabase() {
       try {
-        const [{ data: dbProjects }, { data: tasks, error: taskError }] = await Promise.all([
+        const [{ data: dbProjects }, rawTasksResult] = await Promise.all([
           sb.from('kanban_projects').select('*').order('created_at'),
-          // Filter out soft-deleted rows (deleted = true). Column may not exist yet — fallback below.
           sb.from('kanban_tasks').select('*').neq('deleted', true).order('created_at'),
         ]);
+
+        // If the 'deleted' column doesn't exist yet (migration not run), fall back to unfiltered query
+        let { data: tasks, error: taskError } = rawTasksResult;
+        if (taskError && taskError.message?.includes('deleted')) {
+          const fallback = await sb.from('kanban_tasks').select('*').order('created_at');
+          tasks = fallback.data;
+          taskError = fallback.error;
+        }
         if (taskError) throw taskError;
 
         const mapped = (tasks || []).map(t => normalizeTask({
@@ -316,9 +323,11 @@ export function KanbanProvider({ children }) {
           ticketsSold: t.tickets_sold,
         }));
 
-        // Supabase is the source of truth — do NOT merge localStorage tasks
-        // (merged tasks from deleted-on-another-device would come back)
-        dispatch({ type: 'SET_TASKS', payload: mapped });
+        // Supabase is source of truth. Only update if we got real data back.
+        // Never wipe tasks if Supabase returned an unexpected empty list.
+        if (mapped.length > 0 || stateRef.current.tasks.length === 0) {
+          dispatch({ type: 'SET_TASKS', payload: mapped });
+        }
 
         if (dbProjects && dbProjects.length) {
           dispatch({
