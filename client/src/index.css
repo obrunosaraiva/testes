@@ -86,11 +86,17 @@ input, textarea, select {
   min-width: 0;
   box-sizing: border-box;
 }
-/* Normalize height across all single-line inputs (including date/time) */
+/* Normalize height across single-line inputs */
 input:not([type="checkbox"]):not([type="file"]):not([type="radio"]),
 select {
   height: 38px;
   line-height: 1;
+}
+/* Date/time: slightly shorter, consistent with text inputs on desktop */
+input[type="date"],
+input[type="time"] {
+  height: 38px;
+  padding: 6px 10px;
 }
 input:focus, textarea:focus, select:focus { border-color: var(--accent); }
 input[type="checkbox"] { width: auto; height: auto; cursor: pointer; }
@@ -194,22 +200,32 @@ select option { background: var(--surface2); }
   .modal-body { padding: 16px 16px 20px; }
   .modal-head { padding: 16px 16px 0; }
 
-  /* Inputs: 16px minimum prevents iOS auto-zoom, consistent height */
-  input:not([type="checkbox"]):not([type="file"]):not([type="radio"]),
+  /* Inputs: 16px on text/select prevents iOS auto-zoom */
+  input:not([type="checkbox"]):not([type="file"]):not([type="radio"]):not([type="date"]):not([type="time"]),
   select {
     font-size: 16px !important;
-    padding: 10px 12px;
-    height: 44px;
+    padding: 10px 12px !important;
+    height: 44px !important;
   }
   textarea { font-size: 16px !important; padding: 10px 12px; }
+
+  /* Date/time: smaller — they open a picker (no keyboard), so no iOS zoom risk */
+  input[type="date"],
+  input[type="time"] {
+    font-size: 13px !important;
+    padding: 6px 10px !important;
+    height: 36px !important;
+    -webkit-appearance: none;
+    appearance: none;
+  }
 
   /* Show add-task button in single column view */
   .add-card-btn { display: block; }
 
   /* Grids collapse */
   .form-grid-2  { grid-template-columns: 1fr !important; }
-  .form-grid-3  { grid-template-columns: 1fr 1fr !important; } /* dates side-by-side, time wraps */
-  .form-grid-cl { grid-template-columns: 1fr 1fr !important; } /* assignee+date side-by-side */
+  .form-grid-3  { grid-template-columns: 1fr 1fr !important; }
+  .form-grid-cl { grid-template-columns: 1fr 1fr !important; }
 
   /* Event stats: 4 cols → 2 cols */
   .form-grid-4 { grid-template-columns: repeat(2, 1fr) !important; }
