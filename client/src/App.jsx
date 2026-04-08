@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import './App.css';
 
 import { useAuth } from './hooks/useAuth';
+import { useMobile } from './hooks/useMobile';
 import { KanbanProvider, useKanban } from './context/KanbanContext';
 import { RoleProvider, useRole } from './context/RoleContext';
 
@@ -9,6 +10,7 @@ import LoginScreen from './components/auth/LoginScreen';
 import Header from './components/layout/Header';
 import ProjectBar from './components/layout/ProjectBar';
 import BoardView from './components/board/BoardView';
+import MobileBottomNav from './components/board/MobileBottomNav';
 import GanttView from './components/gantt/GanttView';
 import TaskModal from './components/modals/TaskModal';
 import TemplatesModal from './components/modals/TemplatesModal';
@@ -41,6 +43,8 @@ export default function App() {
 function KanbanApp() {
   const { view } = useKanban();
   const { role, can, loading: roleLoading } = useRole();
+  const isMobile = useMobile();
+  const [mobileStatus, setMobileStatus] = useState('backlog');
   const [taskModalId, setTaskModalId] = useState(null);
   const [newTaskStatus, setNewTaskStatus] = useState('backlog');
   const [showTemplates, setShowTemplates] = useState(false);
@@ -90,10 +94,14 @@ function KanbanApp() {
       />
       <ProjectBar />
 
-      <div style={{ flex: 1, minHeight: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
-        {view === 'board' && <BoardView onOpenTask={id => setTaskModalId(id)} onNewTask={openNewTask} />}
+      <div style={{ flex: 1, minHeight: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column', paddingBottom: isMobile && view === 'board' ? 64 : 0 }}>
+        {view === 'board' && <BoardView onOpenTask={id => setTaskModalId(id)} onNewTask={openNewTask} mobileStatus={mobileStatus} />}
         {view === 'gantt' && <GanttView onOpenTask={id => setTaskModalId(id)} />}
       </div>
+
+      {isMobile && view === 'board' && (
+        <MobileBottomNav activeStatus={mobileStatus} onSelect={setMobileStatus} />
+      )}
 
       {taskModalId !== null && (
         <TaskModal
@@ -108,27 +116,6 @@ function KanbanApp() {
       {showAdmin && <AdminPanel onClose={() => setShowAdmin(false)} />}
       {showTrash && <TrashPanel onClose={() => setShowTrash(false)} />}
 
-      {/* FAB — mobile only, board view only */}
-      {view === 'board' && can.create && (
-        <button
-          className="mobile-only"
-          onClick={() => openNewTask('backlog')}
-          style={{
-            position: 'fixed', bottom: 24, right: 24,
-            width: 56, height: 56, borderRadius: '50%',
-            background: 'var(--accent)', border: 'none',
-            color: '#fff', fontSize: '1.8rem', lineHeight: 1,
-            boxShadow: '0 4px 20px rgba(99,102,241,.5)',
-            zIndex: 100, display: 'none', alignItems: 'center', justifyContent: 'center',
-            transition: 'transform .15s, box-shadow .15s',
-          }}
-          onTouchStart={e => { e.currentTarget.style.transform = 'scale(.92)'; }}
-          onTouchEnd={e => { e.currentTarget.style.transform = 'scale(1)'; }}
-          title="Nova Tarefa"
-        >
-          +
-        </button>
-      )}
     </div>
   );
 }

@@ -185,6 +185,9 @@ select option { background: var(--surface2); }
     padding: 10px 12px;
   }
 
+  /* Show add-task button in single column view */
+  .add-card-btn { display: block; }
+
   /* Grids collapse to single column */
   .form-grid-2,
   .form-grid-3,
