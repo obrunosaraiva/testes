@@ -409,7 +409,31 @@ export function KanbanProvider({ children }) {
           if (status === 'CHANNEL_ERROR') dispatch({ type: 'SET_SYNC_STATUS', payload: '○ Sync Error' });
         });
 
-      return () => sb.removeChannel(channel);
+      // Fallback: re-fetch projects whenever the user comes back to the tab
+      // Handles cases where kanban_projects is not in the Realtime publication
+      async function refreshProjectsFromDb() {
+        const { data } = await sb.from('kanban_projects').select('*').order('created_at');
+        if (data && data.length > 0) {
+          dispatch({
+            type: 'SET_PROJECTS',
+            payload: data.map(p => ({
+              id: p.id || ('p_' + p.name.replace(/[^a-z0-9]/gi, '_')),
+              name: p.name,
+              costCenter: p.cost_center || null,
+            })),
+          });
+        }
+      }
+
+      function onVisibility() {
+        if (document.visibilityState === 'visible') refreshProjectsFromDb();
+      }
+      document.addEventListener('visibilitychange', onVisibility);
+
+      return () => {
+        sb.removeChannel(channel);
+        document.removeEventListener('visibilitychange', onVisibility);
+      };
     });
   }, []);
 
@@ -450,15 +474,27 @@ export function KanbanProvider({ children }) {
   // ── Project DB ops — targeted, never delete based on list comparison ───────
   async function insertProjectToDb(proj) {
     // Note: Supabase never throws — errors come in { error } return value
-    const { error } = await sb.from('kanban_projects').insert({
-      name: proj.name,
-      cost_center: proj.costCenter || null,
-    });
+    // Always include id so TEXT-typed id columns don't reject the insert
+    const row = { id: proj.id, name: proj.name, cost_center: proj.costCenter || null };
+    let { error } = await sb.from('kanban_projects').insert(row);
+
+    // If id caused a type error (UUID column), retry without it
+    if (error && (error.message?.includes('id') || error.message?.includes('uuid') || error.message?.includes('invalid input'))) {
+      const { id: _drop, ...rowWithoutId } = row;
+      ({ error } = await sb.from('kanban_projects').insert(rowWithoutId));
+    }
+
     if (error) {
       console.warn('[Kanban] project insert failed:', error.message, '— retrying with upsert');
       const { error: e2 } = await sb.from('kanban_projects')
-        .upsert({ name: proj.name, cost_center: proj.costCenter || null }, { onConflict: 'name' });
-      if (e2) console.warn('[Kanban] project upsert also failed:', e2.message);
+        .upsert(row, { onConflict: 'name' });
+      if (e2) {
+        // Last resort: upsert without id
+        const { id: _drop, ...rowWithoutId } = row;
+        const { error: e3 } = await sb.from('kanban_projects')
+          .upsert(rowWithoutId, { onConflict: 'name' });
+        if (e3) console.warn('[Kanban] project upsert also failed:', e3.message);
+      }
     }
   }
 
