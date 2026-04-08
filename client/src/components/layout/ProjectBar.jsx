@@ -22,6 +22,7 @@ export default function ProjectBar() {
   const [editingProject, setEditingProject] = useState(null);
   const [combineMode, setCombineMode] = useState(false);
   const [showNewCC, setShowNewCC] = useState(false);
+  const [showFilters, setShowFilters] = useState(false);
   const [ConfirmDialog, confirm] = useConfirm();
 
   const allCount = tasks.length;
@@ -87,8 +88,27 @@ export default function ProjectBar() {
         </div>
 
         {/* Cost center filter */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 24px 8px', flexWrap: 'wrap' }}>
-          <span style={{ fontSize: '.72rem', color: 'var(--text-muted)', marginRight: 2 }}>CC:</span>
+        <div style={{ padding: '4px 24px 8px' }}>
+          {/* Mobile toggle */}
+          <button
+            className="mobile-only"
+            onClick={() => setShowFilters(f => !f)}
+            style={{
+              background: 'none', border: 'none', color: 'var(--text-muted)',
+              fontSize: '.75rem', padding: '4px 0', marginBottom: showFilters ? 6 : 0,
+              fontFamily: 'inherit', alignItems: 'center', gap: 4,
+            }}
+          >
+            Centros de custo {showFilters ? '▴' : '▾'}
+            {costCenterFilter.length > 0 && (
+              <span style={{ background: 'var(--accent)', color: '#fff', borderRadius: 10, padding: '1px 6px', fontSize: '.68rem', marginLeft: 4 }}>
+                {costCenterFilter.length}
+              </span>
+            )}
+          </button>
+
+        <div className={`cc-filter-row${showFilters ? ' cc-filter-open' : ''}`} style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+          <span className="desktop-only" style={{ fontSize: '.72rem', color: 'var(--text-muted)', marginRight: 2 }}>CC:</span>
           {costCenters.map(cc => {
             const active = costCenterFilter.includes(cc.key);
             return (
@@ -145,6 +165,7 @@ export default function ProjectBar() {
               ✕ Limpar
             </button>
           )}
+        </div>
         </div>
 
         {/* Project tabs */}

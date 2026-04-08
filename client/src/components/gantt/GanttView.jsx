@@ -18,6 +18,19 @@ function daysBetween(a, b) {
 export default function GanttView({ onOpenTask }) {
   const { tasks, projects, activeProject, costCenterFilter } = useKanban();
   const [filterProj, setFilterProj] = useState('__all__');
+
+  // Mobile: gantt is not usable on small screens
+  if (typeof window !== 'undefined' && window.innerWidth <= 768) {
+    return (
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 40, textAlign: 'center', color: 'var(--text-muted)' }}>
+        <div style={{ fontSize: '2.5rem', marginBottom: 16 }}>🖥</div>
+        <div style={{ fontSize: '1rem', fontWeight: 600, color: 'var(--text)', marginBottom: 8 }}>Gantt disponível no desktop</div>
+        <div style={{ fontSize: '.85rem', lineHeight: 1.6 }}>
+          A visualização Gantt requer uma tela maior.<br />Acesse pelo computador para usar esta função.
+        </div>
+      </div>
+    );
+  }
   const [inputStart, setInputStart] = useState('');
   const [inputEnd, setInputEnd] = useState('');
 

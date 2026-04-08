@@ -40,7 +40,7 @@ export default function App() {
 
 function KanbanApp() {
   const { view } = useKanban();
-  const { role, loading: roleLoading } = useRole();
+  const { role, can, loading: roleLoading } = useRole();
   const [taskModalId, setTaskModalId] = useState(null);
   const [newTaskStatus, setNewTaskStatus] = useState('backlog');
   const [showTemplates, setShowTemplates] = useState(false);
@@ -107,6 +107,28 @@ function KanbanApp() {
       {showReport && <ReportModal onClose={() => setShowReport(false)} />}
       {showAdmin && <AdminPanel onClose={() => setShowAdmin(false)} />}
       {showTrash && <TrashPanel onClose={() => setShowTrash(false)} />}
+
+      {/* FAB — mobile only, board view only */}
+      {view === 'board' && can.create && (
+        <button
+          className="mobile-only"
+          onClick={() => openNewTask('backlog')}
+          style={{
+            position: 'fixed', bottom: 24, right: 24,
+            width: 56, height: 56, borderRadius: '50%',
+            background: 'var(--accent)', border: 'none',
+            color: '#fff', fontSize: '1.8rem', lineHeight: 1,
+            boxShadow: '0 4px 20px rgba(99,102,241,.5)',
+            zIndex: 100, display: 'none', alignItems: 'center', justifyContent: 'center',
+            transition: 'transform .15s, box-shadow .15s',
+          }}
+          onTouchStart={e => { e.currentTarget.style.transform = 'scale(.92)'; }}
+          onTouchEnd={e => { e.currentTarget.style.transform = 'scale(1)'; }}
+          title="Nova Tarefa"
+        >
+          +
+        </button>
+      )}
     </div>
   );
 }

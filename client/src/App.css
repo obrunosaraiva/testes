@@ -183,6 +183,38 @@
 .card:hover .card-btn { opacity: 1; }
 .card-btn.del:hover { color: var(--danger); background: rgba(239,68,68,.1); }
 
+/* ── Mobile ─────────────────────────────────────────────── */
+@media (max-width: 768px) {
+  /* Board: one column at a time with scroll-snap */
+  .board {
+    padding: 12px;
+    gap: 0;
+    scroll-snap-type: x mandatory;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+  .board::-webkit-scrollbar { display: none; }
+
+  .column {
+    min-width: calc(100vw - 24px);
+    width: calc(100vw - 24px);
+    scroll-snap-align: start;
+    scroll-snap-stop: always;
+    flex-shrink: 0;
+    margin-right: 12px;
+  }
+  .column:last-child { margin-right: 0; }
+
+  /* Hide "+ Tarefa" inside columns (replaced by FAB) */
+  .add-card-btn { display: none; }
+
+  /* Delete btn always visible on touch devices */
+  .card-btn { opacity: 1 !important; }
+
+  /* Card: bigger touch targets */
+  .card { padding: 14px; }
+}
+
 /* ── Gantt ── */
 .gantt-scroll-wrap { overflow-x: auto; }
 .gantt-inner { font-size: .8rem; }
