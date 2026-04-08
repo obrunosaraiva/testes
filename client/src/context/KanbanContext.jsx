@@ -231,6 +231,8 @@ function reducer(state, action) {
     // ── Resources ──
     case 'ADD_RESOURCE':
       return { ...state, resources: [...state.resources, action.payload] };
+    case 'UPDATE_RESOURCE':
+      return { ...state, resources: state.resources.map(r => r.id === action.payload.id ? { ...r, ...action.payload } : r) };
     case 'DELETE_RESOURCE':
       return { ...state, resources: state.resources.filter(r => r.id !== action.payload) };
 
@@ -601,7 +603,8 @@ export function KanbanProvider({ children }) {
     dispatch({ type: 'ADD_COST_CENTER', payload: { key: unique, label: label.trim(), color, isPrivate, createdBy } });
   }
 
-  function addResource(item) { dispatch({ type: 'ADD_RESOURCE', payload: { id: 'r_' + Date.now(), createdAt: new Date().toISOString(), ...item } }); }
+  function addResource(item) { dispatch({ type: 'ADD_RESOURCE', payload: { id: 'r_' + Date.now(), createdAt: new Date().toISOString(), costCenters: [], ...item } }); }
+  function updateResource(id, patch) { dispatch({ type: 'UPDATE_RESOURCE', payload: { id, ...patch } }); }
   function deleteResource(id) { dispatch({ type: 'DELETE_RESOURCE', payload: id }); }
 
   function updateCostCenter(key, patch) {
@@ -628,7 +631,7 @@ export function KanbanProvider({ children }) {
       setView, setViewFilter, toggleCostCenterFilter, clearCostCenterFilter,
       addCostCenter, updateCostCenter, deleteCostCenter,
       addTemplate, deleteTemplate,
-      addResource, deleteResource,
+      addResource, updateResource, deleteResource,
       saveTaskToDb, saveDraft, loadDraft, clearDraft,
     }}>
       {children}
