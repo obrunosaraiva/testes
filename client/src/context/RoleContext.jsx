@@ -55,10 +55,28 @@ export function RoleProvider({ children }) {
   }
 
   async function loadAllProfiles() {
+    // Try server-side endpoint (requires SUPABASE_SERVICE_ROLE_KEY on server)
+    try {
+      const { data: { session } } = await sb.auth.getSession();
+      if (session?.access_token) {
+        const res = await fetch('/api/admin/users', {
+          headers: { Authorization: `Bearer ${session.access_token}` },
+        });
+        if (res.ok) {
+          const { users } = await res.json();
+          setAllProfiles(users);
+          return users;
+        }
+      }
+    } catch {}
+
+    // Fallback: Supabase profiles table
     try {
       const { data, error } = await sb.from('profiles').select('*');
       if (!error && data && data.length) { setAllProfiles(data); return data; }
     } catch {}
+
+    // Fallback: localStorage
     const stored = getStoredRoles();
     const local = Object.entries(stored).map(([id, info]) => ({ id, ...info }));
     setAllProfiles(local);
@@ -66,6 +84,17 @@ export function RoleProvider({ children }) {
   }
 
   async function updateUserRole(targetId, newRole) {
+    // Try server-side endpoint first
+    try {
+      const { data: { session } } = await sb.auth.getSession();
+      if (session?.access_token) {
+        await fetch(`/api/admin/users/${targetId}/role`, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${session.access_token}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ role: newRole }),
+        });
+      }
+    } catch {}
     try { await sb.from('profiles').update({ role: newRole }).eq('id', targetId); } catch {}
     const stored = getStoredRoles();
     if (stored[targetId]) { stored[targetId].role = newRole; saveStoredRoles(stored); }
