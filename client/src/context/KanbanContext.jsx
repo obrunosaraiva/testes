@@ -415,10 +415,8 @@ export function KanbanProvider({ children }) {
 
   // ── Supabase task save ──────────────────────────────────────────────────────
   async function saveTaskToDb(task) {
-    // Guard 1: task was explicitly deleted this session (blocks in-flight upserts)
+    // Guard: task was explicitly deleted this session (blocks in-flight upserts)
     if (deletedIds.current.has(task.id)) return;
-    // Guard 2: task was removed from state (soft-deleted)
-    if (!stateRef.current.tasks.some(t => t.id === task.id)) return;
     const row = {
       id: task.id,
       title: task.title,
