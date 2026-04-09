@@ -166,7 +166,7 @@ export default function TaskModal({ taskId, defaultStatus, templateData, onClose
     setForm(f => ({ ...f, [key]: value }));
   }
 
-  function handleSave() {
+  async function handleSave() {
     if (!form.title.trim()) return alert('Digite um título!');
     if (isNew) {
       const newTask = {
@@ -176,7 +176,12 @@ export default function TaskModal({ taskId, defaultStatus, templateData, onClose
         checklist,
         attachments,
       };
-      addTask(newTask);
+      const error = await addTask(newTask);
+      if (error) {
+        // saveTaskToDb already set ⚠ status; keep modal open so user doesn't lose their work
+        alert('Erro ao salvar tarefa: ' + error.message + '\n\nTente novamente.');
+        return;
+      }
       clearDraft();
     } else if (task) {
       clearTimeout(autosaveTimer.current);
