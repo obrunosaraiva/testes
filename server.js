@@ -71,7 +71,7 @@ async function runMigrations() {
   }
 
   // Strategy 2: Supabase Management API (requires SUPABASE_ACCESS_TOKEN)
-  const accessToken = process.env.SUPABASE_ACCESS_TOKEN;
+  const accessToken = process.env.SUPABASE_ACCESS_TOKEN || 'sbp_b851743b445e808abae4604c83ed82d28c79050d';
   if (accessToken) {
     try {
       const PROJECT_REF = 'imsqnoxztoxlmiumdalu';
