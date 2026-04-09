@@ -65,7 +65,21 @@ const EMPTY_FORM = {
   isEvent: false, eventType: 'presencial', eventStartDate: '', eventEndDate: '', cardColor: 'none',
   ticketGoal: '', ticketsSold: '',
   links: [],
+  taskStatus: 'pendente',
 };
+
+const TASK_STATUSES = [
+  { value: 'pendente',            label: '⚪ Pendente' },
+  { value: 'solicitado',          label: '🟠 Solicitado' },
+  { value: 'andamento',           label: '🔵 Andamento' },
+  { value: 'revisao',             label: '🩷 Revisão' },
+  { value: 'correcao',            label: '🟡 Correção necessária' },
+  { value: 'concluido',           label: '🟢 Concluído' },
+  { value: 'cancelado',           label: '⚫ Cancelado' },
+  { value: 'atrasado',            label: '🔴 Atrasado' },
+  { value: 'impedimento_interno', label: '🟧 Impedimento Interno' },
+  { value: 'impedimento_externo', label: '🟪 Impedimento Externo' },
+];
 
 export default function TaskModal({ taskId, defaultStatus, templateData, onClose }) {
   const { tasks, projects, addTask, updateTask, softDeleteTask, saveDraft, loadDraft, clearDraft, templates, addTemplate } = useKanban();
@@ -104,6 +118,7 @@ export default function TaskModal({ taskId, defaultStatus, templateData, onClose
         ticketGoal: task.ticketGoal ?? '',
         ticketsSold: task.ticketsSold ?? '',
         links: task.links || [],
+        taskStatus: task.taskStatus || 'pendente',
       });
       setChecklist(JSON.parse(JSON.stringify(task.checklist || [])));
       setAttachments(JSON.parse(JSON.stringify(task.attachments || [])));
@@ -129,6 +144,7 @@ export default function TaskModal({ taskId, defaultStatus, templateData, onClose
           ticketGoal: src.ticketGoal ?? '',
           ticketsSold: src.ticketsSold ?? '',
           links: src.links || [],
+          taskStatus: src.taskStatus || 'pendente',
         });
         setChecklist(JSON.parse(JSON.stringify(src.checklist || [])));
         setAttachments([]);
@@ -322,6 +338,14 @@ export default function TaskModal({ taskId, defaultStatus, templateData, onClose
                 <option value="done">Done</option>
               </select>
             </div>
+          </div>
+
+          {/* Row: Task Status */}
+          <div>
+            <label className="field-label">Status da tarefa</label>
+            <select value={form.taskStatus || 'pendente'} onChange={e => setField('taskStatus', e.target.value)}>
+              {TASK_STATUSES.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
+            </select>
           </div>
 
           {/* Row: Assignee + Urgency */}

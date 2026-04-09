@@ -2,19 +2,25 @@ import { useState, useMemo } from 'react';
 import { useKanban } from '../../context/KanbanContext';
 import { useRole } from '../../context/RoleContext';
 
-const STATUS_COLORS = {
-  backlog: '#6b7280', todo: '#3b82f6', doing: '#f59e0b',
-  paused: '#8b5cf6', review: '#06b6d4', done: '#22c55e',
-};
-const STATUS_LABELS = {
-  backlog: 'Backlog', todo: 'To Do', doing: 'Fazendo',
-  paused: 'Pausado', review: 'Revisão', done: 'Concluído',
-};
+const TASK_STATUSES = [
+  { value: 'pendente',            label: '⚪ Pendente',             color: '#9ca3af' },
+  { value: 'solicitado',          label: '🟠 Solicitado',           color: '#f97316' },
+  { value: 'andamento',           label: '🔵 Andamento',            color: '#3b82f6' },
+  { value: 'revisao',             label: '🩷 Revisão',              color: '#ec4899' },
+  { value: 'correcao',            label: '🟡 Correção necessária',  color: '#eab308' },
+  { value: 'concluido',           label: '🟢 Concluído',            color: '#22c55e' },
+  { value: 'cancelado',           label: '⚫ Cancelado',            color: '#6b7280' },
+  { value: 'atrasado',            label: '🔴 Atrasado',             color: '#ef4444' },
+  { value: 'impedimento_interno', label: '🟧 Impedimento Interno',  color: '#ea580c' },
+  { value: 'impedimento_externo', label: '🟪 Impedimento Externo',  color: '#a855f7' },
+];
+
+const STATUS_MAP = Object.fromEntries(TASK_STATUSES.map(s => [s.value, s]));
+
 const URGENCY_COLORS = { high: '#ef4444', medium: '#f59e0b', low: '#22c55e' };
 const URGENCY_LABELS = { high: 'Alta', medium: 'Média', low: 'Baixa' };
-const STATUSES = ['backlog', 'todo', 'doing', 'paused', 'review', 'done'];
 
-const COL = '28px 1fr 150px 100px 80px';
+const COL = '180px 1fr 150px 100px 80px';
 
 function HeaderRow() {
   return (
@@ -26,7 +32,7 @@ function HeaderRow() {
       borderBottom: '2px solid var(--border)',
       position: 'sticky', top: 0, background: 'var(--bg)', zIndex: 10,
     }}>
-      <span />
+      <span>Status</span>
       <span>Título</span>
       <span>Responsável</span>
       <span>Prazo</span>
@@ -80,12 +86,12 @@ export default function ListView({ onOpenTask, onNewTask }) {
 
   return (
     <div style={{ flex: 1, overflowY: 'auto', padding: '16px 24px' }}>
-      <div style={{ maxWidth: 1100, margin: '0 auto' }}>
+      <div style={{ maxWidth: 1200, margin: '0 auto' }}>
         <HeaderRow />
 
         {grouped.map(([projName, projTasks]) => {
           const isCollapsed = collapsed[projName];
-          const doneCount = projTasks.filter(t => t.status === 'done').length;
+          const doneCount = projTasks.filter(t => t.taskStatus === 'concluido').length;
 
           return (
             <div key={projName} style={{ marginBottom: 12 }}>
@@ -111,7 +117,7 @@ export default function ListView({ onOpenTask, onNewTask }) {
                 <div style={{ border: '1px solid var(--border)', borderTop: 'none', borderRadius: '0 0 10px 10px', overflow: 'hidden' }}>
                   {projTasks.map((task, idx) => {
                     const dl = task.deadline ? new Date(task.deadline + 'T00:00:00') : null;
-                    const late = dl && dl < today && task.status !== 'done';
+                    const late = dl && dl < today && task.taskStatus !== 'concluido' && task.taskStatus !== 'cancelado';
                     const isLast = idx === projTasks.length - 1;
 
                     return (
@@ -123,7 +129,7 @@ export default function ListView({ onOpenTask, onNewTask }) {
                         dl={dl}
                         late={late}
                         onOpen={() => onOpenTask(task.id)}
-                        onChangeStatus={can.edit ? s => updateTask({ ...task, status: s }) : null}
+                        onChangeTaskStatus={can.edit ? s => updateTask({ ...task, taskStatus: s }) : null}
                       />
                     );
                   })}
@@ -148,8 +154,9 @@ export default function ListView({ onOpenTask, onNewTask }) {
   );
 }
 
-function TaskRow({ task, idx, isLast, dl, late, onOpen, onChangeStatus }) {
+function TaskRow({ task, idx, isLast, dl, late, onOpen, onChangeTaskStatus }) {
   const [hovered, setHovered] = useState(false);
+  const ts = STATUS_MAP[task.taskStatus || 'pendente'] || STATUS_MAP['pendente'];
 
   return (
     <div
@@ -164,27 +171,35 @@ function TaskRow({ task, idx, isLast, dl, late, onOpen, onChangeStatus }) {
       onMouseLeave={() => setHovered(false)}
       onClick={onOpen}
     >
-      {/* Status dot / select */}
+      {/* Task Status */}
       <div onClick={e => e.stopPropagation()}>
         <select
-          value={task.status}
-          onChange={e => onChangeStatus?.(e.target.value)}
-          disabled={!onChangeStatus}
-          title={STATUS_LABELS[task.status]}
+          value={task.taskStatus || 'pendente'}
+          onChange={e => onChangeTaskStatus?.(e.target.value)}
+          disabled={!onChangeTaskStatus}
           style={{
-            width: 18, height: 18, borderRadius: '50%', border: 'none', cursor: onChangeStatus ? 'pointer' : 'default',
-            background: STATUS_COLORS[task.status] || '#6b7280',
-            appearance: 'none', WebkitAppearance: 'none', padding: 0, outline: 'none',
+            background: ts.color + '22',
+            color: ts.color,
+            border: `1px solid ${ts.color}55`,
+            borderRadius: 20,
+            padding: '3px 10px',
+            fontSize: '.73rem',
+            fontWeight: 700,
+            cursor: onChangeTaskStatus ? 'pointer' : 'default',
+            maxWidth: 170,
+            outline: 'none',
           }}
         >
-          {STATUSES.map(s => <option key={s} value={s}>{STATUS_LABELS[s]}</option>)}
+          {TASK_STATUSES.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
         </select>
       </div>
 
       {/* Title */}
       <div style={{ overflow: 'hidden', paddingRight: 12 }}>
         <span style={{ fontSize: '.88rem', fontWeight: 500, display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-          {task.status === 'done' ? <s style={{ color: 'var(--text-muted)' }}>{task.title}</s> : task.title}
+          {task.taskStatus === 'concluido' || task.taskStatus === 'cancelado'
+            ? <s style={{ color: 'var(--text-muted)' }}>{task.title}</s>
+            : task.title}
         </span>
         {task.checklist?.length > 0 && (
           <span style={{ fontSize: '.7rem', color: 'var(--text-muted)' }}>
