@@ -487,30 +487,31 @@ export default function TaskModal({ taskId, defaultStatus, templateData, onClose
               const isOverdue = item.deadline && new Date(item.deadline + 'T23:59:59') < new Date();
               return (
                 <div key={i} style={{ background: 'var(--surface2)', borderRadius: 8, padding: '8px 10px', marginBottom: 6, border: '1px solid var(--border)' }}>
-                  {/* Row 1: status + title + delete */}
+                  {/* Row 1: title + delete (igual ao original) */}
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                    <input
+                      value={item.text}
+                      onChange={e => updateCL(i, { text: e.target.value })}
+                      placeholder="Título da subtarefa..."
+                      style={{ flex: 1, minWidth: 0, fontWeight: 500 }}
+                    />
+                    <button onClick={() => removeCL(i)} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', fontSize: '1.1rem', cursor: 'pointer', flexShrink: 0 }}>×</button>
+                  </div>
+                  {/* Row 2: status + assignee + deadline + time */}
+                  <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr 140px 110px', gap: 6 }}>
                     <select
                       value={item.status || 'pendente'}
                       onChange={e => updateCL(i, { status: e.target.value })}
                       style={{
                         background: ts.color + '22', color: ts.color,
                         border: `1px solid ${ts.color}55`, borderRadius: 20,
-                        padding: '2px 8px', fontSize: '.7rem', fontWeight: 700,
-                        outline: 'none', cursor: 'pointer', flexShrink: 0,
+                        padding: '2px 10px', fontSize: '.7rem', fontWeight: 700,
+                        outline: 'none', cursor: 'pointer',
+                        width: 'auto', height: 'auto',
                       }}
                     >
                       {TASK_STATUSES.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
                     </select>
-                    <input
-                      value={item.text}
-                      onChange={e => updateCL(i, { text: e.target.value })}
-                      placeholder="Título da subtarefa..."
-                      style={{ flex: 1, fontWeight: 500 }}
-                    />
-                    <button onClick={() => removeCL(i)} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', fontSize: '1.1rem', cursor: 'pointer', flexShrink: 0 }}>×</button>
-                  </div>
-                  {/* Row 2: assignee + deadline + time */}
-                  <div className="form-grid-cl">
                     <UserSelect value={item.assignee || ''} onChange={v => updateCL(i, { assignee: v })} placeholder="Responsável..." />
                     <input type="date" value={item.deadline || ''} onChange={e => updateCL(i, { deadline: e.target.value })} />
                     <input type="time" value={item.time || ''} onChange={e => updateCL(i, { time: e.target.value })} title="Hora da entrega" />
@@ -554,6 +555,12 @@ export default function TaskModal({ taskId, defaultStatus, templateData, onClose
                       const ts = TASK_STATUS_MAP[item.status || 'concluido'] || TASK_STATUS_MAP['concluido'];
                       return (
                         <div key={i} style={{ background: 'var(--surface2)', padding: '8px 10px', borderTop: '1px solid var(--border)' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                            <span style={{ flex: 1, fontSize: '.85rem', textDecoration: 'line-through', opacity: 0.6 }}>
+                              {item.text || '(sem título)'}
+                            </span>
+                            <button onClick={() => removeCL(i)} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', fontSize: '1.1rem', cursor: 'pointer', flexShrink: 0 }}>×</button>
+                          </div>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                             <select
                               value={item.status || 'concluido'}
@@ -561,22 +568,16 @@ export default function TaskModal({ taskId, defaultStatus, templateData, onClose
                               style={{
                                 background: ts.color + '22', color: ts.color,
                                 border: `1px solid ${ts.color}55`, borderRadius: 20,
-                                padding: '2px 8px', fontSize: '.7rem', fontWeight: 700,
-                                outline: 'none', cursor: 'pointer', flexShrink: 0,
+                                padding: '2px 10px', fontSize: '.7rem', fontWeight: 700,
+                                outline: 'none', cursor: 'pointer',
+                                width: 'auto', height: 'auto', flexShrink: 0,
                               }}
                             >
                               {TASK_STATUSES.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
                             </select>
-                            <span style={{ flex: 1, fontSize: '.85rem', textDecoration: 'line-through', opacity: 0.6 }}>
-                              {item.text || '(sem título)'}
-                            </span>
-                            <button onClick={() => removeCL(i)} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', fontSize: '1.1rem', cursor: 'pointer' }}>×</button>
+                            {item.assignee && <span style={{ fontSize: '.72rem', color: 'var(--text-muted)' }}>{item.assignee}</span>}
+                            {item.deadline && <span style={{ fontSize: '.72rem', color: 'var(--text-muted)' }}>{new Date(item.deadline + 'T00:00:00').toLocaleDateString('pt-BR')}</span>}
                           </div>
-                          {(item.assignee || item.deadline) && (
-                            <div style={{ fontSize: '.72rem', color: 'var(--text-muted)', marginTop: 3, paddingLeft: 4 }}>
-                              {item.assignee}{item.assignee && item.deadline ? ' · ' : ''}{item.deadline ? new Date(item.deadline + 'T00:00:00').toLocaleDateString('pt-BR') : ''}
-                            </div>
-                          )}
                         </div>
                       );
                     })}
