@@ -14,7 +14,7 @@ const URGENCY_COLORS = { high: '#ef4444', medium: '#f59e0b', low: '#22c55e' };
 const URGENCY_LABELS = { high: 'Alta', medium: 'Média', low: 'Baixa' };
 const STATUSES = ['backlog', 'todo', 'doing', 'paused', 'review', 'done'];
 
-const COL = '28px 1fr 110px 130px 90px 70px';
+const COL = '28px 1fr 150px 100px 80px';
 
 function HeaderRow() {
   return (
@@ -28,7 +28,6 @@ function HeaderRow() {
     }}>
       <span />
       <span>Título</span>
-      <span style={{ textAlign: 'center' }}>Progresso</span>
       <span>Responsável</span>
       <span>Prazo</span>
       <span>Urgência</span>
@@ -87,9 +86,6 @@ export default function ListView({ onOpenTask, onNewTask }) {
         {grouped.map(([projName, projTasks]) => {
           const isCollapsed = collapsed[projName];
           const doneCount = projTasks.filter(t => t.status === 'done').length;
-          const avgProgress = projTasks.length
-            ? Math.round(projTasks.reduce((s, t) => s + (t.progress || 0), 0) / projTasks.length)
-            : 0;
 
           return (
             <div key={projName} style={{ marginBottom: 12 }}>
@@ -108,12 +104,6 @@ export default function ListView({ onOpenTask, onNewTask }) {
                 <span style={{ fontWeight: 700, fontSize: '.9rem' }}>📁 {projName}</span>
                 <span style={{ fontSize: '.75rem', color: 'var(--text-muted)' }}>{projTasks.length} tarefa{projTasks.length !== 1 ? 's' : ''}</span>
                 {doneCount > 0 && <span style={{ fontSize: '.72rem', color: 'var(--success)' }}>✅ {doneCount} concluída{doneCount !== 1 ? 's' : ''}</span>}
-                <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <div style={{ width: 80, height: 5, background: 'var(--border)', borderRadius: 3, overflow: 'hidden' }}>
-                    <div style={{ height: '100%', width: `${avgProgress}%`, background: avgProgress === 100 ? 'var(--success)' : 'var(--accent)', borderRadius: 3 }} />
-                  </div>
-                  <span style={{ fontSize: '.72rem', color: 'var(--text-muted)' }}>{avgProgress}%</span>
-                </div>
               </div>
 
               {/* Task rows */}
@@ -122,7 +112,6 @@ export default function ListView({ onOpenTask, onNewTask }) {
                   {projTasks.map((task, idx) => {
                     const dl = task.deadline ? new Date(task.deadline + 'T00:00:00') : null;
                     const late = dl && dl < today && task.status !== 'done';
-                    const progress = task.progress || 0;
                     const isLast = idx === projTasks.length - 1;
 
                     return (
@@ -133,7 +122,6 @@ export default function ListView({ onOpenTask, onNewTask }) {
                         isLast={isLast}
                         dl={dl}
                         late={late}
-                        progress={progress}
                         onOpen={() => onOpenTask(task.id)}
                         onChangeStatus={can.edit ? s => updateTask({ ...task, status: s }) : null}
                       />
@@ -160,7 +148,7 @@ export default function ListView({ onOpenTask, onNewTask }) {
   );
 }
 
-function TaskRow({ task, idx, isLast, dl, late, progress, onOpen, onChangeStatus }) {
+function TaskRow({ task, idx, isLast, dl, late, onOpen, onChangeStatus }) {
   const [hovered, setHovered] = useState(false);
 
   return (
@@ -203,14 +191,6 @@ function TaskRow({ task, idx, isLast, dl, late, progress, onOpen, onChangeStatus
             ☑ {task.checklist.filter(c => c.done).length}/{task.checklist.length}
           </span>
         )}
-      </div>
-
-      {/* Progress bar */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '0 6px' }}>
-        <div style={{ flex: 1, height: 6, background: 'var(--border)', borderRadius: 3, overflow: 'hidden' }}>
-          <div style={{ height: '100%', width: `${progress}%`, background: progress === 100 ? 'var(--success)' : 'var(--accent)', borderRadius: 3 }} />
-        </div>
-        <span style={{ fontSize: '.7rem', color: 'var(--text-muted)', minWidth: 26, textAlign: 'right' }}>{progress}%</span>
       </div>
 
       {/* Assignee */}

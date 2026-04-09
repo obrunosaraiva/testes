@@ -54,7 +54,6 @@ const MIGRATION_SQL = `
   );
   ALTER TABLE IF EXISTS profiles ADD COLUMN IF NOT EXISTS name TEXT DEFAULT '';
   ALTER TABLE IF EXISTS profiles ADD COLUMN IF NOT EXISTS whatsapp TEXT DEFAULT '';
-  ALTER TABLE IF EXISTS kanban_tasks ADD COLUMN IF NOT EXISTS progress INTEGER DEFAULT 0;
 `;
 
 async function runMigrations() {
