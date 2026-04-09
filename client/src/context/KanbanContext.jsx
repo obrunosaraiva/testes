@@ -260,7 +260,8 @@ export function KanbanProvider({ children }) {
   const deletedIds = useRef(new Set()); // tracks IDs deleted this session — blocks any in-flight autosave upsert
   useEffect(() => { stateRef.current = state; }, [state]);
 
-  // ── Persist only UI preferences to localStorage — all data lives in Supabase ──
+  // ── Persist to localStorage as backup (Supabase is authoritative, but this prevents
+  //    data loss if tables don't exist yet or there's a network outage) ──────────────
   const saveLocal = useCallback((s) => {
     try {
       localStorage.setItem(SK, JSON.stringify({
@@ -268,14 +269,21 @@ export function KanbanProvider({ children }) {
         view: s.view,
         viewFilter: s.viewFilter,
         costCenterFilter: s.costCenterFilter,
-        // templates, resources, costCenters, trash: all in Supabase
+        templates: s.templates,
+        resources: s.resources,
+        costCenters: s.costCenters,
+      }));
+      localStorage.setItem(TRASH_KEY, JSON.stringify({
+        trashedTasks: s.trashedTasks,
+        trashedProjects: s.trashedProjects,
       }));
     } catch {}
   }, []);
 
   useEffect(() => {
     saveLocal(state);
-  }, [state.activeProject, state.view, state.viewFilter, state.costCenterFilter]);
+  }, [state.activeProject, state.view, state.viewFilter, state.costCenterFilter,
+      state.templates, state.resources, state.costCenters, state.trashedTasks, state.trashedProjects]);
 
   // ── Load UI preferences from localStorage on mount ─────────────────────────
   useEffect(() => {
@@ -290,11 +298,24 @@ export function KanbanProvider({ children }) {
             view: p.view || 'board',
             viewFilter: p.viewFilter || 'all',
             costCenterFilter: p.costCenterFilter || [],
+            // Keep as fallback until Supabase tables exist:
+            templates: p.templates || [],
+            resources: p.resources || [],
+            costCenters: p.costCenters || DEFAULT_COST_CENTERS,
           },
         });
       }
     } catch {}
-    // Note: templates, resources, trash, costCenters are loaded from Supabase below
+
+    // Trash fallback (until kanban_trash table is created)
+    try {
+      const trash = localStorage.getItem(TRASH_KEY);
+      if (trash) {
+        const t = JSON.parse(trash);
+        dispatch({ type: 'LOAD_TRASH', payload: t });
+      }
+    } catch {}
+    // Note: DB data (loaded below) overwrites these fallbacks when tables exist
   }, []);
 
   // ── Load from Supabase ──────────────────────────────────────────────────────
