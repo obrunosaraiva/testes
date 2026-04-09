@@ -25,6 +25,10 @@ export default function ProjectBar() {
     if (!proj.costCenter) return true;
     return visibleCCs.some(cc => cc.key === proj.costCenter);
   });
+  // When CC filter is active, show only projects belonging to selected CCs
+  const filteredProjects = costCenterFilter.length > 0
+    ? visibleProjects.filter(proj => proj.costCenter && costCenterFilter.includes(proj.costCenter))
+    : visibleProjects;
 
   const [showNewModal, setShowNewModal] = useState(false);
   const [editingProject, setEditingProject] = useState(null);
@@ -34,7 +38,9 @@ export default function ProjectBar() {
   const [showFilters, setShowFilters] = useState(false);
   const [ConfirmDialog, confirm] = useConfirm();
 
-  const allCount = tasks.length;
+  const allCount = costCenterFilter.length > 0
+    ? tasks.filter(t => filteredProjects.some(p => p.name === t.project)).length
+    : tasks.length;
   const isCombining = combinedProjects.length > 0;
 
   async function handleDeleteProject(proj) {
@@ -203,7 +209,7 @@ export default function ProjectBar() {
             />
           )}
 
-          {visibleProjects.map(proj => (
+          {filteredProjects.map(proj => (
             <ProjectTab
               key={proj.id}
               label={proj.name}
