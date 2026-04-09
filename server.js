@@ -9,6 +9,94 @@ const SUPABASE_URL = process.env.SUPABASE_URL || 'https://imsqnoxztoxlmiumdalu.s
 const ANON_KEY = process.env.SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imltc3Fub3h6dG94bG1pdW1kYWx1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ4OTk5NTEsImV4cCI6MjA5MDQ3NTk1MX0.CaFrcNJokpvdRD9v9AIp3rlDd8wXIrW6k1urepMDnqw';
 const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
+// ── Startup DB migration ──────────────────────────────────────────────────────
+// Creates all required tables if they don't exist.
+// Uses DATABASE_URL (direct Postgres) or SUPABASE_ACCESS_TOKEN (Management API).
+const MIGRATION_SQL = `
+  CREATE TABLE IF NOT EXISTS kanban_cost_centers (
+    key TEXT PRIMARY KEY,
+    label TEXT NOT NULL,
+    color TEXT DEFAULT '#3b82f6',
+    is_private BOOLEAN DEFAULT false,
+    created_by TEXT,
+    shared_with JSONB DEFAULT '[]'::jsonb,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+  );
+  CREATE TABLE IF NOT EXISTS kanban_templates (
+    id TEXT PRIMARY KEY,
+    title TEXT NOT NULL DEFAULT '',
+    description TEXT DEFAULT '',
+    project TEXT DEFAULT '',
+    status TEXT DEFAULT 'backlog',
+    assignee TEXT DEFAULT '',
+    urgency TEXT DEFAULT '',
+    checklist JSONB DEFAULT '[]'::jsonb,
+    links JSONB DEFAULT '[]'::jsonb,
+    card_color TEXT DEFAULT 'none',
+    created_at TIMESTAMPTZ DEFAULT NOW()
+  );
+  CREATE TABLE IF NOT EXISTS kanban_resources (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    url TEXT DEFAULT '',
+    type TEXT DEFAULT 'link',
+    description TEXT DEFAULT '',
+    cost_centers JSONB DEFAULT '[]'::jsonb,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+  );
+  CREATE TABLE IF NOT EXISTS kanban_trash (
+    id TEXT PRIMARY KEY,
+    type TEXT NOT NULL,
+    data JSONB NOT NULL,
+    deleted_at TEXT NOT NULL,
+    deleted_by TEXT DEFAULT '',
+    deleted_with_project BOOLEAN DEFAULT false
+  );
+`;
+
+async function runMigrations() {
+  // Strategy 1: Direct Postgres via DATABASE_URL env var
+  if (process.env.DATABASE_URL) {
+    try {
+      const { Client } = require('pg');
+      const client = new Client({ connectionString: process.env.DATABASE_URL, ssl: { rejectUnauthorized: false } });
+      await client.connect();
+      await client.query(MIGRATION_SQL);
+      await client.end();
+      console.log('[DB] Auto-migration via DATABASE_URL completed.');
+      return;
+    } catch (e) {
+      console.warn('[DB] DATABASE_URL migration failed:', e.message);
+    }
+  }
+
+  // Strategy 2: Supabase Management API (requires SUPABASE_ACCESS_TOKEN)
+  const accessToken = process.env.SUPABASE_ACCESS_TOKEN;
+  if (accessToken) {
+    try {
+      const PROJECT_REF = 'imsqnoxztoxlmiumdalu';
+      const res = await fetch(`https://api.supabase.com/v1/projects/${PROJECT_REF}/database/query`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query: MIGRATION_SQL }),
+      });
+      if (res.ok) {
+        console.log('[DB] Auto-migration via Management API completed.');
+        return;
+      }
+      console.warn('[DB] Management API returned:', res.status, await res.text());
+    } catch (e) {
+      console.warn('[DB] Management API migration failed:', e.message);
+    }
+  }
+
+  console.log('[DB] Auto-migration skipped (no DATABASE_URL or SUPABASE_ACCESS_TOKEN set).');
+  console.log('[DB] Run the following SQL in the Supabase SQL Editor to create required tables:');
+  console.log(MIGRATION_SQL);
+}
+
+runMigrations();
+
 // List all auth users (admin only — requires SUPABASE_SERVICE_ROLE_KEY env var)
 app.get('/api/admin/users', async (req, res) => {
   if (!SERVICE_KEY) {

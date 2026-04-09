@@ -1,10 +1,18 @@
 import { createContext, useContext, useState, useEffect } from 'react';
 import { sb } from '../lib/supabase';
 
-const ROLES_KEY = 'kanban_roles_v1';
 export const ROLE_LABELS = { admin: 'Admin', editor: 'Editor', viewer: 'Visualizador' };
 
 const RoleContext = createContext(null);
+
+// Cache only the current user's own role (perf optimization, not source of truth)
+const MY_ROLE_KEY = 'kanban_my_role_v1';
+function getCachedRole(userId) {
+  try { return JSON.parse(localStorage.getItem(MY_ROLE_KEY))?.[userId]; } catch { return null; }
+}
+function setCachedRole(userId, role) {
+  try { localStorage.setItem(MY_ROLE_KEY, JSON.stringify({ [userId]: role })); } catch {}
+}
 
 export function RoleProvider({ children }) {
   const [role, setRole] = useState(null);
@@ -22,36 +30,32 @@ export function RoleProvider({ children }) {
       setUserId(user.id);
       setUserEmail(user.email);
 
+      // 1. Supabase profiles table is authoritative
       let userRole = null;
       try {
         const { data: profile } = await sb.from('profiles').select('role').eq('id', user.id).maybeSingle();
         if (profile) userRole = profile.role;
       } catch {}
 
+      // 2. Not in profiles yet — determine role based on whether any admin exists
       if (!userRole) {
-        const stored = getStoredRoles();
-        if (stored[user.id]) {
-          userRole = stored[user.id].role;
-        } else {
-          const hasAdmin = Object.values(stored).some(u => u.role === 'admin');
-          userRole = hasAdmin ? 'viewer' : 'admin';
-          stored[user.id] = { role: userRole, email: user.email };
-          saveStoredRoles(stored);
+        try {
+          const { data: existing } = await sb.from('profiles').select('id').limit(1);
+          const hasAnyUser = (existing || []).length > 0;
+          userRole = hasAnyUser ? 'viewer' : 'admin';
           try { await sb.from('profiles').upsert({ id: user.id, email: user.email, role: userRole }); } catch {}
+        } catch {
+          // Supabase unavailable — fall back to cached role for this user only
+          userRole = getCachedRole(user.id) || 'viewer';
         }
       }
+
+      setCachedRole(user.id, userRole);
       setRole(userRole);
     } catch {
       setRole('admin');
     }
     setLoading(false);
-  }
-
-  function getStoredRoles() {
-    try { return JSON.parse(localStorage.getItem(ROLES_KEY)) || {}; } catch { return {}; }
-  }
-  function saveStoredRoles(r) {
-    try { localStorage.setItem(ROLES_KEY, JSON.stringify(r)); } catch {}
   }
 
   async function loadAllProfiles() {
@@ -76,11 +80,7 @@ export function RoleProvider({ children }) {
       if (!error && data && data.length) { setAllProfiles(data); return data; }
     } catch {}
 
-    // Fallback: localStorage
-    const stored = getStoredRoles();
-    const local = Object.entries(stored).map(([id, info]) => ({ id, ...info }));
-    setAllProfiles(local);
-    return local;
+    return [];
   }
 
   async function updateUserRole(targetId, newRole) {
@@ -96,17 +96,14 @@ export function RoleProvider({ children }) {
       }
     } catch {}
     try { await sb.from('profiles').update({ role: newRole }).eq('id', targetId); } catch {}
-    const stored = getStoredRoles();
-    if (stored[targetId]) { stored[targetId].role = newRole; saveStoredRoles(stored); }
+    // Update cache only for current user
+    if (targetId === userId) setCachedRole(userId, newRole);
     setAllProfiles(prev => prev.map(u => u.id === targetId ? { ...u, role: newRole } : u));
     if (targetId === userId) setRole(newRole);
   }
 
   async function addUserProfile(email, roleVal = 'viewer') {
     const profile = { id: 'manual_' + Date.now(), email, role: roleVal };
-    const stored = getStoredRoles();
-    stored[profile.id] = { email, role: roleVal };
-    saveStoredRoles(stored);
     try { await sb.from('profiles').insert({ email, role: roleVal }); } catch {}
     setAllProfiles(prev => [...prev, profile]);
     return profile;
