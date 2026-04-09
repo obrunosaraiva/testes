@@ -101,6 +101,8 @@ function reducer(state, action) {
     }
     case 'SET_PROJECTS':
       return { ...state, projects: action.payload.map(normalizeProject) };
+    case 'SET_COST_CENTERS':
+      return { ...state, costCenters: action.payload };
     case 'SET_TEMPLATES':
       return { ...state, templates: action.payload };
 
@@ -264,7 +266,7 @@ export function KanbanProvider({ children }) {
         view: s.view,
         viewFilter: s.viewFilter,
         costCenterFilter: s.costCenterFilter,
-        costCenters: s.costCenters,
+        // costCenters intentionally excluded — stored in Supabase now
       }));
       localStorage.setItem(TRASH_KEY, JSON.stringify({
         trashedTasks: s.trashedTasks,
@@ -275,7 +277,7 @@ export function KanbanProvider({ children }) {
 
   useEffect(() => {
     saveLocal(state);
-  }, [state.templates, state.resources, state.activeProject, state.view, state.viewFilter, state.costCenterFilter, state.costCenters, state.trashedTasks, state.trashedProjects]);
+  }, [state.templates, state.resources, state.activeProject, state.view, state.viewFilter, state.costCenterFilter, state.trashedTasks, state.trashedProjects]);
 
   // ── Load UI preferences from localStorage on mount ─────────────────────────
   useEffect(() => {
@@ -292,7 +294,7 @@ export function KanbanProvider({ children }) {
             view: p.view || 'board',
             viewFilter: p.viewFilter || 'all',
             costCenterFilter: p.costCenterFilter || [],
-            costCenters: p.costCenters || DEFAULT_COST_CENTERS,
+            // costCenters loaded from Supabase, not localStorage
           },
         });
       }
@@ -343,11 +345,46 @@ export function KanbanProvider({ children }) {
       }));
     }
 
+    // Helper: fetch cost centers from DB (table may not exist yet — graceful fallback)
+    async function fetchCostCentersFromDb() {
+      const { data, error } = await sb.from('kanban_cost_centers').select('*').order('created_at');
+      if (error) return null; // table doesn't exist yet
+      return (data || []).map(cc => ({
+        key: cc.key,
+        label: cc.label,
+        color: cc.color || '#3b82f6',
+        isPrivate: cc.is_private || false,
+        createdBy: cc.created_by || null,
+        sharedWith: cc.shared_with || [],
+      }));
+    }
+
     async function loadSupabase() {
       try {
-        const [mapped, dbMapped] = await Promise.all([fetchTasksFromDb(), fetchProjectsFromDb()]);
+        const [mapped, dbMapped, ccMapped] = await Promise.all([
+          fetchTasksFromDb(), fetchProjectsFromDb(), fetchCostCentersFromDb(),
+        ]);
         dispatch({ type: 'SET_TASKS', payload: mapped });
         dispatch({ type: 'SET_PROJECTS', payload: dbMapped });
+        if (ccMapped && ccMapped.length > 0) {
+          // DB has cost centers — use them (authoritative)
+          dispatch({ type: 'SET_COST_CENTERS', payload: ccMapped });
+        } else if (ccMapped !== null) {
+          // Table exists but empty — seed from current state (localStorage migration)
+          const localCCs = stateRef.current.costCenters;
+          if (localCCs && localCCs.length > 0) {
+            for (const cc of localCCs) {
+              await sb.from('kanban_cost_centers').upsert({
+                key: cc.key, label: cc.label, color: cc.color,
+                is_private: cc.isPrivate || false,
+                created_by: cc.createdBy || null,
+                shared_with: cc.sharedWith || [],
+              }, { onConflict: 'key' });
+            }
+            dispatch({ type: 'SET_COST_CENTERS', payload: localCCs });
+          }
+        }
+        // If ccMapped is null (table missing), keep existing state from localStorage
         dispatch({ type: 'SET_DB_READY' });
       } catch (e) {
         console.warn('[Kanban] Supabase load error:', e.message);
@@ -356,12 +393,15 @@ export function KanbanProvider({ children }) {
     }
     loadSupabase();
 
-    // Refresh both tasks AND projects from DB — used on visibilitychange and project Realtime events
+    // Refresh tasks, projects, and cost centers from DB
     async function refreshFromDb() {
       try {
-        const [mapped, dbMapped] = await Promise.all([fetchTasksFromDb(), fetchProjectsFromDb()]);
+        const [mapped, dbMapped, ccMapped] = await Promise.all([
+          fetchTasksFromDb(), fetchProjectsFromDb(), fetchCostCentersFromDb(),
+        ]);
         dispatch({ type: 'SET_TASKS', payload: mapped });
         if (dbMapped.length > 0) dispatch({ type: 'SET_PROJECTS', payload: dbMapped });
+        if (ccMapped && ccMapped.length > 0) dispatch({ type: 'SET_COST_CENTERS', payload: ccMapped });
       } catch (e) {
         console.warn('[Kanban] refresh error:', e.message);
       }
@@ -384,6 +424,12 @@ export function KanbanProvider({ children }) {
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'kanban_projects' }, () => {
         refreshFromDb();
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'kanban_cost_centers' }, () => {
+        // Sync CC changes from any device in real time
+        fetchCostCentersFromDb().then(ccMapped => {
+          if (ccMapped) dispatch({ type: 'SET_COST_CENTERS', payload: ccMapped });
+        });
       })
       .subscribe((status) => {
         if (status === 'SUBSCRIBED') dispatch({ type: 'SET_SYNC_STATUS', payload: '● Online' });
@@ -590,12 +636,25 @@ export function KanbanProvider({ children }) {
   function toggleCostCenterFilter(cc) { dispatch({ type: 'TOGGLE_COST_CENTER_FILTER', payload: cc }); }
   function clearCostCenterFilter() { dispatch({ type: 'CLEAR_COST_CENTER_FILTER' }); }
 
+  // ── Cost Center DB helpers ──────────────────────────────────────────────────
+  async function saveCcToDb(cc) {
+    const { error } = await sb.from('kanban_cost_centers').upsert({
+      key: cc.key, label: cc.label, color: cc.color,
+      is_private: cc.isPrivate || false,
+      created_by: cc.createdBy || null,
+      shared_with: cc.sharedWith || [],
+    }, { onConflict: 'key' });
+    if (error) console.warn('[Kanban] CC save error:', error.message);
+  }
+
   function addCostCenter(label, color, isPrivate = false, createdBy = null, sharedWith = []) {
     const key = label.trim().replace(/\s+/g, '_').toUpperCase().slice(0, 20);
     const unique = stateRef.current.costCenters.some(cc => cc.key === key)
       ? key + '_' + Date.now().toString(36).slice(-4)
       : key;
-    dispatch({ type: 'ADD_COST_CENTER', payload: { key: unique, label: label.trim(), color, isPrivate, createdBy, sharedWith } });
+    const cc = { key: unique, label: label.trim(), color, isPrivate, createdBy, sharedWith };
+    dispatch({ type: 'ADD_COST_CENTER', payload: cc });
+    saveCcToDb(cc);
   }
 
   function addResource(item) { dispatch({ type: 'ADD_RESOURCE', payload: { id: 'r_' + Date.now(), createdAt: new Date().toISOString(), costCenters: [], ...item } }); }
@@ -604,10 +663,14 @@ export function KanbanProvider({ children }) {
 
   function updateCostCenter(key, patch) {
     dispatch({ type: 'UPDATE_COST_CENTER', payload: { key, ...patch } });
+    const existing = stateRef.current.costCenters.find(cc => cc.key === key);
+    if (existing) saveCcToDb({ ...existing, ...patch });
   }
 
   function deleteCostCenter(key) {
     dispatch({ type: 'DELETE_COST_CENTER', payload: key });
+    sb.from('kanban_cost_centers').delete().eq('key', key)
+      .then(({ error }) => { if (error) console.warn('[Kanban] CC delete error:', error.message); });
   }
   function addTemplate(tpl) { dispatch({ type: 'ADD_TEMPLATE', payload: tpl }); }
   function deleteTemplate(id) { dispatch({ type: 'DELETE_TEMPLATE', payload: id }); }
