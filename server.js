@@ -82,6 +82,7 @@ const MIGRATION_SQL = `
   );
   CREATE INDEX IF NOT EXISTS idx_kanban_messages_channel
     ON kanban_messages (channel_type, channel_id, created_at);
+  ALTER TABLE kanban_messages ADD COLUMN IF NOT EXISTS edited BOOLEAN DEFAULT false;
   ALTER TABLE kanban_messages DISABLE ROW LEVEL SECURITY;
   DO $$ BEGIN
     ALTER PUBLICATION supabase_realtime ADD TABLE kanban_messages;

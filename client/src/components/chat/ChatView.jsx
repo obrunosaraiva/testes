@@ -127,7 +127,26 @@ function ChannelSidebar({ channels, selected, onSelect, unread, pushSubscribed, 
 }
 
 // ─── Message item ──────────────────────────────────────────────────────────────
-function MessageItem({ msg, isGrouped, isOwn, onReply }) {
+function MsgActionBtn({ onClick, children, danger }) {
+  return (
+    <button
+      onClick={onClick}
+      style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '3px 7px', borderRadius: 5, fontSize: '.78rem', color: danger ? 'var(--danger)' : 'var(--text-muted)', fontFamily: 'inherit', whiteSpace: 'nowrap' }}
+      onMouseEnter={e => e.currentTarget.style.background = danger ? '#ef444422' : 'var(--surface3)'}
+      onMouseLeave={e => e.currentTarget.style.background = 'none'}
+    >
+      {children}
+    </button>
+  );
+}
+
+function MessageItem({ msg, isGrouped, isOwn, onReply, onEdit, onDelete }) {
+  const [hovered, setHovered] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [editText, setEditText] = useState('');
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const editRef = useRef(null);
+
   const atts = useMemo(() => {
     try { return Array.isArray(msg.attachments) ? msg.attachments : JSON.parse(msg.attachments || '[]'); }
     catch { return []; }
@@ -137,18 +156,39 @@ function MessageItem({ msg, isGrouped, isOwn, onReply }) {
     catch { return null; }
   }, [msg.reply_preview]);
 
+  function startEdit() {
+    setEditText(msg.content || '');
+    setEditing(true);
+    setHovered(false);
+    setTimeout(() => { editRef.current?.focus(); editRef.current?.select(); }, 30);
+  }
+
+  async function saveEdit() {
+    const trimmed = editText.trim();
+    if (!trimmed || trimmed === msg.content) { setEditing(false); return; }
+    await onEdit(msg.id, trimmed);
+    setEditing(false);
+  }
+
+  function handleEditKey(e) {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); saveEdit(); }
+    if (e.key === 'Escape') setEditing(false);
+  }
+
   return (
     <div
-      style={{ display: 'flex', gap: 10, padding: isGrouped ? '2px 0' : '10px 0 2px', alignItems: 'flex-start' }}
+      style={{ display: 'flex', gap: 10, padding: isGrouped ? '2px 0' : '10px 0 2px', alignItems: 'flex-start', position: 'relative' }}
       className="chat-msg"
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => { if (!confirmDelete) setHovered(false); }}
     >
       {/* Avatar */}
       <div style={{ width: 34, flexShrink: 0, marginTop: 2 }}>
-        {!isGrouped ? (
-          <div style={{ width: 34, height: 34, borderRadius: '50%', background: nameColor(msg.user_name), display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '.75rem', fontWeight: 700, color: '#fff', flexShrink: 0 }}>
+        {!isGrouped && (
+          <div style={{ width: 34, height: 34, borderRadius: '50%', background: nameColor(msg.user_name), display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '.75rem', fontWeight: 700, color: '#fff' }}>
             {nameInitials(msg.user_name)}
           </div>
-        ) : null}
+        )}
       </div>
 
       <div style={{ flex: 1, minWidth: 0 }}>
@@ -157,6 +197,7 @@ function MessageItem({ msg, isGrouped, isOwn, onReply }) {
           <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 2 }}>
             <span style={{ fontSize: '.85rem', fontWeight: 700 }}>{msg.user_name}</span>
             <span style={{ fontSize: '.7rem', color: 'var(--text-muted)' }}>{timeAgo(msg.created_at)}</span>
+            {msg.edited && <span style={{ fontSize: '.65rem', color: 'var(--text-muted)', fontStyle: 'italic' }}>(editado)</span>}
           </div>
         )}
 
@@ -167,31 +208,62 @@ function MessageItem({ msg, isGrouped, isOwn, onReply }) {
           </div>
         )}
 
-        {/* Content */}
-        {msg.content && (
-          <div style={{ fontSize: '.88rem', lineHeight: 1.55, wordBreak: 'break-word', whiteSpace: 'pre-wrap' }}>
-            {renderContent(msg.content)}
+        {/* Content — inline edit or display */}
+        {editing ? (
+          <div>
+            <textarea
+              ref={editRef}
+              value={editText}
+              onChange={e => setEditText(e.target.value)}
+              onKeyDown={handleEditKey}
+              rows={2}
+              style={{ width: '100%', resize: 'vertical', borderRadius: 8, border: '1px solid var(--accent)', background: 'var(--surface2)', padding: '6px 10px', fontSize: '.88rem', fontFamily: 'inherit', color: 'var(--text)', boxSizing: 'border-box' }}
+            />
+            <div style={{ display: 'flex', gap: 6, marginTop: 4 }}>
+              <button onClick={saveEdit} style={{ padding: '4px 12px', borderRadius: 6, background: 'var(--accent)', color: '#fff', border: 'none', cursor: 'pointer', fontSize: '.78rem', fontWeight: 600 }}>Salvar</button>
+              <button onClick={() => setEditing(false)} style={{ padding: '4px 12px', borderRadius: 6, background: 'var(--surface2)', color: 'var(--text-muted)', border: '1px solid var(--border)', cursor: 'pointer', fontSize: '.78rem' }}>Cancelar</button>
+              <span style={{ fontSize: '.7rem', color: 'var(--text-muted)', alignSelf: 'center' }}>Enter salva · Esc cancela</span>
+            </div>
           </div>
+        ) : (
+          msg.content && (
+            <div style={{ fontSize: '.88rem', lineHeight: 1.55, wordBreak: 'break-word', whiteSpace: 'pre-wrap' }}>
+              {renderContent(msg.content)}
+            </div>
+          )
         )}
 
         {/* Attachments */}
         {atts.length > 0 && (
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 6 }}>
-            {atts.map((att, i) => (
-              <AttachmentPreview key={i} att={att} />
-            ))}
+            {atts.map((att, i) => <AttachmentPreview key={i} att={att} />)}
           </div>
         )}
-
-        {/* Reply button */}
-        <button
-          className="reply-btn"
-          onClick={() => onReply(msg)}
-          style={{ background: 'none', border: 'none', color: 'var(--text-muted)', fontSize: '.72rem', cursor: 'pointer', padding: '2px 6px', borderRadius: 4, marginTop: 2, display: 'none' }}
-        >
-          ↩ Responder
-        </button>
       </div>
+
+      {/* Floating action bar */}
+      {(hovered || confirmDelete) && !editing && (
+        <div style={{
+          position: 'absolute', top: isGrouped ? -4 : 6, right: 0,
+          background: 'var(--surface)', border: '1px solid var(--border)',
+          borderRadius: 8, boxShadow: '0 2px 10px rgba(0,0,0,.18)',
+          display: 'flex', alignItems: 'center', gap: 0, zIndex: 10,
+        }}>
+          {!confirmDelete ? (
+            <>
+              <MsgActionBtn onClick={() => onReply(msg)}>↩ Responder</MsgActionBtn>
+              {isOwn && <MsgActionBtn onClick={startEdit}>✏️ Editar</MsgActionBtn>}
+              {isOwn && <MsgActionBtn onClick={() => setConfirmDelete(true)} danger>🗑 Apagar</MsgActionBtn>}
+            </>
+          ) : (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '3px 10px', fontSize: '.78rem' }}>
+              <span style={{ color: 'var(--text-muted)' }}>Apagar mensagem?</span>
+              <button onClick={() => { onDelete(msg.id); setConfirmDelete(false); }} style={{ padding: '2px 10px', borderRadius: 5, background: '#ef4444', color: '#fff', border: 'none', cursor: 'pointer', fontSize: '.78rem', fontWeight: 600 }}>Sim</button>
+              <button onClick={() => { setConfirmDelete(false); setHovered(false); }} style={{ padding: '2px 10px', borderRadius: 5, background: 'var(--surface2)', color: 'var(--text-muted)', border: '1px solid var(--border)', cursor: 'pointer', fontSize: '.78rem' }}>Não</button>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -229,7 +301,7 @@ function AttachmentPreview({ att }) {
 }
 
 // ─── Message feed ──────────────────────────────────────────────────────────────
-function MessageFeed({ messages, loading, feedRef, currentUserId, onReply }) {
+function MessageFeed({ messages, loading, feedRef, currentUserId, onReply, onEdit, onDelete }) {
   if (loading) return (
     <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', gap: 10 }}>
       <span style={{ animation: 'spin 1s linear infinite' }}>⏳</span> Carregando...
@@ -242,19 +314,7 @@ function MessageFeed({ messages, loading, feedRef, currentUserId, onReply }) {
     </div>
   );
   return (
-    <div
-      ref={feedRef}
-      style={{ flex: 1, overflowY: 'auto', padding: '12px 20px' }}
-      // Show reply button on hover via CSS hack
-      onMouseOver={e => {
-        const btn = e.target.closest('.chat-msg')?.querySelector('.reply-btn');
-        if (btn) btn.style.display = 'inline-block';
-      }}
-      onMouseOut={e => {
-        const btn = e.target.closest('.chat-msg')?.querySelector('.reply-btn');
-        if (btn) btn.style.display = 'none';
-      }}
-    >
+    <div ref={feedRef} style={{ flex: 1, overflowY: 'auto', padding: '12px 20px' }}>
       {messages.map((msg, i) => {
         const prev = messages[i - 1];
         const isGrouped = prev && prev.user_id === msg.user_id &&
@@ -266,6 +326,8 @@ function MessageFeed({ messages, loading, feedRef, currentUserId, onReply }) {
             isGrouped={isGrouped}
             isOwn={msg.user_id === currentUserId}
             onReply={onReply}
+            onEdit={onEdit}
+            onDelete={onDelete}
           />
         );
       })}
@@ -644,6 +706,16 @@ export default function ChatView() {
     return () => { realtimeRef.current?.unsubscribe(); };
   }, [selected?.type, selected?.id]);
 
+  async function handleEdit(msgId, newContent) {
+    const { error } = await sb.from('kanban_messages').update({ content: newContent, edited: true }).eq('id', msgId);
+    if (!error) setMessages(prev => prev.map(m => m.id === msgId ? { ...m, content: newContent, edited: true } : m));
+  }
+
+  async function handleDelete(msgId) {
+    const { error } = await sb.from('kanban_messages').update({ deleted: true }).eq('id', msgId);
+    if (!error) setMessages(prev => prev.filter(m => m.id !== msgId));
+  }
+
   async function handleSend({ content, attachments, mentions, replyTo: rt }) {
     const msg = {
       id: 'm_' + Date.now() + '_' + Math.random().toString(36).slice(2),
@@ -738,7 +810,7 @@ export default function ChatView() {
             {selected.group && <span style={{ fontSize: '.75rem', color: 'var(--text-muted)', background: 'var(--surface2)', padding: '2px 8px', borderRadius: 10 }}>{selected.group}</span>}
           </div>
 
-          <MessageFeed messages={messages} loading={loading} feedRef={feedRef} currentUserId={userId} onReply={setReplyTo} />
+          <MessageFeed messages={messages} loading={loading} feedRef={feedRef} currentUserId={userId} onReply={setReplyTo} onEdit={handleEdit} onDelete={handleDelete} />
 
           <MessageInput
             onSend={handleSend}
