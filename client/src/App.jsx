@@ -5,6 +5,7 @@ import { useAuth } from './hooks/useAuth';
 import { useMobile } from './hooks/useMobile';
 import { KanbanProvider, useKanban } from './context/KanbanContext';
 import { RoleProvider, useRole } from './context/RoleContext';
+import { sb } from './lib/supabase';
 
 import LoginScreen from './components/auth/LoginScreen';
 import SignupScreen from './components/auth/SignupScreen';
@@ -49,8 +50,8 @@ export default function App() {
 }
 
 function KanbanApp() {
-  const { view } = useKanban();
-  const { role, can, loading: roleLoading } = useRole();
+  const { view, setView } = useKanban();
+  const { role, can, loading: roleLoading, userId } = useRole();
   const isMobile = useMobile();
   const [mobileStatus, setMobileStatus] = useState('backlog');
   const [taskModalId, setTaskModalId] = useState(null);
@@ -61,6 +62,28 @@ function KanbanApp() {
   const [showTrash, setShowTrash] = useState(false);
   const [showRepository, setShowRepository] = useState(false);
   const [templateToApply, setTemplateToApply] = useState(null);
+  const [mentionCount, setMentionCount] = useState(0);
+
+  // Global realtime subscription — track @mentions for the current user across all channels
+  useEffect(() => {
+    if (!userId) return;
+    const sub = sb.channel('global-mentions')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'kanban_messages' }, ({ new: msg }) => {
+        if (msg.user_id === userId) return; // own messages don't count
+        try {
+          const mentions = JSON.parse(msg.mentions || '[]');
+          const mentioned = mentions.some(m => m.id === userId);
+          if (mentioned) setMentionCount(c => c + 1);
+        } catch {}
+      })
+      .subscribe();
+    return () => sub.unsubscribe();
+  }, [userId]);
+
+  // Clear badge when user opens chat
+  useEffect(() => {
+    if (view === 'chat') setMentionCount(0);
+  }, [view]);
 
   useEffect(() => {
     function onKey(e) {
@@ -101,6 +124,7 @@ function KanbanApp() {
         onOpenAdmin={() => setShowAdmin(true)}
         onOpenTrash={() => setShowTrash(true)}
         onOpenRepository={() => setShowRepository(true)}
+        mentionCount={mentionCount}
       />
       <ProjectBar />
 

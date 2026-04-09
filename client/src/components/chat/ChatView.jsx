@@ -58,7 +58,7 @@ function buildChannels(costCenters, projects, tasks) {
 }
 
 // ─── Sidebar ──────────────────────────────────────────────────────────────────
-function ChannelSidebar({ channels, selected, onSelect, unread }) {
+function ChannelSidebar({ channels, selected, onSelect, unread, pushSubscribed, pushPerm, pushSupported, onTogglePush }) {
   const groups = useMemo(() => {
     const map = {};
     for (const ch of channels) {
@@ -71,8 +71,18 @@ function ChannelSidebar({ channels, selected, onSelect, unread }) {
 
   return (
     <div style={{ width: 240, flexShrink: 0, borderRight: '1px solid var(--border)', overflowY: 'auto', background: 'var(--surface)', display: 'flex', flexDirection: 'column' }}>
-      <div style={{ padding: '14px 16px 8px', fontSize: '.72rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '.07em' }}>
-        💬 Chat
+      <div style={{ padding: '12px 16px 8px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <span style={{ fontSize: '.72rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '.07em' }}>💬 Chat</span>
+        {pushSupported && (
+          <button
+            onClick={onTogglePush}
+            disabled={pushPerm === 'denied'}
+            title={pushSubscribed ? 'Desativar notificações' : pushPerm === 'denied' ? 'Notificações bloqueadas no navegador' : 'Ativar notificações de @menção'}
+            style={{ background: 'none', border: 'none', cursor: pushPerm === 'denied' ? 'not-allowed' : 'pointer', fontSize: '.9rem', opacity: pushPerm === 'denied' ? 0.35 : 1, padding: '2px 4px', borderRadius: 4, color: pushSubscribed ? 'var(--accent)' : 'var(--text-muted)', lineHeight: 1 }}
+          >
+            {pushSubscribed ? '🔔' : '🔕'}
+          </button>
+        )}
       </div>
       {Object.entries(groups).map(([group, chs]) => (
         <div key={group}>
@@ -708,7 +718,16 @@ export default function ChatView() {
 
   return (
     <div style={{ display: 'flex', height: '100%', overflow: 'hidden', background: 'var(--bg)' }}>
-      <ChannelSidebar channels={channels} selected={selected} onSelect={handleSelectChannel} unread={unread} />
+      <ChannelSidebar
+        channels={channels}
+        selected={selected}
+        onSelect={handleSelectChannel}
+        unread={unread}
+        pushSubscribed={pushSubscribed}
+        pushPerm={pushPerm}
+        pushSupported={pushSupported}
+        onTogglePush={pushSubscribed ? unsubscribePush : subscribePush}
+      />
 
       {selected ? (
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minWidth: 0 }}>
@@ -717,16 +736,6 @@ export default function ChatView() {
             <span style={{ fontSize: '1.1rem' }}>{selected.icon}</span>
             <span style={{ fontWeight: 700, fontSize: '.95rem' }}>{selected.name}</span>
             {selected.group && <span style={{ fontSize: '.75rem', color: 'var(--text-muted)', background: 'var(--surface2)', padding: '2px 8px', borderRadius: 10 }}>{selected.group}</span>}
-            {pushSupported && (
-              <button
-                onClick={pushSubscribed ? unsubscribePush : subscribePush}
-                title={pushSubscribed ? 'Desativar notificações' : pushPerm === 'denied' ? 'Notificações bloqueadas no navegador' : 'Ativar notificações de @menção'}
-                disabled={pushPerm === 'denied'}
-                style={{ marginLeft: 'auto', background: 'none', border: 'none', cursor: pushPerm === 'denied' ? 'not-allowed' : 'pointer', fontSize: '1rem', opacity: pushPerm === 'denied' ? 0.4 : 1, padding: '4px 8px', borderRadius: 6, color: pushSubscribed ? 'var(--accent)' : 'var(--text-muted)' }}
-              >
-                {pushSubscribed ? '🔔' : '🔕'}
-              </button>
-            )}
           </div>
 
           <MessageFeed messages={messages} loading={loading} feedRef={feedRef} currentUserId={userId} onReply={setReplyTo} />
