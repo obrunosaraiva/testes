@@ -332,20 +332,12 @@ export function KanbanProvider({ children }) {
       }));
     }
 
-    // Helper: fetch ALL rows from kanban_cost_centers (cost centers + embedded resources + trash)
-    // Key convention: real cost centers have normal keys; system entries use '__' prefix:
-    //   '__res_{id}'         → resource
-    //   '__trash_task_{id}'  → trashed task
-    //   '__trash_proj_{id}'  → trashed project
-    async function fetchAllCcRows() {
+    // Helper: fetch cost centers from DB (null = table missing)
+    async function fetchCostCentersFromDb() {
       const { data, error } = await sb.from('kanban_cost_centers').select('*').order('created_at');
       if (error) return null;
-      return data || [];
-    }
-
-    function parseCcRows(rows) {
-      return rows
-        .filter(r => !r.key.startsWith('__'))
+      return (data || [])
+        .filter(r => !r.key.startsWith('__'))  // exclude any legacy system entries
         .map(cc => ({
           key: cc.key, label: cc.label, color: cc.color || '#3b82f6',
           isPrivate: cc.is_private || false, createdBy: cc.created_by || null,
@@ -353,36 +345,26 @@ export function KanbanProvider({ children }) {
         }));
     }
 
-    function parseResourceRows(rows) {
-      return rows
-        .filter(r => r.key.startsWith('__res_'))
-        .map(r => {
-          const meta = Array.isArray(r.shared_with) ? r.shared_with[0] : null;
-          return {
-            id: r.key.replace('__res_', ''),
-            name: r.label || '',
-            url: r.created_by || '',
-            type: r.color || 'link',
-            description: meta?.description || '',
-            costCenters: meta?.costCenters || [],
-            createdAt: r.created_at || '',
-          };
-        });
+    // Helper: fetch resources from DB (null = table missing)
+    async function fetchResourcesFromDb() {
+      const { data, error } = await sb.from('kanban_resources').select('*').order('created_at');
+      if (error) return null;
+      return (data || []).map(r => ({
+        id: r.id, name: r.name || '', url: r.url || '',
+        type: r.type || 'link', description: r.description || '',
+        costCenters: parseJsonField(r.cost_centers),
+        createdAt: r.created_at || '',
+      }));
     }
 
-    function parseTrashRows(rows) {
+    // Helper: fetch trash from DB (null = table missing)
+    async function fetchTrashFromDb() {
+      const { data, error } = await sb.from('kanban_trash').select('*').order('deleted_at');
+      if (error) return null;
       const trashedTasks = [], trashedProjects = [];
-      for (const r of rows.filter(r => r.key.startsWith('__trash_'))) {
-        const meta = Array.isArray(r.shared_with) ? r.shared_with[0] : null;
-        if (!meta?.data) continue;
-        const item = {
-          ...meta.data,
-          deletedAt: r.color || r.created_at || '',
-          deletedBy: r.label || '',
-          deletedWithProject: meta.deletedWithProject || false,
-        };
-        if (r.key.startsWith('__trash_task_')) trashedTasks.push(item);
-        else if (r.key.startsWith('__trash_proj_')) trashedProjects.push(item);
+      for (const row of (data || [])) {
+        if (row.type === 'task') trashedTasks.push({ ...row.data, deletedAt: row.deleted_at, deletedBy: row.deleted_by || '', deletedWithProject: row.deleted_with_project || false });
+        else if (row.type === 'project') trashedProjects.push({ ...row.data, deletedAt: row.deleted_at });
       }
       return { trashedTasks, trashedProjects };
     }
@@ -400,30 +382,22 @@ export function KanbanProvider({ children }) {
       }));
     }
 
-    // Applies all kanban_cost_centers rows to state (CCs + embedded resources + trash)
-    function applyCcRows(rows) {
-      if (rows === null) return;
-      dispatch({ type: 'SET_COST_CENTERS', payload: parseCcRows(rows) });
-      dispatch({ type: 'SET_RESOURCES', payload: parseResourceRows(rows) });
-      dispatch({ type: 'SET_TRASH', payload: parseTrashRows(rows) });
-    }
-
     async function loadSupabase() {
       try {
-        const [mapped, dbMapped, allCcRows, tplMapped] = await Promise.all([
-          fetchTasksFromDb(), fetchProjectsFromDb(), fetchAllCcRows(), fetchTemplatesFromDb(),
+        const [mapped, dbMapped, ccMapped, tplMapped, resMapped, trashMapped] = await Promise.all([
+          fetchTasksFromDb(), fetchProjectsFromDb(), fetchCostCentersFromDb(),
+          fetchTemplatesFromDb(), fetchResourcesFromDb(), fetchTrashFromDb(),
         ]);
 
         dispatch({ type: 'SET_TASKS', payload: mapped });
         dispatch({ type: 'SET_PROJECTS', payload: dbMapped });
 
-        if (allCcRows !== null) {
-          const ccs = parseCcRows(allCcRows);
-          const resources = parseResourceRows(allCcRows);
-          const trash = parseTrashRows(allCcRows);
-
-          // If no cost centers in DB yet, seed from localStorage or defaults (one-time migration)
-          if (ccs.length === 0) {
+        // Cost centers
+        if (ccMapped !== null) {
+          if (ccMapped.length > 0) {
+            dispatch({ type: 'SET_COST_CENTERS', payload: ccMapped });
+          } else {
+            // One-time migration from localStorage on first deploy
             try {
               const stored = JSON.parse(localStorage.getItem(SK) || '{}');
               const localCCs = Array.isArray(stored.costCenters) && stored.costCenters.length > 0
@@ -436,38 +410,10 @@ export function KanbanProvider({ children }) {
               }
               dispatch({ type: 'SET_COST_CENTERS', payload: localCCs });
             } catch { dispatch({ type: 'SET_COST_CENTERS', payload: DEFAULT_COST_CENTERS }); }
-          } else {
-            dispatch({ type: 'SET_COST_CENTERS', payload: ccs });
-          }
-
-          // Resources — if DB is empty, migrate from old localStorage snapshot (one-time)
-          if (resources.length === 0) {
-            try {
-              const stored = JSON.parse(localStorage.getItem(SK) || '{}');
-              if (Array.isArray(stored.resources) && stored.resources.length > 0) {
-                for (const r of stored.resources) await saveResourceToDb(r);
-                dispatch({ type: 'SET_RESOURCES', payload: stored.resources });
-              }
-            } catch {}
-          } else {
-            dispatch({ type: 'SET_RESOURCES', payload: resources });
-          }
-
-          // Trash — if DB is empty, migrate from old localStorage snapshot (one-time)
-          if (trash.trashedTasks.length === 0 && trash.trashedProjects.length === 0) {
-            try {
-              const rawTrash = localStorage.getItem(TRASH_KEY);
-              if (rawTrash) {
-                const { trashedTasks: lt = [], trashedProjects: lp = [] } = JSON.parse(rawTrash);
-                for (const task of lt) await saveToTrashDb({ id: task.id, type: 'task', data: task, deletedAt: task.deletedAt || new Date().toISOString(), deletedBy: task.deletedBy || '', deletedWithProject: task.deletedWithProject || false });
-                for (const proj of lp) await saveToTrashDb({ id: proj.id, type: 'project', data: proj, deletedAt: proj.deletedAt || new Date().toISOString(), deletedBy: '', deletedWithProject: false });
-              }
-            } catch {}
-          } else {
-            dispatch({ type: 'SET_TRASH', payload: trash });
           }
         }
 
+        // Templates
         if (tplMapped !== null) {
           dispatch({ type: 'SET_TEMPLATES', payload: tplMapped });
           if (tplMapped.length === 0) {
@@ -476,6 +422,35 @@ export function KanbanProvider({ children }) {
               if (Array.isArray(stored.templates) && stored.templates.length > 0) {
                 for (const tpl of stored.templates) await saveTemplateToDb(tpl);
                 dispatch({ type: 'SET_TEMPLATES', payload: stored.templates });
+              }
+            } catch {}
+          }
+        }
+
+        // Resources — one-time migration from localStorage if DB empty
+        if (resMapped !== null) {
+          dispatch({ type: 'SET_RESOURCES', payload: resMapped });
+          if (resMapped.length === 0) {
+            try {
+              const stored = JSON.parse(localStorage.getItem(SK) || '{}');
+              if (Array.isArray(stored.resources) && stored.resources.length > 0) {
+                for (const r of stored.resources) await saveResourceToDb(r);
+                dispatch({ type: 'SET_RESOURCES', payload: stored.resources });
+              }
+            } catch {}
+          }
+        }
+
+        // Trash — one-time migration from localStorage if DB empty
+        if (trashMapped !== null) {
+          dispatch({ type: 'SET_TRASH', payload: trashMapped });
+          if (trashMapped.trashedTasks.length === 0 && trashMapped.trashedProjects.length === 0) {
+            try {
+              const rawTrash = localStorage.getItem(TRASH_KEY);
+              if (rawTrash) {
+                const { trashedTasks: lt = [], trashedProjects: lp = [] } = JSON.parse(rawTrash);
+                for (const task of lt) await saveToTrashDb({ id: task.id, type: 'task', data: task, deletedAt: task.deletedAt || new Date().toISOString(), deletedBy: task.deletedBy || '', deletedWithProject: task.deletedWithProject || false });
+                for (const proj of lp) await saveToTrashDb({ id: proj.id, type: 'project', data: proj, deletedAt: proj.deletedAt || new Date().toISOString(), deletedBy: '', deletedWithProject: false });
               }
             } catch {}
           }
@@ -492,13 +467,15 @@ export function KanbanProvider({ children }) {
     // Refresh all data from DB (called on visibilitychange and Realtime project events)
     async function refreshFromDb() {
       try {
-        const [mapped, dbMapped, allCcRows, tplMapped] = await Promise.all([
-          fetchTasksFromDb(), fetchProjectsFromDb(), fetchAllCcRows(), fetchTemplatesFromDb(),
+        const [mapped, dbMapped, ccMapped, tplMapped, resMapped] = await Promise.all([
+          fetchTasksFromDb(), fetchProjectsFromDb(), fetchCostCentersFromDb(),
+          fetchTemplatesFromDb(), fetchResourcesFromDb(),
         ]);
         dispatch({ type: 'SET_TASKS', payload: mapped });
         if (dbMapped.length > 0) dispatch({ type: 'SET_PROJECTS', payload: dbMapped });
-        applyCcRows(allCcRows);
+        if (ccMapped && ccMapped.length > 0) dispatch({ type: 'SET_COST_CENTERS', payload: ccMapped });
         if (tplMapped !== null) dispatch({ type: 'SET_TEMPLATES', payload: tplMapped });
+        if (resMapped !== null) dispatch({ type: 'SET_RESOURCES', payload: resMapped });
       } catch (e) {
         console.warn('[Kanban] refresh error:', e.message);
       }
@@ -523,12 +500,20 @@ export function KanbanProvider({ children }) {
         refreshFromDb();
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'kanban_cost_centers' }, () => {
-        // kanban_cost_centers stores cost centers + resources + trash (via key prefix)
-        fetchAllCcRows().then(rows => applyCcRows(rows));
+        fetchCostCentersFromDb().then(cc => { if (cc) dispatch({ type: 'SET_COST_CENTERS', payload: cc }); });
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'kanban_templates' }, () => {
         fetchTemplatesFromDb().then(tpl => { if (tpl !== null) dispatch({ type: 'SET_TEMPLATES', payload: tpl }); });
       })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'kanban_resources' }, () => {
+        fetchResourcesFromDb().then(res => { if (res !== null) dispatch({ type: 'SET_RESOURCES', payload: res }); });
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'kanban_trash' }, () => {
+        fetchTrashFromDb().then(trash => { if (trash !== null) dispatch({ type: 'SET_TRASH', payload: trash }); });
+      })
+      .subscribe((status) => {
+        if (status === 'CHANNEL_ERROR') dispatch({ type: 'SET_SYNC_STATUS', payload: '⚠ Erro de conexão' });
+      });
 
     // Fallback: refresh tasks+projects when user tabs back (covers Realtime not enabled for table)
     function onVisibility() {
@@ -547,10 +532,6 @@ export function KanbanProvider({ children }) {
   }, []);
 
   // ── DB helpers for templates, resources, trash ─────────────────────────────
-  // Resources and trash are stored in kanban_cost_centers using key prefixes:
-  //   '__res_{id}'         → resource entry
-  //   '__trash_task_{id}'  → trashed task
-  //   '__trash_proj_{id}'  → trashed project
   async function saveTemplateToDb(tpl) {
     const { error } = await sb.from('kanban_templates').upsert({
       id: tpl.id, title: tpl.title || '', description: tpl.description || '',
@@ -564,37 +545,27 @@ export function KanbanProvider({ children }) {
   }
 
   async function saveResourceToDb(r) {
-    const { error } = await sb.from('kanban_cost_centers').upsert({
-      key: `__res_${r.id}`,
-      label: r.name || '',
-      color: r.type || 'link',
-      is_private: false,
-      created_by: r.url || '',
-      shared_with: [{ description: r.description || '', costCenters: r.costCenters || [], createdAt: r.createdAt || '' }],
-    }, { onConflict: 'key' });
+    const { error } = await sb.from('kanban_resources').upsert({
+      id: r.id, name: r.name || '', url: r.url || '',
+      type: r.type || 'link', description: r.description || '',
+      cost_centers: JSON.stringify(r.costCenters || []),
+    }, { onConflict: 'id' });
     if (error) console.warn('[Kanban] resource save error:', error.message);
   }
 
   async function saveToTrashDb({ id, type, data, deletedAt, deletedBy, deletedWithProject }) {
-    const keyPrefix = type === 'project' ? '__trash_proj_' : '__trash_task_';
-    const { error } = await sb.from('kanban_cost_centers').upsert({
-      key: `${keyPrefix}${id}`,
-      label: deletedBy || '',
-      color: deletedAt,
-      is_private: true,
-      created_by: type,
-      shared_with: [{ data, deletedWithProject: deletedWithProject || false }],
-    }, { onConflict: 'key' });
+    const { error } = await sb.from('kanban_trash').upsert({
+      id, type, data,
+      deleted_at: deletedAt,
+      deleted_by: deletedBy || '',
+      deleted_with_project: deletedWithProject || false,
+    }, { onConflict: 'id' });
     if (error) console.warn('[Kanban] trash save error:', error.message);
   }
 
   function deleteFromTrashDb(id, type = null) {
-    const keys = type
-      ? [`__trash_${type === 'project' ? 'proj' : 'task'}_${id}`]
-      : [`__trash_task_${id}`, `__trash_proj_${id}`];
-    keys.forEach(key =>
-      sb.from('kanban_cost_centers').delete().eq('key', key).catch(() => {})
-    );
+    sb.from('kanban_trash').delete().eq('id', id)
+      .then(({ error }) => { if (error) console.warn('[Kanban] trash delete error:', error.message); });
   }
 
   // ── Supabase task save ──────────────────────────────────────────────────────
@@ -715,13 +686,13 @@ export function KanbanProvider({ children }) {
     if (task) {
       const { deletedAt, deletedWithProject, deletedBy, ...cleanTask } = task;
       saveTaskToDb(normalizeTask(cleanTask));
-      deleteFromTrashDb(id, 'task');
+      deleteFromTrashDb(id);
     }
   }
 
   function permDeleteTask(id) {
     dispatch({ type: 'PERM_DELETE_TASK', payload: id });
-    deleteFromTrashDb(id, 'task');
+    deleteFromTrashDb(id);
   }
 
   function newProjectId() {
@@ -766,9 +737,9 @@ export function KanbanProvider({ children }) {
       for (const t of restoredTasks) {
         const { deletedAt, deletedWithProject, deletedBy, ...cleanTask } = t;
         saveTaskToDb(normalizeTask(cleanTask));
-        deleteFromTrashDb(t.id, 'task');
+        deleteFromTrashDb(t.id);
       }
-      deleteFromTrashDb(proj.id, 'project');
+      deleteFromTrashDb(proj.id);
     }
   }
 
@@ -776,10 +747,10 @@ export function KanbanProvider({ children }) {
     const proj = stateRef.current.trashedProjects.find(p => p.id === id);
     dispatch({ type: 'PERM_DELETE_PROJECT', payload: id });
     if (proj) {
-      deleteFromTrashDb(proj.id, 'project');
+      deleteFromTrashDb(proj.id);
       stateRef.current.trashedTasks
         .filter(t => t.project === proj.name && t.deletedWithProject)
-        .forEach(t => deleteFromTrashDb(t.id, 'task'));
+        .forEach(t => deleteFromTrashDb(t.id));
     }
   }
 
@@ -833,7 +804,7 @@ export function KanbanProvider({ children }) {
   }
   function deleteResource(id) {
     dispatch({ type: 'DELETE_RESOURCE', payload: id });
-    sb.from('kanban_cost_centers').delete().eq('key', `__res_${id}`)
+    sb.from('kanban_resources').delete().eq('id', id)
       .then(({ error }) => { if (error) console.warn('[Kanban] resource delete error:', error.message); });
   }
 
