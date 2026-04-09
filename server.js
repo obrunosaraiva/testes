@@ -247,6 +247,44 @@ app.post('/api/admin/users/:id/role', async (req, res) => {
   }
 });
 
+// Public signup — creates user + profile with editor role (no admin required)
+app.post('/api/auth/signup', async (req, res) => {
+  if (!SERVICE_KEY) return res.status(503).json({ error: 'Servidor não configurado para criar contas.' });
+
+  const { email, password, name = '', phone = '' } = req.body;
+  if (!email || !password) return res.status(400).json({ error: 'Email e senha são obrigatórios.' });
+  if (password.length < 6) return res.status(400).json({ error: 'A senha precisa ter pelo menos 6 caracteres.' });
+
+  try {
+    // Create user via admin API (email_confirm: true skips confirmation email)
+    const createRes = await fetch(`${SUPABASE_URL}/auth/v1/admin/users`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${SERVICE_KEY}`, apikey: SERVICE_KEY, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password, email_confirm: true }),
+    });
+    const userData = await createRes.json();
+    if (!createRes.ok) {
+      return res.status(createRes.status).json({ error: userData.message || userData.error || 'Erro ao criar conta.' });
+    }
+
+    // Create profile with editor role, name and phone
+    if (userData.id) {
+      await fetch(`${SUPABASE_URL}/rest/v1/profiles`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${SERVICE_KEY}`, apikey: SERVICE_KEY,
+          'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates',
+        },
+        body: JSON.stringify({ id: userData.id, email, role: 'editor', name, whatsapp: phone }),
+      });
+    }
+
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // Invite user by email (admin only) — sends Supabase magic link, no manual signup needed
 app.post('/api/admin/invite', async (req, res) => {
   if (!SERVICE_KEY) return res.status(503).json({ error: 'SUPABASE_SERVICE_ROLE_KEY não configurada no servidor.' });

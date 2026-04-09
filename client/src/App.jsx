@@ -7,6 +7,7 @@ import { KanbanProvider, useKanban } from './context/KanbanContext';
 import { RoleProvider, useRole } from './context/RoleContext';
 
 import LoginScreen from './components/auth/LoginScreen';
+import SignupScreen from './components/auth/SignupScreen';
 import Header from './components/layout/Header';
 import ProjectBar from './components/layout/ProjectBar';
 import BoardView from './components/board/BoardView';
@@ -21,6 +22,7 @@ import TrashPanel from './components/admin/TrashPanel';
 
 export default function App() {
   const { user, loading } = useAuth();
+  const [authScreen, setAuthScreen] = useState('login'); // 'login' | 'signup'
 
   if (loading) {
     return (
@@ -30,7 +32,10 @@ export default function App() {
     );
   }
 
-  if (!user) return <LoginScreen />;
+  if (!user) {
+    if (authScreen === 'signup') return <SignupScreen onGoToLogin={() => setAuthScreen('login')} />;
+    return <LoginScreen onGoToSignup={() => setAuthScreen('signup')} />;
+  }
 
   return (
     <RoleProvider>

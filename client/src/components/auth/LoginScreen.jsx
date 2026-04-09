@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useAuth } from '../../hooks/useAuth';
 
-export default function LoginScreen() {
+export default function LoginScreen({ onGoToSignup }) {
   const { signIn } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -76,6 +76,16 @@ export default function LoginScreen() {
             {loading ? 'Entrando...' : 'Entrar'}
           </button>
         </form>
+
+        <div style={{ marginTop: 20, fontSize: '.83rem', color: 'var(--text-muted)' }}>
+          Não tem conta?{' '}
+          <button
+            onClick={onGoToSignup}
+            style={{ background: 'none', border: 'none', color: 'var(--accent)', cursor: 'pointer', fontFamily: 'inherit', fontSize: 'inherit', textDecoration: 'underline' }}
+          >
+            Cadastre-se
+          </button>
+        </div>
       </div>
     </div>
   );
