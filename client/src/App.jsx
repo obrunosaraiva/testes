@@ -20,6 +20,7 @@ import TemplatesModal from './components/modals/TemplatesModal';
 import ReportModal from './components/modals/ReportModal';
 import AdminPanel from './components/admin/AdminPanel';
 import TrashPanel from './components/admin/TrashPanel';
+import ChatView from './components/chat/ChatView';
 
 export default function App() {
   const { user, loading } = useAuth();
@@ -107,6 +108,7 @@ function KanbanApp() {
         {view === 'board' && <BoardView onOpenTask={id => setTaskModalId(id)} onNewTask={openNewTask} mobileStatus={mobileStatus} />}
         {view === 'gantt' && <GanttView onOpenTask={id => setTaskModalId(id)} />}
         {view === 'list' && <ListView onOpenTask={id => setTaskModalId(id)} onNewTask={openNewTask} />}
+        {view === 'chat' && <ChatView />}
       </div>
 
       {isMobile && view === 'board' && (

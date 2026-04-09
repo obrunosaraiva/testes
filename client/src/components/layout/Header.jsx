@@ -4,7 +4,7 @@ import { useAuth } from '../../hooks/useAuth';
 import { useTheme } from '../../hooks/useTheme';
 import { useRole } from '../../context/RoleContext';
 
-export default function Header({ onOpenTemplates, onOpenReport, onOpenAdmin, onOpenTrash, onOpenRepository }) {
+export default function Header({ onOpenTemplates, onOpenReport, onOpenAdmin, onOpenTrash, onOpenRepository, onOpenChat }) {
   const { view, setView, syncStatus, trashedTasks, trashedProjects } = useKanban();
   const { signOut } = useAuth();
   const { theme, toggleTheme } = useTheme();
@@ -48,6 +48,7 @@ export default function Header({ onOpenTemplates, onOpenReport, onOpenAdmin, onO
           <button className={`view-btn${view === 'board' ? ' active' : ''}`} onClick={() => setView('board')}>Board</button>
           <button className={`view-btn${view === 'list' ? ' active' : ''}`} onClick={() => setView('list')}>Lista</button>
           <button className={`view-btn${view === 'gantt' ? ' active' : ''}`} onClick={() => setView('gantt')}>Gantt</button>
+          <button className={`view-btn${view === 'chat' ? ' active' : ''}`} onClick={() => setView('chat')}>💬 Chat</button>
           {can.admin && (
             <button onClick={onOpenTrash} className="icon-btn" title="Lixeira"
               style={{ color: trashCount > 0 ? 'var(--danger)' : 'var(--text-muted)' }}>
@@ -118,6 +119,7 @@ export default function Header({ onOpenTemplates, onOpenReport, onOpenAdmin, onO
             {/* Drawer items */}
             <div style={{ flex: 1, overflowY: 'auto', paddingTop: 8 }}>
               <DrawerItem icon={theme === 'dark' ? '☀️' : '🌙'} label={theme === 'dark' ? 'Modo Claro' : 'Modo Escuro'} onClick={() => { toggleTheme(); close(); }} />
+              <DrawerItem icon="💬" label="Chat" onClick={() => { setView('chat'); close(); }} />
               <DrawerItem icon="📁" label="Repositório" onClick={() => { onOpenRepository(); close(); }} />
               <DrawerItem icon="📄" label="Templates" onClick={() => { onOpenTemplates(); close(); }} />
               {can.admin && <DrawerItem icon="📋" label="Relatório" onClick={() => { onOpenReport(); close(); }} />}

@@ -55,6 +55,22 @@ const MIGRATION_SQL = `
   ALTER TABLE IF EXISTS profiles ADD COLUMN IF NOT EXISTS name TEXT DEFAULT '';
   ALTER TABLE IF EXISTS profiles ADD COLUMN IF NOT EXISTS whatsapp TEXT DEFAULT '';
   ALTER TABLE IF EXISTS kanban_tasks ADD COLUMN IF NOT EXISTS task_status TEXT DEFAULT 'pendente';
+  CREATE TABLE IF NOT EXISTS kanban_messages (
+    id TEXT PRIMARY KEY,
+    channel_type TEXT NOT NULL DEFAULT 'general',
+    channel_id TEXT NOT NULL DEFAULT 'geral',
+    user_id TEXT DEFAULT '',
+    user_name TEXT NOT NULL DEFAULT '',
+    content TEXT DEFAULT '',
+    attachments JSONB DEFAULT '[]'::jsonb,
+    mentions JSONB DEFAULT '[]'::jsonb,
+    reply_to TEXT,
+    reply_preview JSONB,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    deleted BOOLEAN DEFAULT false
+  );
+  CREATE INDEX IF NOT EXISTS idx_kanban_messages_channel
+    ON kanban_messages (channel_type, channel_id, created_at);
 `;
 
 async function runMigrations() {
@@ -146,6 +162,48 @@ async function runMigrations() {
 }
 
 runMigrations();
+
+// ── Chat storage bucket setup ─────────────────────────────────────────────────
+async function setupChatBucket() {
+  if (!SERVICE_KEY) return;
+  try {
+    // Check if bucket exists
+    const listRes = await fetch(`${SUPABASE_URL}/storage/v1/bucket`, {
+      headers: { Authorization: `Bearer ${SERVICE_KEY}`, apikey: SERVICE_KEY },
+    });
+    const buckets = await listRes.json().catch(() => []);
+    if (Array.isArray(buckets) && buckets.find(b => b.id === 'chat-files')) return;
+    // Create bucket
+    await fetch(`${SUPABASE_URL}/storage/v1/bucket`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${SERVICE_KEY}`, apikey: SERVICE_KEY, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: 'chat-files', name: 'chat-files', public: true, file_size_limit: 104857600 }),
+    });
+    console.log('[Chat] Storage bucket chat-files created.');
+  } catch (e) {
+    console.warn('[Chat] Storage bucket setup failed:', e.message);
+  }
+}
+setupChatBucket();
+
+// ── Chat file upload (proxy using service key) ────────────────────────────────
+app.post('/api/chat/upload', express.raw({ type: '*/*', limit: '100mb' }), async (req, res) => {
+  if (!SERVICE_KEY) return res.status(503).json({ error: 'Service key not configured' });
+  const raw = req.headers['x-filename'] || `file_${Date.now()}`;
+  const filename = decodeURIComponent(raw).replace(/[^a-zA-Z0-9._\- ]/g, '_');
+  const contentType = req.headers['x-content-type'] || 'application/octet-stream';
+  const storagePath = `chat/${Date.now()}_${filename}`;
+  const uploadRes = await fetch(`${SUPABASE_URL}/storage/v1/object/chat-files/${storagePath}`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${SERVICE_KEY}`, apikey: SERVICE_KEY, 'Content-Type': contentType, 'x-upsert': 'false' },
+    body: req.body,
+  });
+  if (!uploadRes.ok) {
+    const err = await uploadRes.json().catch(() => ({}));
+    return res.status(400).json({ error: err.error || 'Upload failed' });
+  }
+  res.json({ url: `${SUPABASE_URL}/storage/v1/object/public/chat-files/${storagePath}`, name: filename, type: contentType });
+});
 
 // List all auth users (admin only — requires SUPABASE_SERVICE_ROLE_KEY env var)
 app.get('/api/admin/users', async (req, res) => {
