@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useRole, ROLE_LABELS } from '../../context/RoleContext';
 import { useKanban } from '../../context/KanbanContext';
+import { sb } from '../../lib/supabase';
 
 const ROLE_COLORS = { admin: 'var(--accent)', editor: 'var(--warning)', viewer: 'var(--text-muted)' };
 
@@ -12,6 +13,7 @@ export default function AdminPanel({ onClose }) {
   const [loadingUsers, setLoadingUsers] = useState(false);
   const [savingRole, setSavingRole] = useState(null);
   const [msg, setMsg] = useState('');
+  const [msgError, setMsgError] = useState('');
 
   // Member form state
   const [memberName, setMemberName] = useState('');
@@ -20,16 +22,21 @@ export default function AdminPanel({ onClose }) {
   const [editName, setEditName] = useState('');
   const [editEmail, setEditEmail] = useState('');
 
+  // Invite form state
+  const [inviteEmail, setInviteEmail] = useState('');
+  const [inviteRole, setInviteRole] = useState('viewer');
+  const [inviting, setInviting] = useState(false);
+
   useEffect(() => {
-    if (tab === 'users' && allProfiles.length === 0) {
+    if (tab === 'users') {
       setLoadingUsers(true);
       loadAllProfiles().finally(() => setLoadingUsers(false));
     }
   }, [tab]);
 
-  function flash(text) {
-    setMsg(text);
-    setTimeout(() => setMsg(''), 2500);
+  function flash(text, isError = false) {
+    if (isError) { setMsgError(text); setTimeout(() => setMsgError(''), 4000); }
+    else { setMsg(text); setTimeout(() => setMsg(''), 2500); }
   }
 
   // ── Members ────────────────────────────────────────────────────────────────
@@ -62,6 +69,51 @@ export default function AdminPanel({ onClose }) {
   }
 
   // ── Users ──────────────────────────────────────────────────────────────────
+  async function getToken() {
+    const { data: { session } } = await sb.auth.getSession();
+    return session?.access_token;
+  }
+
+  async function handleInvite(e) {
+    e.preventDefault();
+    if (!inviteEmail.trim()) return;
+    setInviting(true);
+    try {
+      const token = await getToken();
+      const res = await fetch('/api/admin/invite', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: inviteEmail.trim(), role: inviteRole }),
+      });
+      const data = await res.json();
+      if (!res.ok) { flash(data.error || 'Erro ao convidar.', true); }
+      else {
+        flash(`Convite enviado para ${inviteEmail}!`);
+        setInviteEmail('');
+        loadAllProfiles();
+      }
+    } catch (e) {
+      flash(e.message, true);
+    }
+    setInviting(false);
+  }
+
+  async function handleDeleteUser(targetId, targetEmail) {
+    if (!window.confirm(`Remover "${targetEmail}" do sistema?\n\nEsta ação é irreversível.`)) return;
+    try {
+      const token = await getToken();
+      const res = await fetch(`/api/admin/users/${targetId}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      if (!res.ok) { flash(data.error || 'Erro ao remover.', true); }
+      else { flash('Usuário removido.'); loadAllProfiles(); }
+    } catch (e) {
+      flash(e.message, true);
+    }
+  }
+
   async function handleChangeRole(targetId, r) {
     setSavingRole(targetId);
     await updateUserRole(targetId, r);
@@ -195,21 +247,33 @@ export default function AdminPanel({ onClose }) {
           {/* ── Users tab ─────────────────────────────────────────────────── */}
           {tab === 'users' && (
             <>
-              <p style={{ fontSize: '.82rem', color: 'var(--text-muted)', marginTop: 0 }}>
-                Gerencie os usuários com conta no sistema e seus níveis de acesso.
-              </p>
-
-              {/* Current user badge */}
-              <div style={{ background: 'var(--surface2)', borderRadius: 10, padding: '10px 14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div>
-                  <div style={{ fontSize: '.82rem', fontWeight: 600 }}>{userEmail}</div>
-                  <div style={{ fontSize: '.72rem', color: 'var(--text-muted)' }}>Você</div>
+              {/* Invite form */}
+              <div>
+                <label className="field-label">Convidar usuário</label>
+                <form onSubmit={handleInvite} style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                  <input
+                    type="email"
+                    placeholder="email@exemplo.com"
+                    value={inviteEmail}
+                    onChange={e => setInviteEmail(e.target.value)}
+                    style={{ flex: '2 1 180px' }}
+                    required
+                  />
+                  <select value={inviteRole} onChange={e => setInviteRole(e.target.value)} style={{ width: 140 }}>
+                    <option value="admin">Admin</option>
+                    <option value="editor">Editor</option>
+                    <option value="viewer">Visualizador</option>
+                  </select>
+                  <button type="submit" className="btn btn-primary" disabled={inviting} style={{ whiteSpace: 'nowrap' }}>
+                    {inviting ? '...' : '✉ Convidar'}
+                  </button>
+                </form>
+                <div style={{ fontSize: '.72rem', color: 'var(--text-muted)', marginTop: 4 }}>
+                  O usuário receberá um email com link para entrar — sem precisar criar conta.
                 </div>
-                <span style={{ fontSize: '.75rem', fontWeight: 700, color: ROLE_COLORS[role], background: 'var(--surface3)', padding: '3px 10px', borderRadius: 20 }}>
-                  {ROLE_LABELS[role]}
-                </span>
               </div>
 
+              {/* User list */}
               {loadingUsers ? (
                 <div style={{ fontSize: '.82rem', color: 'var(--text-muted)', padding: 12 }}>Carregando...</div>
               ) : allProfiles.length === 0 ? (
@@ -217,24 +281,40 @@ export default function AdminPanel({ onClose }) {
               ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                   {allProfiles.map(u => (
-                    <div key={u.id} style={{ background: 'var(--surface2)', borderRadius: 10, padding: '10px 14px', display: 'flex', alignItems: 'center', gap: 12 }}>
+                    <div key={u.id} style={{ background: 'var(--surface2)', borderRadius: 10, padding: '10px 14px', display: 'flex', alignItems: 'center', gap: 10 }}>
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{ fontSize: '.83rem', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                           {u.email || u.id}
                           {u.id === userId && <span style={{ fontSize: '.68rem', color: 'var(--accent)', marginLeft: 6 }}>você</span>}
                         </div>
+                        {u.last_sign_in && (
+                          <div style={{ fontSize: '.68rem', color: 'var(--text-muted)' }}>
+                            Último acesso: {new Date(u.last_sign_in).toLocaleDateString('pt-BR')}
+                          </div>
+                        )}
                       </div>
                       <select
                         value={u.role || 'viewer'}
                         onChange={e => handleChangeRole(u.id, e.target.value)}
                         disabled={savingRole === u.id || u.id === userId}
-                        style={{ width: 140, fontSize: '.8rem' }}
+                        style={{ width: 130, fontSize: '.8rem' }}
                       >
                         <option value="admin">Admin</option>
                         <option value="editor">Editor</option>
                         <option value="viewer">Visualizador</option>
                       </select>
-                      {savingRole === u.id && <span style={{ fontSize: '.72rem', color: 'var(--text-muted)' }}>...</span>}
+                      {savingRole === u.id
+                        ? <span style={{ fontSize: '.72rem', color: 'var(--text-muted)' }}>...</span>
+                        : u.id !== userId && (
+                          <button
+                            title="Remover usuário"
+                            onClick={() => handleDeleteUser(u.id, u.email)}
+                            style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--danger)', fontSize: '.9rem', padding: '2px 6px', flexShrink: 0 }}
+                          >
+                            ✕
+                          </button>
+                        )
+                      }
                     </div>
                   ))}
                 </div>
@@ -260,6 +340,7 @@ export default function AdminPanel({ onClose }) {
           )}
 
           {msg && <div style={{ textAlign: 'center', fontSize: '.82rem', color: 'var(--success)' }}>✓ {msg}</div>}
+          {msgError && <div style={{ textAlign: 'center', fontSize: '.82rem', color: 'var(--danger)' }}>⚠ {msgError}</div>}
         </div>
       </div>
     </div>

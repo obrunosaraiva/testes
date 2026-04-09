@@ -240,6 +240,105 @@ app.post('/api/admin/users/:id/role', async (req, res) => {
   }
 });
 
+// Invite user by email (admin only) — sends Supabase magic link, no manual signup needed
+app.post('/api/admin/invite', async (req, res) => {
+  if (!SERVICE_KEY) return res.status(503).json({ error: 'SUPABASE_SERVICE_ROLE_KEY não configurada no servidor.' });
+  const token = req.headers.authorization?.replace('Bearer ', '');
+  if (!token) return res.status(401).json({ error: 'Token não fornecido.' });
+
+  try {
+    const verifyRes = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
+      headers: { Authorization: `Bearer ${token}`, apikey: ANON_KEY },
+    });
+    if (!verifyRes.ok) return res.status(401).json({ error: 'Token inválido.' });
+    const caller = await verifyRes.json();
+
+    const profileRes = await fetch(
+      `${SUPABASE_URL}/rest/v1/profiles?id=eq.${caller.id}&select=role`,
+      { headers: { Authorization: `Bearer ${SERVICE_KEY}`, apikey: SERVICE_KEY } }
+    );
+    const profiles = await profileRes.json();
+    if (!profiles?.[0] || profiles[0].role !== 'admin') {
+      return res.status(403).json({ error: 'Acesso negado. Apenas admins podem convidar usuários.' });
+    }
+
+    const { email, role: inviteRole = 'viewer' } = req.body;
+    if (!email) return res.status(400).json({ error: 'Email obrigatório.' });
+
+    // Create/invite user via Supabase Admin API — sends email with sign-in link
+    const inviteRes = await fetch(`${SUPABASE_URL}/auth/v1/admin/invite`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${SERVICE_KEY}`,
+        apikey: SERVICE_KEY,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ email }),
+    });
+    const inviteData = await inviteRes.json();
+
+    if (!inviteRes.ok) {
+      return res.status(inviteRes.status).json({ error: inviteData.message || inviteData.error || 'Erro ao convidar.' });
+    }
+
+    // Set role in profiles table right away
+    if (inviteData.id) {
+      await fetch(`${SUPABASE_URL}/rest/v1/profiles`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${SERVICE_KEY}`, apikey: SERVICE_KEY,
+          'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates',
+        },
+        body: JSON.stringify({ id: inviteData.id, email, role: inviteRole }),
+      });
+    }
+
+    res.json({ ok: true, userId: inviteData.id });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Delete auth user (admin only)
+app.delete('/api/admin/users/:id', async (req, res) => {
+  if (!SERVICE_KEY) return res.status(503).json({ error: 'SERVICE_KEY não configurada.' });
+  const token = req.headers.authorization?.replace('Bearer ', '');
+  if (!token) return res.status(401).json({ error: 'Token não fornecido.' });
+
+  try {
+    const verifyRes = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
+      headers: { Authorization: `Bearer ${token}`, apikey: ANON_KEY },
+    });
+    if (!verifyRes.ok) return res.status(401).json({ error: 'Token inválido.' });
+    const caller = await verifyRes.json();
+
+    const profileRes = await fetch(
+      `${SUPABASE_URL}/rest/v1/profiles?id=eq.${caller.id}&select=role`,
+      { headers: { Authorization: `Bearer ${SERVICE_KEY}`, apikey: SERVICE_KEY } }
+    );
+    const profs = await profileRes.json();
+    if (!profs?.[0] || profs[0].role !== 'admin') {
+      return res.status(403).json({ error: 'Acesso negado.' });
+    }
+
+    const { id } = req.params;
+    if (id === caller.id) return res.status(400).json({ error: 'Você não pode remover a si mesmo.' });
+
+    await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${id}`, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${SERVICE_KEY}`, apikey: SERVICE_KEY },
+    });
+    await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${id}`, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${SERVICE_KEY}`, apikey: SERVICE_KEY, Prefer: 'return=minimal' },
+    });
+
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // Serve React build output
 const distPath = path.join(__dirname, 'client', 'dist');
 app.use(express.static(distPath));
