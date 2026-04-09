@@ -288,16 +288,28 @@ app.post('/api/admin/invite', async (req, res) => {
       return res.status(inviteRes.status).json({ error: inviteData.message || inviteData.error || 'Erro ao convidar.' });
     }
 
-    // Set role, name and whatsapp in profiles table right away
+    // Set role, name and whatsapp in profiles table.
+    // Use PATCH first (overrides any trigger default), then upsert as fallback.
     if (inviteData.id) {
-      await fetch(`${SUPABASE_URL}/rest/v1/profiles`, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${SERVICE_KEY}`, apikey: SERVICE_KEY,
-          'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates',
-        },
-        body: JSON.stringify({ id: inviteData.id, email, role: inviteRole, name, whatsapp }),
+      const profileHeaders = {
+        Authorization: `Bearer ${SERVICE_KEY}`, apikey: SERVICE_KEY,
+        'Content-Type': 'application/json', Prefer: 'return=minimal',
+      };
+      const profileBody = { role: inviteRole, name, whatsapp };
+
+      // PATCH — wins over trigger that may have already created the row with a default role
+      const patchRes = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${inviteData.id}`, {
+        method: 'PATCH', headers: profileHeaders, body: JSON.stringify(profileBody),
       });
+
+      // If PATCH updated 0 rows (trigger didn't run), insert the row
+      if (patchRes.headers.get('content-range') === '*/0' || patchRes.status === 204) {
+        await fetch(`${SUPABASE_URL}/rest/v1/profiles`, {
+          method: 'POST',
+          headers: { ...profileHeaders, Prefer: 'resolution=merge-duplicates' },
+          body: JSON.stringify({ id: inviteData.id, email, ...profileBody }),
+        });
+      }
     }
 
     res.json({ ok: true, userId: inviteData.id });
