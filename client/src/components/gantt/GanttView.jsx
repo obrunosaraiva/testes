@@ -35,7 +35,7 @@ export default function GanttView({ onOpenTask }) {
   const [inputEnd, setInputEnd] = useState('');
 
   const filtered = useMemo(() => {
-    let t = tasks.filter(t => t.startDate || t.deadline);
+    let t = tasks.filter(t => (t.startDate || t.deadline) && t.status !== 'done');
     if (filterProj !== '__all__') t = t.filter(t => t.project === filterProj);
     else if (activeProject !== '__all__') t = t.filter(t => t.project === activeProject);
     if (costCenterFilter.length > 0) {
