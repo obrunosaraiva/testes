@@ -124,6 +124,22 @@ export default function ProjectBar() {
 
         <div className={`cc-filter-row${showFilters ? ' cc-filter-open' : ''}`} style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
           <span className="desktop-only" style={{ fontSize: '.72rem', color: 'var(--text-muted)', marginRight: 2 }}>CC:</span>
+          {/* Add CC button — first */}
+          {can.admin && (
+            <button
+              onClick={() => setShowNewCC(true)}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 4,
+                padding: '2px 10px', borderRadius: 20, cursor: 'pointer', fontSize: '.75rem',
+                background: 'transparent', border: '1px dashed var(--border)',
+                color: 'var(--text-muted)', transition: 'all .15s',
+              }}
+              onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--accent)'; e.currentTarget.style.color = 'var(--accent)'; }}
+              onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.color = 'var(--text-muted)'; }}
+            >
+              + CC
+            </button>
+          )}
           {visibleCCs.map(cc => {
             const active = costCenterFilter.includes(cc.key);
             return (
@@ -169,23 +185,6 @@ export default function ProjectBar() {
             );
           })}
 
-          {/* Add CC button */}
-          {can.admin && (
-            <button
-              onClick={() => setShowNewCC(true)}
-              style={{
-                display: 'flex', alignItems: 'center', gap: 4,
-                padding: '2px 10px', borderRadius: 20, cursor: 'pointer', fontSize: '.75rem',
-                background: 'transparent', border: '1px dashed var(--border)',
-                color: 'var(--text-muted)', transition: 'all .15s',
-              }}
-              onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--accent)'; e.currentTarget.style.color = 'var(--accent)'; }}
-              onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.color = 'var(--text-muted)'; }}
-            >
-              + CC
-            </button>
-          )}
-
           {costCenterFilter.length > 0 && (
             <button
               onClick={clearCostCenterFilter}
@@ -199,6 +198,21 @@ export default function ProjectBar() {
 
         {/* Project tabs */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 24px', overflowX: 'auto' }}>
+          {can.create && (
+            <button
+              onClick={() => setShowNewModal(true)}
+              style={{
+                padding: '5px 12px', borderRadius: 20, flexShrink: 0,
+                background: 'transparent', border: '1px dashed var(--border)',
+                color: 'var(--text-muted)', fontSize: '.8rem', whiteSpace: 'nowrap',
+                cursor: 'pointer', transition: 'all .2s',
+              }}
+              onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--accent)'}
+              onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--border)'}
+            >
+              + Projeto
+            </button>
+          )}
           {!combineMode && !isCombining && (
             <ProjectTab
               label="Todos"
@@ -231,21 +245,6 @@ export default function ProjectBar() {
             />
           ))}
 
-          {can.create && (
-            <button
-              onClick={() => setShowNewModal(true)}
-              style={{
-                padding: '5px 12px', borderRadius: 20, flexShrink: 0,
-                background: 'transparent', border: '1px dashed var(--border)',
-                color: 'var(--text-muted)', fontSize: '.8rem', whiteSpace: 'nowrap',
-                cursor: 'pointer', transition: 'all .2s',
-              }}
-              onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--accent)'}
-              onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--border)'}
-            >
-              + Projeto
-            </button>
-          )}
         </div>
       </div>
 
