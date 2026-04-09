@@ -7,7 +7,7 @@ app.use(express.json());
 
 const SUPABASE_URL = process.env.SUPABASE_URL || 'https://imsqnoxztoxlmiumdalu.supabase.co';
 const ANON_KEY = process.env.SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imltc3Fub3h6dG94bG1pdW1kYWx1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ4OTk5NTEsImV4cCI6MjA5MDQ3NTk1MX0.CaFrcNJokpvdRD9v9AIp3rlDd8wXIrW6k1urepMDnqw';
-const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imltc3Fub3h6dG94bG1pdW1kYWx1Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3NDg5OTk1MSwiZXhwIjoyMDkwNDc1OTUxfQ.yNtYyfqtGoQAxvhNvf6vhuVRBZyQoTbtak3EE42oZO8';
+const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
 // ── Startup DB migration ──────────────────────────────────────────────────────
 // Creates all required tables if they don't exist.
@@ -73,7 +73,7 @@ async function runMigrations() {
   }
 
   // Strategy 2: Supabase Management API (requires SUPABASE_ACCESS_TOKEN)
-  const accessToken = process.env.SUPABASE_ACCESS_TOKEN || 'sbp_b851743b445e808abae4604c83ed82d28c79050d';
+  const accessToken = process.env.SUPABASE_ACCESS_TOKEN;
   if (accessToken) {
     try {
       const PROJECT_REF = 'imsqnoxztoxlmiumdalu';
