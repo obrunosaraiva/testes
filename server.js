@@ -52,6 +52,8 @@ const MIGRATION_SQL = `
     deleted_by TEXT DEFAULT '',
     deleted_with_project BOOLEAN DEFAULT false
   );
+  ALTER TABLE IF EXISTS profiles ADD COLUMN IF NOT EXISTS name TEXT DEFAULT '';
+  ALTER TABLE IF EXISTS profiles ADD COLUMN IF NOT EXISTS whatsapp TEXT DEFAULT '';
 `;
 
 async function runMigrations() {
@@ -222,8 +224,13 @@ app.post('/api/admin/users/:id/role', async (req, res) => {
       return res.status(403).json({ error: 'Acesso negado.' });
     }
 
-    const { role } = req.body;
+    const { role, name, whatsapp } = req.body;
     const { id } = req.params;
+
+    const patch = {};
+    if (role !== undefined) patch.role = role;
+    if (name !== undefined) patch.name = name;
+    if (whatsapp !== undefined) patch.whatsapp = whatsapp;
 
     await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${id}`, {
       method: 'PATCH',
@@ -231,7 +238,7 @@ app.post('/api/admin/users/:id/role', async (req, res) => {
         Authorization: `Bearer ${SERVICE_KEY}`, apikey: SERVICE_KEY,
         'Content-Type': 'application/json', Prefer: 'return=minimal',
       },
-      body: JSON.stringify({ role }),
+      body: JSON.stringify(patch),
     });
 
     res.json({ ok: true });
@@ -262,7 +269,7 @@ app.post('/api/admin/invite', async (req, res) => {
       return res.status(403).json({ error: 'Acesso negado. Apenas admins podem convidar usuários.' });
     }
 
-    const { email, role: inviteRole = 'viewer' } = req.body;
+    const { email, role: inviteRole = 'viewer', name = '', whatsapp = '' } = req.body;
     if (!email) return res.status(400).json({ error: 'Email obrigatório.' });
 
     // Create/invite user via Supabase Admin API — sends email with sign-in link
@@ -281,7 +288,7 @@ app.post('/api/admin/invite', async (req, res) => {
       return res.status(inviteRes.status).json({ error: inviteData.message || inviteData.error || 'Erro ao convidar.' });
     }
 
-    // Set role in profiles table right away
+    // Set role, name and whatsapp in profiles table right away
     if (inviteData.id) {
       await fetch(`${SUPABASE_URL}/rest/v1/profiles`, {
         method: 'POST',
@@ -289,7 +296,7 @@ app.post('/api/admin/invite', async (req, res) => {
           Authorization: `Bearer ${SERVICE_KEY}`, apikey: SERVICE_KEY,
           'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates',
         },
-        body: JSON.stringify({ id: inviteData.id, email, role: inviteRole }),
+        body: JSON.stringify({ id: inviteData.id, email, role: inviteRole, name, whatsapp }),
       });
     }
 

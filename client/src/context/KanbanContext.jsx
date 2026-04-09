@@ -358,15 +358,20 @@ export function KanbanProvider({ children }) {
     }
 
     // Helper: fetch members from DB — stored in kanban_cost_centers with __mbr_ prefix
+    // whatsapp is stored as first element of shared_with JSONB: [{ whatsapp: '...' }]
     async function fetchMembersFromDb() {
       const { data, error } = await sb.from('kanban_cost_centers').select('*').like('key', '__mbr_%');
       if (error) return null;
-      return (data || []).map(row => ({
-        id: row.key.slice(6), // strip '__mbr_'
-        name: row.label,
-        email: row.created_by || '',
-        isVirtual: row.is_private || false,
-      }));
+      return (data || []).map(row => {
+        const meta = Array.isArray(row.shared_with) ? row.shared_with[0] : {};
+        return {
+          id: row.key.slice(6), // strip '__mbr_'
+          name: row.label,
+          email: row.created_by || '',
+          whatsapp: meta?.whatsapp || '',
+          isVirtual: row.is_private || false,
+        };
+      });
     }
 
     // Helper: fetch resources from DB (null = table missing)
@@ -848,21 +853,21 @@ export function KanbanProvider({ children }) {
   }
 
   // ── Member (Responsável) DB helpers ────────────────────────────────────────
-  async function saveMemberToDb({ id, name, email, isVirtual }) {
+  async function saveMemberToDb({ id, name, email, whatsapp, isVirtual }) {
     const { error } = await sb.from('kanban_cost_centers').upsert({
       key: '__mbr_' + id,
       label: name,
       color: '#6366f1',
       is_private: isVirtual || false,
       created_by: email || null,
-      shared_with: [],
+      shared_with: whatsapp ? [{ whatsapp }] : [],
     }, { onConflict: 'key' });
     if (error) console.warn('[Kanban] member save error:', error.message);
   }
 
   function addMember(name, email = '', isVirtual = false) {
     const id = 'm_' + Date.now() + '_' + Math.random().toString(36).slice(2, 5);
-    const member = { id, name: name.trim(), email: email.trim(), isVirtual };
+    const member = { id, name: name.trim(), email: email.trim(), whatsapp: '', isVirtual };
     dispatch({ type: 'ADD_MEMBER', payload: member });
     saveMemberToDb(member);
     return member;
