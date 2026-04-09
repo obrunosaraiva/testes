@@ -219,7 +219,7 @@ export default function ListView({ onOpenTask, onNewTask }) {
 
 function TaskRow({ task, idx, isLast, dl, late, today, onOpen, onChangeTaskStatus, onChangeSubStatus }) {
   const [hovered, setHovered] = useState(false);
-  const [showSubs, setShowSubs] = useState(false);
+  const [showSubs, setShowSubs] = useState(true);
 
   const pending = task.checklist?.filter(c => !subDone(c)) || [];
   const done = task.checklist?.filter(c => subDone(c)) || [];
@@ -312,8 +312,8 @@ function TaskRow({ task, idx, isLast, dl, late, today, onOpen, onChangeTaskStatu
                       disabled={!onChangeSubStatus}
                       small
                     />
-                    <div style={{ padding: '0 14px 0 28px', display: 'flex', alignItems: 'center', fontSize: '.82rem', overflow: 'hidden' }}>
-                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.text || <em style={{ color: 'var(--text-muted)' }}>sem título</em>}</span>
+                    <div style={{ padding: '0 14px 0 28px', display: 'flex', alignItems: 'center', fontSize: '.84rem', fontWeight: 500, overflow: 'hidden' }}>
+                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.text || item.label || <em style={{ color: 'var(--text-muted)', fontWeight: 400 }}>sem título</em>}</span>
                     </div>
                     <div style={{ padding: '0 14px', display: 'flex', alignItems: 'center', fontSize: '.78rem', color: item.assignee ? 'var(--text)' : 'var(--text-muted)' }}>
                       {item.assignee || '—'}
@@ -367,7 +367,7 @@ function SubDoneSection({ items, task, today, onChangeSubStatus }) {
               small
             />
             <div style={{ padding: '0 14px 0 28px', display: 'flex', alignItems: 'center', fontSize: '.82rem', overflow: 'hidden' }}>
-              <s style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--text-muted)' }}>{item.text || '(sem título)'}</s>
+              <s style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--text-muted)' }}>{item.text || item.label || '(sem título)'}</s>
             </div>
             <div style={{ padding: '0 14px', display: 'flex', alignItems: 'center', fontSize: '.78rem', color: 'var(--text-muted)' }}>
               {item.assignee || '—'}
