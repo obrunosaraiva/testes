@@ -71,21 +71,37 @@ const MIGRATION_SQL = `
   );
   CREATE INDEX IF NOT EXISTS idx_kanban_messages_channel
     ON kanban_messages (channel_type, channel_id, created_at);
+  ALTER TABLE kanban_messages DISABLE ROW LEVEL SECURITY;
+  DO $$ BEGIN
+    ALTER PUBLICATION supabase_realtime ADD TABLE kanban_messages;
+  EXCEPTION WHEN duplicate_object THEN NULL;
+  END $$;
 `;
 
-async function runMigrations() {
+const PROJECT_REF = 'imsqnoxztoxlmiumdalu';
+
+// Run migration via a single pg Client (returns the client host on success, throws on failure)
+function tryPgClient(clientOpts, sql) {
+  return new Promise((resolve, reject) => {
+    const { Client } = require('pg');
+    const client = new Client(clientOpts);
+    client.connect()
+      .then(() => client.query(sql))
+      .then(() => client.end())
+      .then(() => resolve(clientOpts.host || clientOpts.connectionString || 'db'))
+      .catch(err => { client.end().catch(() => {}); reject(err); });
+  });
+}
+
+async function runMigrations(sql = MIGRATION_SQL) {
   // Strategy 1: Direct Postgres via DATABASE_URL env var
   if (process.env.DATABASE_URL) {
     try {
-      const { Client } = require('pg');
-      const client = new Client({ connectionString: process.env.DATABASE_URL, ssl: { rejectUnauthorized: false } });
-      await client.connect();
-      await client.query(MIGRATION_SQL);
-      await client.end();
-      console.log('[DB] Auto-migration via DATABASE_URL completed.');
+      await tryPgClient({ connectionString: process.env.DATABASE_URL, ssl: { rejectUnauthorized: false } }, sql);
+      console.log('[DB] Migration via DATABASE_URL OK');
       return;
     } catch (e) {
-      console.warn('[DB] DATABASE_URL migration failed:', e.message);
+      console.warn('[DB] DATABASE_URL failed:', e.message);
     }
   }
 
@@ -93,116 +109,107 @@ async function runMigrations() {
   const accessToken = process.env.SUPABASE_ACCESS_TOKEN;
   if (accessToken) {
     try {
-      const PROJECT_REF = 'imsqnoxztoxlmiumdalu';
       const res = await fetch(`https://api.supabase.com/v1/projects/${PROJECT_REF}/database/query`, {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query: MIGRATION_SQL }),
+        body: JSON.stringify({ query: sql }),
       });
-      if (res.ok) {
-        console.log('[DB] Auto-migration via Management API completed.');
-        return;
-      }
-      console.warn('[DB] Management API returned:', res.status, await res.text());
+      if (res.ok) { console.log('[DB] Migration via Management API OK'); return; }
+      console.warn('[DB] Management API:', res.status, await res.text());
     } catch (e) {
-      console.warn('[DB] Management API migration failed:', e.message);
+      console.warn('[DB] Management API failed:', e.message);
     }
   }
 
-  // Strategy 3: Supabase Supavisor pooler with service role key as JWT password
-  // Supabase supports API key auth on the connection pooler (no DATABASE_URL needed)
+  // Strategy 3: Supavisor pooler — try all regions IN PARALLEL (fastest region wins)
   if (SERVICE_KEY) {
-    const PROJECT_REF = 'imsqnoxztoxlmiumdalu';
-    // Try all Supabase-hosted AWS regions (sa-east-1 first for Brazilian projects)
-    const regions = ['sa-east-1', 'us-east-1', 'us-east-2', 'us-west-1', 'us-west-2',
-      'eu-west-1', 'eu-west-2', 'eu-west-3', 'eu-central-1', 'eu-north-1',
-      'ap-south-1', 'ap-southeast-1', 'ap-southeast-2', 'ap-northeast-1', 'ap-northeast-2', 'ca-central-1'];
-    for (const region of regions) {
-      try {
-        const { Client } = require('pg');
-        const client = new Client({
-          user: `postgres.${PROJECT_REF}`,
-          password: SERVICE_KEY,
-          host: `aws-0-${region}.pooler.supabase.com`,
-          port: 6543,
-          database: 'postgres',
-          ssl: { rejectUnauthorized: false },
-          connectionTimeoutMillis: 8000,
-        });
-        await client.connect();
-        await client.query(MIGRATION_SQL);
-        await client.end();
-        console.log(`[DB] Auto-migration via Supavisor (${region}) completed.`);
-        return;
-      } catch (e) {
-        // try next region silently
-      }
-    }
-    console.warn('[DB] Supavisor JWT auth: all regions failed.');
-
-    // Strategy 4: Management API with service role key (experimental — may work on some plans)
+    const regions = ['sa-east-1', 'us-east-1', 'us-east-2', 'us-west-2',
+      'eu-west-1', 'eu-central-1', 'ap-southeast-1', 'ap-southeast-2',
+      'ap-northeast-1', 'ap-south-1', 'eu-north-1', 'ca-central-1'];
+    const attempts = regions.map(r => tryPgClient({
+      user: `postgres.${PROJECT_REF}`,
+      password: SERVICE_KEY,
+      host: `aws-0-${r}.pooler.supabase.com`,
+      port: 6543,
+      database: 'postgres',
+      ssl: { rejectUnauthorized: false },
+      connectionTimeoutMillis: 20000,
+    }, sql));
     try {
-      const res = await fetch(`https://api.supabase.com/v1/projects/${PROJECT_REF}/database/query`, {
-        method: 'POST',
-        headers: { 'Authorization': `Bearer ${SERVICE_KEY}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query: MIGRATION_SQL }),
-      });
-      if (res.ok) {
-        console.log('[DB] Auto-migration via Management API (service key) completed.');
-        return;
-      }
-      console.warn('[DB] Management API (service key):', res.status);
-    } catch (e) {
-      console.warn('[DB] Management API (service key) error:', e.message);
+      const region = await Promise.any(attempts);
+      console.log(`[DB] Migration via Supavisor (${region}) OK`);
+      return;
+    } catch (agg) {
+      console.warn('[DB] Supavisor: all regions failed');
     }
   }
 
-  console.log('[DB] Auto-migration skipped — set DATABASE_URL or SUPABASE_ACCESS_TOKEN to enable.');
-  console.log('[DB] Missing tables SQL:\n' + MIGRATION_SQL);
+  console.log('[DB] Migration skipped — set DATABASE_URL or SUPABASE_ACCESS_TOKEN to enable.');
 }
 
 runMigrations();
 
 // ── Chat storage bucket setup ─────────────────────────────────────────────────
-async function setupChatBucket() {
-  if (!SERVICE_KEY) return;
+async function ensureChatBucket() {
+  if (!SERVICE_KEY) return false;
   try {
-    // Check if bucket exists
-    const listRes = await fetch(`${SUPABASE_URL}/storage/v1/bucket`, {
-      headers: { Authorization: `Bearer ${SERVICE_KEY}`, apikey: SERVICE_KEY },
-    });
-    const buckets = await listRes.json().catch(() => []);
-    if (Array.isArray(buckets) && buckets.find(b => b.id === 'chat-files')) return;
-    // Create bucket
-    await fetch(`${SUPABASE_URL}/storage/v1/bucket`, {
+    const res = await fetch(`${SUPABASE_URL}/storage/v1/bucket`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${SERVICE_KEY}`, apikey: SERVICE_KEY, 'Content-Type': 'application/json' },
       body: JSON.stringify({ id: 'chat-files', name: 'chat-files', public: true, file_size_limit: 104857600 }),
     });
-    console.log('[Chat] Storage bucket chat-files created.');
+    const body = await res.json().catch(() => ({}));
+    if (res.ok) console.log('[Chat] Storage bucket chat-files created.');
+    else if (body.error === 'Duplicate') console.log('[Chat] Bucket chat-files already exists.');
+    else console.warn('[Chat] Bucket creation response:', res.status, body);
+    return true;
   } catch (e) {
-    console.warn('[Chat] Storage bucket setup failed:', e.message);
+    console.warn('[Chat] Bucket setup error:', e.message);
+    return false;
   }
 }
-setupChatBucket();
+ensureChatBucket();
 
 // ── Chat file upload (proxy using service key) ────────────────────────────────
 app.post('/api/chat/upload', express.raw({ type: '*/*', limit: '100mb' }), async (req, res) => {
-  if (!SERVICE_KEY) return res.status(503).json({ error: 'Service key not configured' });
+  if (!SERVICE_KEY) return res.status(503).json({ error: 'SUPABASE_SERVICE_ROLE_KEY não configurada no servidor.' });
   const raw = req.headers['x-filename'] || `file_${Date.now()}`;
   const filename = decodeURIComponent(raw).replace(/[^a-zA-Z0-9._\- ]/g, '_');
   const contentType = req.headers['x-content-type'] || 'application/octet-stream';
   const storagePath = `chat/${Date.now()}_${filename}`;
-  const uploadRes = await fetch(`${SUPABASE_URL}/storage/v1/object/chat-files/${storagePath}`, {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${SERVICE_KEY}`, apikey: SERVICE_KEY, 'Content-Type': contentType, 'x-upsert': 'false' },
-    body: req.body,
-  });
+
+  async function doUpload() {
+    return fetch(`${SUPABASE_URL}/storage/v1/object/chat-files/${storagePath}`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${SERVICE_KEY}`, apikey: SERVICE_KEY, 'Content-Type': contentType, 'x-upsert': 'true' },
+      body: req.body,
+    });
+  }
+
+  let uploadRes = await doUpload();
   if (!uploadRes.ok) {
-    const err = await uploadRes.json().catch(() => ({}));
-    return res.status(400).json({ error: err.error || 'Upload failed' });
+    const errBody = await uploadRes.json().catch(() => ({}));
+    // Bucket not found — create it and retry once
+    if (uploadRes.status === 400 && errBody.error === 'Bucket not found') {
+      await ensureChatBucket();
+      uploadRes = await doUpload();
+    }
+    if (!uploadRes.ok) {
+      const err = await uploadRes.json().catch(() => ({}));
+      return res.status(400).json({ error: err.error || err.message || 'Upload failed' });
+    }
   }
   res.json({ url: `${SUPABASE_URL}/storage/v1/object/public/chat-files/${storagePath}`, name: filename, type: contentType });
+});
+
+// On-demand migration endpoint — lets the client trigger DB setup if table is missing
+app.post('/api/db/migrate', async (req, res) => {
+  try {
+    await runMigrations();
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
 });
 
 // List all auth users (admin only — requires SUPABASE_SERVICE_ROLE_KEY env var)
@@ -321,9 +328,11 @@ app.post('/api/auth/signup', async (req, res) => {
       headers: { Authorization: `Bearer ${SERVICE_KEY}`, apikey: SERVICE_KEY, 'Content-Type': 'application/json' },
       body: JSON.stringify({ email, password, email_confirm: true }),
     });
-    const userData = await createRes.json();
+    const createText = await createRes.text();
+    let userData = {};
+    try { userData = JSON.parse(createText); } catch (_) {}
     if (!createRes.ok) {
-      return res.status(createRes.status).json({ error: userData.message || userData.error || 'Erro ao criar conta.' });
+      return res.status(createRes.status).json({ error: userData.message || userData.msg || userData.error || `Erro ao criar conta (${createRes.status}).` });
     }
 
     // Create profile with editor role, name and phone

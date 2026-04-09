@@ -545,10 +545,12 @@ export default function ChatView() {
   const [loading, setLoading] = useState(false);
   const [replyTo, setReplyTo] = useState(null);
   const [unread, setUnread] = useState({});
+  const [dbStatus, setDbStatus] = useState('ok'); // 'ok' | 'migrating' | 'error'
 
   const feedRef = useRef(null);
   const realtimeRef = useRef(null);
   const seenRef = useRef(new Set());
+  const loadChannelRef = useRef(null);
 
   // Current user display name
   const myName = useMemo(() => {
@@ -564,47 +566,70 @@ export default function ChatView() {
     }, 60);
   }
 
-  // Load messages + subscribe when channel changes
-  useEffect(() => {
-    if (!selected) return;
+  async function runMigration() {
+    setDbStatus('migrating');
+    try {
+      const r = await fetch('/api/db/migrate', { method: 'POST' });
+      const d = await r.json().catch(() => ({}));
+      if (d.ok) {
+        setDbStatus('ok');
+        return true;
+      }
+      setDbStatus('error');
+    } catch (_) {
+      setDbStatus('error');
+    }
+    return false;
+  }
+
+  function loadChannel(ch) {
+    if (!ch) return;
     setLoading(true);
     setMessages([]);
     seenRef.current.clear();
 
-    // Load last 150 messages
     sb.from('kanban_messages')
       .select('*')
-      .eq('channel_type', selected.type)
-      .eq('channel_id', selected.id)
+      .eq('channel_type', ch.type)
+      .eq('channel_id', ch.id)
       .eq('deleted', false)
       .order('created_at', { ascending: true })
       .limit(150)
-      .then(({ data }) => {
+      .then(({ data, error }) => {
+        if (error) {
+          const isMissing = error.message?.includes('schema cache') || error.message?.includes('does not exist') || error.code === '42P01';
+          if (isMissing && dbStatus !== 'error') {
+            runMigration().then(ok => { if (ok) loadChannel(ch); });
+          }
+          setLoading(false);
+          return;
+        }
         const msgs = data || [];
         msgs.forEach(m => seenRef.current.add(m.id));
         setMessages(msgs);
         setLoading(false);
         scrollToBottom();
-        // Clear unread for this channel
-        setUnread(u => ({ ...u, [selected.type + selected.id]: 0 }));
+        setUnread(u => ({ ...u, [ch.type + ch.id]: 0 }));
       });
 
-    // Unsubscribe previous
     realtimeRef.current?.unsubscribe();
-
-    // Subscribe to new messages
-    const sub = sb.channel(`chat-${selected.type}-${selected.id}`)
+    const sub = sb.channel(`chat-${ch.type}-${ch.id}`)
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'kanban_messages' }, ({ new: msg }) => {
-        if (msg.channel_type !== selected.type || msg.channel_id !== selected.id) return;
+        if (msg.channel_type !== ch.type || msg.channel_id !== ch.id) return;
         if (seenRef.current.has(msg.id)) return;
         seenRef.current.add(msg.id);
         setMessages(prev => [...prev, msg]);
         scrollToBottom(true);
       })
       .subscribe();
-
     realtimeRef.current = sub;
-    return () => { sub.unsubscribe(); };
+  }
+
+  // Load messages + subscribe when channel changes
+  useEffect(() => {
+    if (!selected) return;
+    loadChannel(selected);
+    return () => { realtimeRef.current?.unsubscribe(); };
   }, [selected?.type, selected?.id]);
 
   async function handleSend({ content, attachments, mentions, replyTo: rt }) {
@@ -633,6 +658,32 @@ export default function ChatView() {
   if (!channels.length) return (
     <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)' }}>
       Carregando canais...
+    </div>
+  );
+
+  // DB migration overlay
+  if (dbStatus === 'migrating') return (
+    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 12, color: 'var(--text-muted)' }}>
+      <div style={{ fontSize: '2rem', animation: 'spin 1s linear infinite' }}>⚙️</div>
+      <div style={{ fontWeight: 600 }}>Inicializando chat...</div>
+      <div style={{ fontSize: '.8rem' }}>Aguarde um momento enquanto configuramos o banco de dados.</div>
+    </div>
+  );
+
+  if (dbStatus === 'error') return (
+    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 12, color: 'var(--text-muted)' }}>
+      <div style={{ fontSize: '2rem' }}>⚠️</div>
+      <div style={{ fontWeight: 600, color: 'var(--danger)' }}>Chat não disponível</div>
+      <div style={{ fontSize: '.84rem', textAlign: 'center', maxWidth: 360 }}>
+        A tabela de mensagens não pôde ser criada automaticamente.<br/>
+        Configure <code>DATABASE_URL</code> no Railway para habilitar o chat.
+      </div>
+      <button
+        onClick={() => runMigration().then(ok => ok && loadChannel(selected))}
+        style={{ padding: '8px 20px', borderRadius: 8, background: 'var(--accent)', color: '#fff', border: 'none', cursor: 'pointer', fontWeight: 600 }}
+      >
+        Tentar novamente
+      </button>
     </div>
   );
 
