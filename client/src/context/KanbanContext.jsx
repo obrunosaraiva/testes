@@ -260,8 +260,7 @@ export function KanbanProvider({ children }) {
   const deletedIds = useRef(new Set()); // tracks IDs deleted this session — blocks any in-flight autosave upsert
   useEffect(() => { stateRef.current = state; }, [state]);
 
-  // ── Persist to localStorage as backup (Supabase is authoritative, but this prevents
-  //    data loss if tables don't exist yet or there's a network outage) ──────────────
+  // ── Persist UI preferences to localStorage (view state only, not app data) ────
   const saveLocal = useCallback((s) => {
     try {
       localStorage.setItem(SK, JSON.stringify({
@@ -269,21 +268,13 @@ export function KanbanProvider({ children }) {
         view: s.view,
         viewFilter: s.viewFilter,
         costCenterFilter: s.costCenterFilter,
-        templates: s.templates,
-        resources: s.resources,
-        costCenters: s.costCenters,
-      }));
-      localStorage.setItem(TRASH_KEY, JSON.stringify({
-        trashedTasks: s.trashedTasks,
-        trashedProjects: s.trashedProjects,
       }));
     } catch {}
   }, []);
 
   useEffect(() => {
     saveLocal(state);
-  }, [state.activeProject, state.view, state.viewFilter, state.costCenterFilter,
-      state.templates, state.resources, state.costCenters, state.trashedTasks, state.trashedProjects]);
+  }, [state.activeProject, state.view, state.viewFilter, state.costCenterFilter]);
 
   // ── Load UI preferences from localStorage on mount ─────────────────────────
   useEffect(() => {
@@ -298,24 +289,11 @@ export function KanbanProvider({ children }) {
             view: p.view || 'board',
             viewFilter: p.viewFilter || 'all',
             costCenterFilter: p.costCenterFilter || [],
-            // Keep as fallback until Supabase tables exist:
-            templates: p.templates || [],
-            resources: p.resources || [],
-            costCenters: p.costCenters || DEFAULT_COST_CENTERS,
           },
         });
       }
     } catch {}
-
-    // Trash fallback (until kanban_trash table is created)
-    try {
-      const trash = localStorage.getItem(TRASH_KEY);
-      if (trash) {
-        const t = JSON.parse(trash);
-        dispatch({ type: 'LOAD_TRASH', payload: t });
-      }
-    } catch {}
-    // Note: DB data (loaded below) overwrites these fallbacks when tables exist
+    // All app data (templates, resources, costCenters, trash) comes exclusively from Supabase
   }, []);
 
   // ── Load from Supabase ──────────────────────────────────────────────────────
@@ -427,56 +405,71 @@ export function KanbanProvider({ children }) {
         dispatch({ type: 'SET_TASKS', payload: mapped });
         dispatch({ type: 'SET_PROJECTS', payload: dbMapped });
 
-        // Cost centers
-        if (ccMapped && ccMapped.length > 0) {
-          dispatch({ type: 'SET_COST_CENTERS', payload: ccMapped });
-        } else if (ccMapped !== null) {
-          // Seed from localStorage (migration)
-          try {
-            const stored = JSON.parse(localStorage.getItem(SK) || '{}');
-            const localCCs = stored.costCenters || DEFAULT_COST_CENTERS;
-            for (const cc of localCCs) {
-              await sb.from('kanban_cost_centers').upsert({
-                key: cc.key, label: cc.label, color: cc.color,
-                is_private: cc.isPrivate || false, created_by: cc.createdBy || null, shared_with: cc.sharedWith || [],
-              }, { onConflict: 'key' });
-            }
-            dispatch({ type: 'SET_COST_CENTERS', payload: localCCs });
-          } catch {}
+        // Cost centers — table exists: use DB data; table missing: use defaults
+        if (ccMapped !== null) {
+          if (ccMapped.length > 0) {
+            dispatch({ type: 'SET_COST_CENTERS', payload: ccMapped });
+          } else {
+            // Seed from old localStorage snapshot (one-time migration on first deploy)
+            try {
+              const stored = JSON.parse(localStorage.getItem(SK) || '{}');
+              const localCCs = stored.costCenters;
+              if (Array.isArray(localCCs) && localCCs.length > 0) {
+                for (const cc of localCCs) {
+                  await sb.from('kanban_cost_centers').upsert({
+                    key: cc.key, label: cc.label, color: cc.color,
+                    is_private: cc.isPrivate || false, created_by: cc.createdBy || null, shared_with: cc.sharedWith || [],
+                  }, { onConflict: 'key' });
+                }
+                dispatch({ type: 'SET_COST_CENTERS', payload: localCCs });
+              } else {
+                // Seed defaults on fresh DB
+                for (const cc of DEFAULT_COST_CENTERS) {
+                  await sb.from('kanban_cost_centers').upsert({
+                    key: cc.key, label: cc.label, color: cc.color,
+                    is_private: false, created_by: null, shared_with: [],
+                  }, { onConflict: 'key' });
+                }
+                dispatch({ type: 'SET_COST_CENTERS', payload: DEFAULT_COST_CENTERS });
+              }
+            } catch {}
+          }
         }
+        // If ccMapped === null (table missing): keep initialState defaults, don't touch localStorage
 
-        // Templates
+        // Templates — table exists: use DB data (with one-time localStorage migration if empty)
         if (tplMapped !== null) {
           dispatch({ type: 'SET_TEMPLATES', payload: tplMapped });
           if (tplMapped.length === 0) {
             try {
               const stored = JSON.parse(localStorage.getItem(SK) || '{}');
-              if (stored.templates?.length > 0) {
+              if (Array.isArray(stored.templates) && stored.templates.length > 0) {
                 for (const tpl of stored.templates) await saveTemplateToDb(tpl);
                 dispatch({ type: 'SET_TEMPLATES', payload: stored.templates });
               }
             } catch {}
           }
         }
+        // If tplMapped === null (table missing): templates = [] from initialState, no localStorage
 
-        // Resources
+        // Resources — table exists: use DB data (with one-time localStorage migration if empty)
         if (resMapped !== null) {
           dispatch({ type: 'SET_RESOURCES', payload: resMapped });
           if (resMapped.length === 0) {
             try {
               const stored = JSON.parse(localStorage.getItem(SK) || '{}');
-              if (stored.resources?.length > 0) {
+              if (Array.isArray(stored.resources) && stored.resources.length > 0) {
                 for (const r of stored.resources) await saveResourceToDb(r);
                 dispatch({ type: 'SET_RESOURCES', payload: stored.resources });
               }
             } catch {}
           }
         }
+        // If resMapped === null (table missing): resources = [] from initialState, no localStorage
 
-        // Trash
+        // Trash — table exists: use DB data (with one-time localStorage migration if empty)
         if (trashMapped !== null) {
           dispatch({ type: 'SET_TRASH', payload: trashMapped });
-          // If DB trash is empty, migrate from localStorage (one-time)
           if (trashMapped.trashedTasks.length === 0 && trashMapped.trashedProjects.length === 0) {
             try {
               const rawTrash = localStorage.getItem(TRASH_KEY);
@@ -488,6 +481,7 @@ export function KanbanProvider({ children }) {
             } catch {}
           }
         }
+        // If trashMapped === null (table missing): trash = [] from initialState, no localStorage
 
         dispatch({ type: 'SET_DB_READY' });
       } catch (e) {

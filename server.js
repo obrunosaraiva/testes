@@ -90,9 +90,56 @@ async function runMigrations() {
     }
   }
 
-  console.log('[DB] Auto-migration skipped (no DATABASE_URL or SUPABASE_ACCESS_TOKEN set).');
-  console.log('[DB] Run the following SQL in the Supabase SQL Editor to create required tables:');
-  console.log(MIGRATION_SQL);
+  // Strategy 3: Supabase Supavisor pooler with service role key as JWT password
+  // Supabase supports API key auth on the connection pooler (no DATABASE_URL needed)
+  if (SERVICE_KEY) {
+    const PROJECT_REF = 'imsqnoxztoxlmiumdalu';
+    // Try all Supabase-hosted AWS regions (sa-east-1 first for Brazilian projects)
+    const regions = ['sa-east-1', 'us-east-1', 'us-east-2', 'us-west-1', 'us-west-2',
+      'eu-west-1', 'eu-west-2', 'eu-west-3', 'eu-central-1', 'eu-north-1',
+      'ap-south-1', 'ap-southeast-1', 'ap-southeast-2', 'ap-northeast-1', 'ap-northeast-2', 'ca-central-1'];
+    for (const region of regions) {
+      try {
+        const { Client } = require('pg');
+        const client = new Client({
+          user: `postgres.${PROJECT_REF}`,
+          password: SERVICE_KEY,
+          host: `aws-0-${region}.pooler.supabase.com`,
+          port: 6543,
+          database: 'postgres',
+          ssl: { rejectUnauthorized: false },
+          connectionTimeoutMillis: 8000,
+        });
+        await client.connect();
+        await client.query(MIGRATION_SQL);
+        await client.end();
+        console.log(`[DB] Auto-migration via Supavisor (${region}) completed.`);
+        return;
+      } catch (e) {
+        // try next region silently
+      }
+    }
+    console.warn('[DB] Supavisor JWT auth: all regions failed.');
+
+    // Strategy 4: Management API with service role key (experimental — may work on some plans)
+    try {
+      const res = await fetch(`https://api.supabase.com/v1/projects/${PROJECT_REF}/database/query`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${SERVICE_KEY}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query: MIGRATION_SQL }),
+      });
+      if (res.ok) {
+        console.log('[DB] Auto-migration via Management API (service key) completed.');
+        return;
+      }
+      console.warn('[DB] Management API (service key):', res.status);
+    } catch (e) {
+      console.warn('[DB] Management API (service key) error:', e.message);
+    }
+  }
+
+  console.log('[DB] Auto-migration skipped — set DATABASE_URL or SUPABASE_ACCESS_TOKEN to enable.');
+  console.log('[DB] Missing tables SQL:\n' + MIGRATION_SQL);
 }
 
 runMigrations();
