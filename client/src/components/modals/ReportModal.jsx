@@ -2,6 +2,21 @@ import { useState } from 'react';
 import { useKanban } from '../../context/KanbanContext';
 
 const STATUS_LABEL = { backlog: 'Backlog', todo: 'To Do', doing: 'Fazendo', paused: 'Pausado', review: 'Em Revisão', done: 'Concluído' };
+
+const TASK_STATUSES = [
+  { value: 'pendente',            label: '⚪ Pendente' },
+  { value: 'solicitado',          label: '🟠 Solicitado' },
+  { value: 'andamento',           label: '🔵 Andamento' },
+  { value: 'revisao',             label: '🩷 Revisão' },
+  { value: 'correcao',            label: '🟡 Correção necessária' },
+  { value: 'concluido',           label: '🟢 Concluído' },
+  { value: 'cancelado',           label: '⚫ Cancelado' },
+  { value: 'atrasado',            label: '🔴 Atrasado' },
+  { value: 'impedimento_interno', label: '🟧 Impedimento Interno' },
+  { value: 'impedimento_externo', label: '🟪 Impedimento Externo' },
+];
+const TASK_STATUS_MAP = Object.fromEntries(TASK_STATUSES.map(s => [s.value, s]));
+function subDone(item) { return item.status ? (item.status === 'concluido' || item.status === 'cancelado') : !!item.done; }
 const MS = 86400000;
 
 function calcEventStats(task) {
@@ -93,14 +108,16 @@ export default function ReportModal({ onClose }) {
         const dl = t.deadline ? new Date(t.deadline + 'T00:00:00') : null;
         const late = dl && dl < today;
         const dlStr = dl ? dl.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' }) : 'Sem prazo';
+        const tsLabel = TASK_STATUS_MAP[t.taskStatus]?.label || '';
         lines.push(`${i++}. *${t.title}*`);
         lines.push(`   👤 Responsável: ${t.assignee || '—'}`);
-        lines.push(`   🔄 Status: ${STATUS_LABEL[t.status] || t.status} — ${late ? '⚠️ Atrasado' : '✅ Dentro do prazo'}`);
+        lines.push(`   ${tsLabel || STATUS_LABEL[t.status] || t.status}${tsLabel ? ` · ${STATUS_LABEL[t.status] || t.status}` : ''}${late ? ' · ⚠️ Atrasado' : ''}`);
         lines.push(`   📅 Prazo: ${dlStr}`);
         (t.checklist || []).forEach(c => {
           const clDl = c.deadline ? ` · 📅 ${new Date(c.deadline + 'T00:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}` : '';
           const clA = c.assignee ? ` · 👤 ${c.assignee}` : '';
-          lines.push(`      ${c.done ? '☑' : '☐'} ${c.text || '—'}${clA}${clDl}`);
+          const clStatus = c.status ? ` · ${TASK_STATUS_MAP[c.status]?.label || c.status}` : '';
+          lines.push(`      ${subDone(c) ? '☑' : '☐'} ${c.text || c.label || '—'}${clA}${clDl}${clStatus}`);
         });
       });
 
@@ -186,8 +203,8 @@ export default function ReportModal({ onClose }) {
       const pt = allTasks.filter(t => (t.project || 'Sem Projeto') === pName);
       if (!pt.length) return;
 
-      const byStatus = {};
-      pt.forEach(t => { byStatus[t.status] = (byStatus[t.status] || 0) + 1; });
+      const byTaskStatus = {};
+      pt.forEach(t => { const ts = t.taskStatus || 'pendente'; byTaskStatus[ts] = (byTaskStatus[ts] || 0) + 1; });
       const lateCount = pt.filter(t => t.deadline && new Date(t.deadline + 'T00:00:00') < today && t.status !== 'done').length;
       const avgProgress = Math.round(pt.reduce((s, t) => s + (t.progress || 0), 0) / pt.length);
 
@@ -197,7 +214,7 @@ export default function ReportModal({ onClose }) {
 
       lines.push(`📁 *${pName}*`);
 
-      const statusLine = Object.entries(byStatus).map(([s, c]) => `${STATUS_LABEL[s] || s}: ${c}`).join(' · ');
+      const statusLine = TASK_STATUSES.filter(s => byTaskStatus[s.value]).map(s => `${s.label}: ${byTaskStatus[s.value]}`).join(' · ');
       lines.push(`   ${statusLine}`);
 
       const progBar = '█'.repeat(Math.round(avgProgress / 10)) + '░'.repeat(10 - Math.round(avgProgress / 10));
@@ -208,7 +225,7 @@ export default function ReportModal({ onClose }) {
       lines.push('');
     });
 
-    const totalDone = allTasks.filter(t => t.status === 'done').length;
+    const totalDone = allTasks.filter(t => t.taskStatus === 'concluido' || t.status === 'done').length;
     const totalLate = allTasks.filter(t => t.deadline && new Date(t.deadline + 'T00:00:00') < today && t.status !== 'done').length;
     const overallProgress = Math.round(allTasks.reduce((s, t) => s + (t.progress || 0), 0) / allTasks.length);
 
