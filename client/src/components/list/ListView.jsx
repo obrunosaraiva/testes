@@ -16,6 +16,10 @@ const TASK_STATUSES = [
 ];
 
 const STATUS_MAP = Object.fromEntries(TASK_STATUSES.map(s => [s.value, s]));
+function subDone(item) {
+  if (item.status) return item.status === 'concluido' || item.status === 'cancelado';
+  return !!item.done;
+}
 
 const URGENCY_COLORS = { high: '#ef4444', medium: '#f59e0b', low: '#22c55e' };
 const URGENCY_LABELS = { high: 'Alta', medium: 'Média', low: 'Baixa' };
@@ -162,15 +166,17 @@ function TaskRow({ task, idx, isLast, dl, late, onOpen, onChangeTaskStatus }) {
   const [showDone, setShowDone] = useState(true);
   const ts = STATUS_MAP[task.taskStatus || 'pendente'] || STATUS_MAP['pendente'];
 
-  const pending = task.checklist?.filter(c => !c.done) || [];
-  const done = task.checklist?.filter(c => c.done) || [];
+  const pending = task.checklist?.filter(c => !subDone(c)) || [];
+  const done = task.checklist?.filter(c => subDone(c)) || [];
   const hasChecklist = (task.checklist?.length || 0) > 0;
 
-  function toggleItem(idx) {
+  function changeSubStatus(realIdx, newStatus) {
     if (!can.edit) return;
-    const newChecklist = task.checklist.map((item, i) =>
-      i === idx ? { ...item, done: !item.done } : item
-    );
+    const newChecklist = task.checklist.map((item, i) => {
+      if (i !== realIdx) return item;
+      const isDone = newStatus === 'concluido' || newStatus === 'cancelado';
+      return { ...item, status: newStatus, done: isDone };
+    });
     updateTask({ ...task, checklist: newChecklist });
   }
 
@@ -266,7 +272,7 @@ function TaskRow({ task, idx, isLast, dl, late, onOpen, onChangeTaskStatus }) {
       {showSubs && hasChecklist && (
         <div style={{ paddingLeft: 194, paddingRight: 14, paddingBottom: 8, display: 'flex', flexDirection: 'column', gap: 6 }}>
 
-          {/* Pending items */}
+          {/* Em aberto */}
           {pending.length > 0 && (
             <div style={{ border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden' }}>
               <div style={{ padding: '4px 10px', fontSize: '.68rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '.05em', borderBottom: '1px solid var(--border)', background: 'var(--surface2)' }}>
@@ -274,29 +280,31 @@ function TaskRow({ task, idx, isLast, dl, late, onOpen, onChangeTaskStatus }) {
               </div>
               {pending.map((item) => {
                 const realIdx = task.checklist.findIndex(c => c === item);
+                const sts = STATUS_MAP[item.status || 'pendente'] || STATUS_MAP['pendente'];
                 return (
-                  <label
+                  <div
                     key={realIdx}
                     onClick={e => e.stopPropagation()}
-                    style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 10px', cursor: can.edit ? 'pointer' : 'default', borderBottom: '1px solid var(--border)', fontSize: '.8rem' }}
-                    onMouseEnter={e => can.edit && (e.currentTarget.style.background = 'var(--surface3)')}
-                    onMouseLeave={e => (e.currentTarget.style.background = '')}
+                    style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px', borderBottom: '1px solid var(--border)', fontSize: '.8rem' }}
                   >
-                    <input
-                      type="checkbox"
-                      checked={false}
-                      onChange={() => toggleItem(realIdx)}
+                    <select
+                      value={item.status || 'pendente'}
+                      onChange={e => changeSubStatus(realIdx, e.target.value)}
                       disabled={!can.edit}
-                      style={{ cursor: can.edit ? 'pointer' : 'default', flexShrink: 0 }}
-                    />
-                    <span>{item.text || item.label || ''}</span>
-                  </label>
+                      style={{ background: sts.color + '22', color: sts.color, border: `1px solid ${sts.color}55`, borderRadius: 16, padding: '2px 7px', fontSize: '.68rem', fontWeight: 700, outline: 'none', cursor: can.edit ? 'pointer' : 'default', flexShrink: 0 }}
+                    >
+                      {TASK_STATUSES.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
+                    </select>
+                    <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.text || ''}</span>
+                    {item.assignee && <span style={{ fontSize: '.72rem', color: 'var(--text-muted)', flexShrink: 0 }}>{item.assignee}</span>}
+                    {item.deadline && <span style={{ fontSize: '.72rem', color: 'var(--text-muted)', flexShrink: 0 }}>{new Date(item.deadline + 'T00:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}</span>}
+                  </div>
                 );
               })}
             </div>
           )}
 
-          {/* Done items */}
+          {/* Concluídas / Canceladas */}
           {done.length > 0 && (
             <div style={{ border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden' }}>
               <div
@@ -304,27 +312,29 @@ function TaskRow({ task, idx, isLast, dl, late, onOpen, onChangeTaskStatus }) {
                 style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 10px', fontSize: '.68rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '.05em', background: 'var(--surface2)', cursor: 'pointer', userSelect: 'none' }}
               >
                 <span style={{ fontSize: '.55rem', transform: showDone ? 'rotate(0)' : 'rotate(-90deg)', transition: 'transform .15s', display: 'inline-block' }}>▼</span>
-                Finalizadas · {done.length}
+                Concluídas / Canceladas · {done.length}
               </div>
               {showDone && done.map((item) => {
                 const realIdx = task.checklist.findIndex(c => c === item);
+                const sts = STATUS_MAP[item.status || 'concluido'] || STATUS_MAP['concluido'];
                 return (
-                  <label
+                  <div
                     key={realIdx}
                     onClick={e => e.stopPropagation()}
-                    style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 10px', cursor: can.edit ? 'pointer' : 'default', borderTop: '1px solid var(--border)', fontSize: '.8rem', color: 'var(--text-muted)', opacity: 0.7 }}
-                    onMouseEnter={e => can.edit && (e.currentTarget.style.background = 'var(--surface3)')}
-                    onMouseLeave={e => (e.currentTarget.style.background = '')}
+                    style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px', borderTop: '1px solid var(--border)', fontSize: '.8rem', opacity: 0.7 }}
                   >
-                    <input
-                      type="checkbox"
-                      checked={true}
-                      onChange={() => toggleItem(realIdx)}
+                    <select
+                      value={item.status || 'concluido'}
+                      onChange={e => changeSubStatus(realIdx, e.target.value)}
                       disabled={!can.edit}
-                      style={{ cursor: can.edit ? 'pointer' : 'default', flexShrink: 0 }}
-                    />
-                    <s>{item.text || item.label || ''}</s>
-                  </label>
+                      style={{ background: sts.color + '22', color: sts.color, border: `1px solid ${sts.color}55`, borderRadius: 16, padding: '2px 7px', fontSize: '.68rem', fontWeight: 700, outline: 'none', cursor: can.edit ? 'pointer' : 'default', flexShrink: 0 }}
+                    >
+                      {TASK_STATUSES.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
+                    </select>
+                    <s style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.text || ''}</s>
+                    {item.assignee && <span style={{ fontSize: '.72rem', color: 'var(--text-muted)', flexShrink: 0 }}>{item.assignee}</span>}
+                    {item.deadline && <span style={{ fontSize: '.72rem', color: 'var(--text-muted)', flexShrink: 0 }}>{new Date(item.deadline + 'T00:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}</span>}
+                  </div>
                 );
               })}
             </div>

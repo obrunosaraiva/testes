@@ -69,17 +69,22 @@ const EMPTY_FORM = {
 };
 
 const TASK_STATUSES = [
-  { value: 'pendente',            label: '⚪ Pendente' },
-  { value: 'solicitado',          label: '🟠 Solicitado' },
-  { value: 'andamento',           label: '🔵 Andamento' },
-  { value: 'revisao',             label: '🩷 Revisão' },
-  { value: 'correcao',            label: '🟡 Correção necessária' },
-  { value: 'concluido',           label: '🟢 Concluído' },
-  { value: 'cancelado',           label: '⚫ Cancelado' },
-  { value: 'atrasado',            label: '🔴 Atrasado' },
-  { value: 'impedimento_interno', label: '🟧 Impedimento Interno' },
-  { value: 'impedimento_externo', label: '🟪 Impedimento Externo' },
+  { value: 'pendente',            label: '⚪ Pendente',             color: '#9ca3af' },
+  { value: 'solicitado',          label: '🟠 Solicitado',           color: '#f97316' },
+  { value: 'andamento',           label: '🔵 Andamento',            color: '#3b82f6' },
+  { value: 'revisao',             label: '🩷 Revisão',              color: '#ec4899' },
+  { value: 'correcao',            label: '🟡 Correção necessária',  color: '#eab308' },
+  { value: 'concluido',           label: '🟢 Concluído',            color: '#22c55e' },
+  { value: 'cancelado',           label: '⚫ Cancelado',            color: '#6b7280' },
+  { value: 'atrasado',            label: '🔴 Atrasado',             color: '#ef4444' },
+  { value: 'impedimento_interno', label: '🟧 Impedimento Interno',  color: '#ea580c' },
+  { value: 'impedimento_externo', label: '🟪 Impedimento Externo',  color: '#a855f7' },
 ];
+const TASK_STATUS_MAP = Object.fromEntries(TASK_STATUSES.map(s => [s.value, s]));
+function subDone(item) {
+  if (item.status) return item.status === 'concluido' || item.status === 'cancelado';
+  return !!item.done;
+}
 
 export default function TaskModal({ taskId, defaultStatus, templateData, onClose }) {
   const { tasks, projects, addTask, updateTask, softDeleteTask, saveDraft, loadDraft, clearDraft, templates, addTemplate } = useKanban();
@@ -229,12 +234,18 @@ export default function TaskModal({ taskId, defaultStatus, templateData, onClose
     onClose();
   }
 
-  // Checklist helpers
+  // Subtask helpers
   function addCLItem() {
-    setChecklist(cl => [...cl, { text: '', done: false, assignee: '', deadline: '', time: '' }]);
+    setChecklist(cl => [...cl, { text: '', status: 'pendente', done: false, assignee: '', deadline: '', time: '' }]);
   }
   function updateCL(i, patch) {
-    setChecklist(cl => cl.map((item, idx) => idx === i ? { ...item, ...patch } : item));
+    setChecklist(cl => cl.map((item, idx) => {
+      if (idx !== i) return item;
+      const next = { ...item, ...patch };
+      // Sync done flag from status
+      if ('status' in patch) next.done = patch.status === 'concluido' || patch.status === 'cancelado';
+      return next;
+    }));
   }
   function removeCL(i) {
     setChecklist(cl => cl.filter((_, idx) => idx !== i));
@@ -263,7 +274,7 @@ export default function TaskModal({ taskId, defaultStatus, templateData, onClose
     alert('Template salvo!');
   }
 
-  const clDone = checklist.filter(x => x.done).length;
+  const clDone = checklist.filter(subDone).length;
 
   return (
     <>
@@ -453,11 +464,11 @@ export default function TaskModal({ taskId, defaultStatus, templateData, onClose
             </div>
           </div>
 
-          {/* Checklist */}
+          {/* Subtarefas */}
           <div>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-              <h3 style={{ fontSize: '.9rem', fontWeight: 600 }}>Checklist</h3>
-              <span style={{ fontSize: '.75rem', color: 'var(--text-muted)' }}>{clDone}/{checklist.length}</span>
+              <h3 style={{ fontSize: '.9rem', fontWeight: 600 }}>Subtarefas</h3>
+              <span style={{ fontSize: '.75rem', color: 'var(--text-muted)' }}>{clDone}/{checklist.length} concluídas</span>
             </div>
             {checklist.length > 0 && (
               <div style={{ height: 4, background: 'var(--surface3)', borderRadius: 2, marginBottom: 12 }}>
@@ -469,28 +480,42 @@ export default function TaskModal({ taskId, defaultStatus, templateData, onClose
               </div>
             )}
 
-            {/* Pending items */}
+            {/* Active subtasks */}
             {checklist.map((item, i) => {
-              if (item.done) return null;
+              if (subDone(item)) return null;
+              const ts = TASK_STATUS_MAP[item.status || 'pendente'] || TASK_STATUS_MAP['pendente'];
               const isOverdue = item.deadline && new Date(item.deadline + 'T23:59:59') < new Date();
               return (
-                <div key={i} style={{ background: 'var(--surface2)', borderRadius: 8, padding: '8px 10px', marginBottom: 8 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <input type="checkbox" checked={false} onChange={() => updateCL(i, { done: true })} />
+                <div key={i} style={{ background: 'var(--surface2)', borderRadius: 8, padding: '8px 10px', marginBottom: 6, border: '1px solid var(--border)' }}>
+                  {/* Row 1: status + title + delete */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                    <select
+                      value={item.status || 'pendente'}
+                      onChange={e => updateCL(i, { status: e.target.value })}
+                      style={{
+                        background: ts.color + '22', color: ts.color,
+                        border: `1px solid ${ts.color}55`, borderRadius: 20,
+                        padding: '2px 8px', fontSize: '.7rem', fontWeight: 700,
+                        outline: 'none', cursor: 'pointer', flexShrink: 0,
+                      }}
+                    >
+                      {TASK_STATUSES.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
+                    </select>
                     <input
                       value={item.text}
                       onChange={e => updateCL(i, { text: e.target.value })}
-                      placeholder="Nome do item..."
-                      style={{ flex: 1 }}
+                      placeholder="Título da subtarefa..."
+                      style={{ flex: 1, fontWeight: 500 }}
                     />
-                    <button onClick={() => removeCL(i)} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', fontSize: '1.1rem' }}>×</button>
+                    <button onClick={() => removeCL(i)} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', fontSize: '1.1rem', cursor: 'pointer', flexShrink: 0 }}>×</button>
                   </div>
+                  {/* Row 2: assignee + deadline + time */}
                   <div className="form-grid-cl">
                     <UserSelect value={item.assignee || ''} onChange={v => updateCL(i, { assignee: v })} placeholder="Responsável..." />
                     <input type="date" value={item.deadline || ''} onChange={e => updateCL(i, { deadline: e.target.value })} />
                     <input type="time" value={item.time || ''} onChange={e => updateCL(i, { time: e.target.value })} title="Hora da entrega" />
                   </div>
-                  {isOverdue && <div style={{ fontSize: '.7rem', color: 'var(--danger)', marginTop: 4 }}>🔴 Atrasado!</div>}
+                  {isOverdue && <div style={{ fontSize: '.7rem', color: 'var(--danger)', marginTop: 4 }}>🔴 Atrasada!</div>}
                 </div>
               );
             })}
@@ -499,10 +524,10 @@ export default function TaskModal({ taskId, defaultStatus, templateData, onClose
               onClick={addCLItem}
               style={{ background: 'none', border: '1px dashed var(--border)', borderRadius: 8, color: 'var(--text-muted)', padding: '6px 14px', fontSize: '.82rem', width: '100%', marginBottom: clDone > 0 ? 10 : 0 }}
             >
-              + Item
+              + Subtarefa
             </button>
 
-            {/* Finalizados — accordion */}
+            {/* Concluídas — accordion */}
             {clDone > 0 && (
               <div>
                 <button
@@ -516,31 +541,40 @@ export default function TaskModal({ taskId, defaultStatus, templateData, onClose
                 >
                   <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                     <span style={{ fontSize: '.7rem' }}>{showDoneItems ? '▼' : '▶'}</span>
-                    Finalizados
-                    <span style={{
-                      background: 'var(--success)', color: '#fff', borderRadius: 10,
-                      fontSize: '.68rem', fontWeight: 700, padding: '1px 7px',
-                    }}>{clDone}</span>
+                    Concluídas / Canceladas
+                    <span style={{ background: 'var(--success)', color: '#fff', borderRadius: 10, fontSize: '.68rem', fontWeight: 700, padding: '1px 7px' }}>{clDone}</span>
                   </span>
-                  <span style={{ fontSize: '.72rem' }}>{showDoneItems ? 'recolher' : 'ver todos'}</span>
+                  <span style={{ fontSize: '.72rem' }}>{showDoneItems ? 'recolher' : 'ver todas'}</span>
                 </button>
 
                 {showDoneItems && (
                   <div style={{ border: '1px solid var(--border)', borderTop: 'none', borderRadius: '0 0 8px 8px', overflow: 'hidden' }}>
                     {checklist.map((item, i) => {
-                      if (!item.done) return null;
+                      if (!subDone(item)) return null;
+                      const ts = TASK_STATUS_MAP[item.status || 'concluido'] || TASK_STATUS_MAP['concluido'];
                       return (
                         <div key={i} style={{ background: 'var(--surface2)', padding: '8px 10px', borderTop: '1px solid var(--border)' }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                            <input type="checkbox" checked={true} onChange={() => updateCL(i, { done: false })} />
-                            <span style={{ flex: 1, fontSize: '.85rem', textDecoration: 'line-through', opacity: 0.5, color: 'var(--text)' }}>
+                            <select
+                              value={item.status || 'concluido'}
+                              onChange={e => updateCL(i, { status: e.target.value })}
+                              style={{
+                                background: ts.color + '22', color: ts.color,
+                                border: `1px solid ${ts.color}55`, borderRadius: 20,
+                                padding: '2px 8px', fontSize: '.7rem', fontWeight: 700,
+                                outline: 'none', cursor: 'pointer', flexShrink: 0,
+                              }}
+                            >
+                              {TASK_STATUSES.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
+                            </select>
+                            <span style={{ flex: 1, fontSize: '.85rem', textDecoration: 'line-through', opacity: 0.6 }}>
                               {item.text || '(sem título)'}
                             </span>
-                            <button onClick={() => removeCL(i)} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', fontSize: '1.1rem' }}>×</button>
+                            <button onClick={() => removeCL(i)} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', fontSize: '1.1rem', cursor: 'pointer' }}>×</button>
                           </div>
-                          {item.assignee && (
-                            <div style={{ fontSize: '.72rem', color: 'var(--text-muted)', marginTop: 3, paddingLeft: 26 }}>
-                              {item.assignee}{item.deadline ? ` · ${new Date(item.deadline + 'T00:00:00').toLocaleDateString('pt-BR')}` : ''}
+                          {(item.assignee || item.deadline) && (
+                            <div style={{ fontSize: '.72rem', color: 'var(--text-muted)', marginTop: 3, paddingLeft: 4 }}>
+                              {item.assignee}{item.assignee && item.deadline ? ' · ' : ''}{item.deadline ? new Date(item.deadline + 'T00:00:00').toLocaleDateString('pt-BR') : ''}
                             </div>
                           )}
                         </div>
