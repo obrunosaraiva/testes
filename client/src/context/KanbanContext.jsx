@@ -350,7 +350,7 @@ export function KanbanProvider({ children }) {
       const { data, error } = await sb.from('kanban_resources').select('*').order('created_at');
       if (error) return null;
       return (data || []).map(r => ({
-        id: r.id, name: r.name || '', url: r.url || '',
+        id: r.id, title: r.name || '', url: r.url || '',  // DB 'name' → component 'title'
         type: r.type || 'link', description: r.description || '',
         costCenters: parseJsonField(r.cost_centers),
         createdAt: r.created_at || '',
@@ -546,7 +546,7 @@ export function KanbanProvider({ children }) {
 
   async function saveResourceToDb(r) {
     const { error } = await sb.from('kanban_resources').upsert({
-      id: r.id, name: r.name || '', url: r.url || '',
+      id: r.id, name: r.title || r.name || '', url: r.url || '',  // component 'title' → DB 'name'
       type: r.type || 'link', description: r.description || '',
       cost_centers: JSON.stringify(r.costCenters || []),
     }, { onConflict: 'id' });
