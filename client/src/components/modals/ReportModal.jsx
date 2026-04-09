@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useKanban } from '../../context/KanbanContext';
 
-const STATUS_LABEL = { backlog: 'Backlog', todo: 'To Do', doing: 'Fazendo', paused: 'Pausado', review: 'Em Revisão' };
+const STATUS_LABEL = { backlog: 'Backlog', todo: 'To Do', doing: 'Fazendo', paused: 'Pausado', review: 'Em Revisão', done: 'Concluído' };
 const MS = 86400000;
 
 function calcEventStats(task) {
@@ -165,13 +165,71 @@ export default function ReportModal({ onClose }) {
     return lines.join('\n');
   }
 
+  // ── Resumo Executivo ─────────────────────────────────────────────────────────
+  function buildResumo() {
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    const allTasks = filterProj === '__all__' ? tasks : tasks.filter(t => t.project === filterProj);
+    if (!allTasks.length) return 'Nenhuma tarefa encontrada.';
+
+    const now = new Date();
+    const dateStr = now.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+    const lines = [];
+    lines.push(`📊 *Resumo Executivo — Kanban Pro*`);
+    lines.push(dateStr);
+    lines.push('');
+
+    const projs = filterProj === '__all__'
+      ? [...new Set(allTasks.map(t => t.project || 'Sem Projeto'))]
+      : [filterProj];
+
+    projs.forEach(pName => {
+      const pt = allTasks.filter(t => (t.project || 'Sem Projeto') === pName);
+      if (!pt.length) return;
+
+      const byStatus = {};
+      pt.forEach(t => { byStatus[t.status] = (byStatus[t.status] || 0) + 1; });
+      const lateCount = pt.filter(t => t.deadline && new Date(t.deadline + 'T00:00:00') < today && t.status !== 'done').length;
+      const avgProgress = Math.round(pt.reduce((s, t) => s + (t.progress || 0), 0) / pt.length);
+
+      const assignees = {};
+      pt.forEach(t => { if (t.assignee) assignees[t.assignee] = (assignees[t.assignee] || 0) + 1; });
+      const assigneeStr = Object.entries(assignees).sort((a,b) => b[1]-a[1]).slice(0, 5).map(([n, c]) => `${n} (${c})`).join(' · ');
+
+      lines.push(`📁 *${pName}*`);
+
+      const statusLine = Object.entries(byStatus).map(([s, c]) => `${STATUS_LABEL[s] || s}: ${c}`).join(' · ');
+      lines.push(`   ${statusLine}`);
+
+      const progBar = '█'.repeat(Math.round(avgProgress / 10)) + '░'.repeat(10 - Math.round(avgProgress / 10));
+      lines.push(`   Progresso médio: ${progBar} ${avgProgress}%`);
+
+      if (assigneeStr) lines.push(`   👤 ${assigneeStr}`);
+      if (lateCount) lines.push(`   ⚠️ Atrasadas: ${lateCount}`);
+      lines.push('');
+    });
+
+    const totalDone = allTasks.filter(t => t.status === 'done').length;
+    const totalLate = allTasks.filter(t => t.deadline && new Date(t.deadline + 'T00:00:00') < today && t.status !== 'done').length;
+    const overallProgress = Math.round(allTasks.reduce((s, t) => s + (t.progress || 0), 0) / allTasks.length);
+
+    lines.push('---');
+    lines.push(`📋 Total: ${allTasks.length} tarefa${allTasks.length !== 1 ? 's' : ''} em ${projs.length} projeto${projs.length !== 1 ? 's' : ''}`);
+    if (totalDone) lines.push(`✅ Concluídas: ${totalDone}`);
+    if (totalLate) lines.push(`⚠️ Atrasadas: ${totalLate}`);
+    lines.push(`📊 Progresso geral: ${overallProgress}%`);
+
+    return lines.join('\n');
+  }
+
   function handlePreview() {
-    setPreview(tab === 'tasks' ? buildReport() : buildEventsReport());
+    if (tab === 'tasks') setPreview(buildReport());
+    else if (tab === 'events') setPreview(buildEventsReport());
+    else setPreview(buildResumo());
     setCopied(false);
   }
 
   async function handleCopy() {
-    const text = tab === 'tasks' ? buildReport() : buildEventsReport();
+    const text = tab === 'tasks' ? buildReport() : tab === 'events' ? buildEventsReport() : buildResumo();
     try {
       await navigator.clipboard.writeText(text);
     } catch {
@@ -197,7 +255,7 @@ export default function ReportModal({ onClose }) {
 
           {/* Tabs */}
           <div style={{ display: 'flex', gap: 4, background: 'var(--surface2)', borderRadius: 10, padding: 4 }}>
-            {[['tasks', '📋 Tarefas'], ['events', `🎟 Eventos${eventCount ? ` (${eventCount})` : ''}`]].map(([key, label]) => (
+            {[['tasks', '📋 Tarefas'], ['events', `🎟 Eventos${eventCount ? ` (${eventCount})` : ''}`], ['resumo', '📊 Resumo']].map(([key, label]) => (
               <button
                 key={key}
                 onClick={() => { setTab(key); setPreview(''); setCopied(false); }}
@@ -246,6 +304,13 @@ export default function ReportModal({ onClose }) {
                 ⚠️ Apenas tarefas atrasadas
               </label>
             </>
+          )}
+
+          {/* Resumo tab info */}
+          {tab === 'resumo' && (
+            <div style={{ fontSize: '.82rem', color: 'var(--text-muted)', padding: '10px 14px', background: 'var(--surface2)', borderRadius: 10, border: '1px solid var(--border)' }}>
+              Resumo executivo por projeto: contagem por status, progresso médio, responsáveis e tarefas atrasadas. Ideal para enviar no WhatsApp ou reuniões de acompanhamento.
+            </div>
           )}
 
           {/* Events tab info */}

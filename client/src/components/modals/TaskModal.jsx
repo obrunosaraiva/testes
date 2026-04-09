@@ -64,7 +64,7 @@ const EMPTY_FORM = {
   assignee: '', urgency: '', startDate: '', deadline: '', deadlineTime: '',
   isEvent: false, eventType: 'presencial', eventStartDate: '', eventEndDate: '', cardColor: 'none',
   ticketGoal: '', ticketsSold: '',
-  links: [],
+  links: [], progress: 0,
 };
 
 export default function TaskModal({ taskId, defaultStatus, templateData, onClose }) {
@@ -104,6 +104,7 @@ export default function TaskModal({ taskId, defaultStatus, templateData, onClose
         ticketGoal: task.ticketGoal ?? '',
         ticketsSold: task.ticketsSold ?? '',
         links: task.links || [],
+        progress: task.progress ?? 0,
       });
       setChecklist(JSON.parse(JSON.stringify(task.checklist || [])));
       setAttachments(JSON.parse(JSON.stringify(task.attachments || [])));
@@ -129,6 +130,7 @@ export default function TaskModal({ taskId, defaultStatus, templateData, onClose
           ticketGoal: src.ticketGoal ?? '',
           ticketsSold: src.ticketsSold ?? '',
           links: src.links || [],
+          progress: src.progress ?? 0,
         });
         setChecklist(JSON.parse(JSON.stringify(src.checklist || [])));
         setAttachments([]);
@@ -321,6 +323,25 @@ export default function TaskModal({ taskId, defaultStatus, templateData, onClose
                 <option value="review">Review</option>
                 <option value="done">Done</option>
               </select>
+            </div>
+          </div>
+
+          {/* Progress */}
+          <div>
+            <label className="field-label" style={{ display: 'flex', justifyContent: 'space-between' }}>
+              <span>Progresso</span>
+              <span style={{ fontWeight: 700, color: form.progress === 100 ? 'var(--success)' : 'var(--accent)' }}>{form.progress}%</span>
+            </label>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <input
+                type="range" min={0} max={100} step={5}
+                value={form.progress}
+                onChange={e => setField('progress', Number(e.target.value))}
+                style={{ flex: 1, accentColor: form.progress === 100 ? 'var(--success)' : 'var(--accent)' }}
+              />
+              <div style={{ width: 120, height: 8, background: 'var(--border)', borderRadius: 4, overflow: 'hidden', flexShrink: 0 }}>
+                <div style={{ height: '100%', width: `${form.progress}%`, background: form.progress === 100 ? 'var(--success)' : 'var(--accent)', borderRadius: 4, transition: 'width .2s' }} />
+              </div>
             </div>
           </div>
 

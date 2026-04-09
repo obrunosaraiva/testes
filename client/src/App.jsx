@@ -13,6 +13,7 @@ import ProjectBar from './components/layout/ProjectBar';
 import BoardView from './components/board/BoardView';
 import MobileBottomNav from './components/board/MobileBottomNav';
 import GanttView from './components/gantt/GanttView';
+import ListView from './components/list/ListView';
 import TaskModal from './components/modals/TaskModal';
 import ResourceLibrary from './components/modals/ResourceLibrary';
 import TemplatesModal from './components/modals/TemplatesModal';
@@ -105,6 +106,7 @@ function KanbanApp() {
       <div style={{ flex: 1, minHeight: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column', paddingBottom: isMobile && view === 'board' ? 64 : 0 }}>
         {view === 'board' && <BoardView onOpenTask={id => setTaskModalId(id)} onNewTask={openNewTask} mobileStatus={mobileStatus} />}
         {view === 'gantt' && <GanttView onOpenTask={id => setTaskModalId(id)} />}
+        {view === 'list' && <ListView onOpenTask={id => setTaskModalId(id)} onNewTask={openNewTask} />}
       </div>
 
       {isMobile && view === 'board' && (

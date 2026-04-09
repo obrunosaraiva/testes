@@ -53,6 +53,7 @@ function normalizeTask(t) {
     ticketsSold: t.ticketsSold ?? t.tickets_sold ?? '',
     eventType: t.eventType || t.event_type || 'presencial',
     links: parseJsonField(t.links),
+    progress: t.progress ?? 0,
   };
 }
 
@@ -625,12 +626,13 @@ export function KanbanProvider({ children }) {
       tickets_sold: task.ticketsSold !== '' && task.ticketsSold != null ? Number(task.ticketsSold) : null,
       event_type: task.eventType || 'presencial',
       links: JSON.stringify(task.links || []),
+      progress: task.progress ?? 0,
       deleted: false,
     };
     const { error } = await sb.from('kanban_tasks').upsert(row, { onConflict: 'id' });
     if (error) {
       // Retry without optional columns that may not exist in the DB yet (migration pending)
-      const { deadline_time, is_event, event_start_date, event_end_date, card_color, ticket_goal, tickets_sold, event_type, links, deleted, ...basic } = row;
+      const { deadline_time, is_event, event_start_date, event_end_date, card_color, ticket_goal, tickets_sold, event_type, links, progress, deleted, ...basic } = row;
       const { error: e2 } = await sb.from('kanban_tasks').upsert(basic, { onConflict: 'id' });
       if (e2) {
         console.error('[Kanban] task save failed:', e2.message, '| task id:', task.id);
