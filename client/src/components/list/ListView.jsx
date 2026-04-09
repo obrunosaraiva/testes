@@ -155,14 +155,24 @@ export default function ListView({ onOpenTask, onNewTask }) {
 }
 
 function TaskRow({ task, idx, isLast, dl, late, onOpen, onChangeTaskStatus }) {
+  const { updateTask } = useKanban();
+  const { can } = useRole();
   const [hovered, setHovered] = useState(false);
   const [showSubs, setShowSubs] = useState(true);
+  const [showDone, setShowDone] = useState(true);
   const ts = STATUS_MAP[task.taskStatus || 'pendente'] || STATUS_MAP['pendente'];
 
   const pending = task.checklist?.filter(c => !c.done) || [];
   const done = task.checklist?.filter(c => c.done) || [];
   const hasChecklist = (task.checklist?.length || 0) > 0;
-  const showingItems = showSubs && hasChecklist;
+
+  function toggleItem(idx) {
+    if (!can.edit) return;
+    const newChecklist = task.checklist.map((item, i) =>
+      i === idx ? { ...item, done: !item.done } : item
+    );
+    updateTask({ ...task, checklist: newChecklist });
+  }
 
   const bg = hovered ? 'var(--surface3)' : idx % 2 === 0 ? 'var(--surface)' : 'var(--surface2)';
 
@@ -211,7 +221,6 @@ function TaskRow({ task, idx, isLast, dl, late, onOpen, onChangeTaskStatus }) {
                   color: 'var(--text-muted)', fontSize: '.6rem', lineHeight: 1, flexShrink: 0,
                   transform: showSubs ? 'rotate(0)' : 'rotate(-90deg)', transition: 'transform .15s',
                 }}
-                title={showSubs ? 'Ocultar subtarefas' : 'Mostrar subtarefas'}
               >▼</button>
             )}
             <span style={{ fontSize: '.88rem', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
@@ -221,7 +230,7 @@ function TaskRow({ task, idx, isLast, dl, late, onOpen, onChangeTaskStatus }) {
             </span>
           </div>
           {hasChecklist && (
-            <span style={{ fontSize: '.68rem', color: 'var(--text-muted)', marginLeft: hasChecklist ? 14 : 0 }}>
+            <span style={{ fontSize: '.68rem', color: 'var(--text-muted)', marginLeft: 14 }}>
               ☑ {done.length}/{task.checklist.length}
             </span>
           )}
@@ -253,21 +262,74 @@ function TaskRow({ task, idx, isLast, dl, late, onOpen, onChangeTaskStatus }) {
         </div>
       </div>
 
-      {/* Subtask list */}
-      {showingItems && (
-        <div style={{ paddingLeft: 194, paddingRight: 14, paddingBottom: 8 }}>
-          {pending.map((item, i) => (
-            <div key={item.id || i} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '2px 0', fontSize: '.78rem' }}>
-              <span style={{ color: 'var(--text-muted)', flexShrink: 0 }}>☐</span>
-              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.text || item.label || ''}</span>
+      {/* Subtask sections */}
+      {showSubs && hasChecklist && (
+        <div style={{ paddingLeft: 194, paddingRight: 14, paddingBottom: 8, display: 'flex', flexDirection: 'column', gap: 6 }}>
+
+          {/* Pending items */}
+          {pending.length > 0 && (
+            <div style={{ border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden' }}>
+              <div style={{ padding: '4px 10px', fontSize: '.68rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '.05em', borderBottom: '1px solid var(--border)', background: 'var(--surface2)' }}>
+                Em aberto · {pending.length}
+              </div>
+              {pending.map((item) => {
+                const realIdx = task.checklist.findIndex(c => c === item);
+                return (
+                  <label
+                    key={realIdx}
+                    onClick={e => e.stopPropagation()}
+                    style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 10px', cursor: can.edit ? 'pointer' : 'default', borderBottom: '1px solid var(--border)', fontSize: '.8rem' }}
+                    onMouseEnter={e => can.edit && (e.currentTarget.style.background = 'var(--surface3)')}
+                    onMouseLeave={e => (e.currentTarget.style.background = '')}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={false}
+                      onChange={() => toggleItem(realIdx)}
+                      disabled={!can.edit}
+                      style={{ cursor: can.edit ? 'pointer' : 'default', flexShrink: 0 }}
+                    />
+                    <span>{item.text || item.label || ''}</span>
+                  </label>
+                );
+              })}
             </div>
-          ))}
-          {done.map((item, i) => (
-            <div key={item.id || i} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '2px 0', fontSize: '.78rem', color: 'var(--text-muted)' }}>
-              <span style={{ flexShrink: 0 }}>☑</span>
-              <s style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.text || item.label || ''}</s>
+          )}
+
+          {/* Done items */}
+          {done.length > 0 && (
+            <div style={{ border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden' }}>
+              <div
+                onClick={e => { e.stopPropagation(); setShowDone(x => !x); }}
+                style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 10px', fontSize: '.68rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '.05em', background: 'var(--surface2)', cursor: 'pointer', userSelect: 'none' }}
+              >
+                <span style={{ fontSize: '.55rem', transform: showDone ? 'rotate(0)' : 'rotate(-90deg)', transition: 'transform .15s', display: 'inline-block' }}>▼</span>
+                Finalizadas · {done.length}
+              </div>
+              {showDone && done.map((item) => {
+                const realIdx = task.checklist.findIndex(c => c === item);
+                return (
+                  <label
+                    key={realIdx}
+                    onClick={e => e.stopPropagation()}
+                    style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 10px', cursor: can.edit ? 'pointer' : 'default', borderTop: '1px solid var(--border)', fontSize: '.8rem', color: 'var(--text-muted)', opacity: 0.7 }}
+                    onMouseEnter={e => can.edit && (e.currentTarget.style.background = 'var(--surface3)')}
+                    onMouseLeave={e => (e.currentTarget.style.background = '')}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={true}
+                      onChange={() => toggleItem(realIdx)}
+                      disabled={!can.edit}
+                      style={{ cursor: can.edit ? 'pointer' : 'default', flexShrink: 0 }}
+                    />
+                    <s>{item.text || item.label || ''}</s>
+                  </label>
+                );
+              })}
             </div>
-          ))}
+          )}
+
         </div>
       )}
     </div>
