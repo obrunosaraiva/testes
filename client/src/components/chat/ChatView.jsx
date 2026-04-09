@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useKanban } from '../../context/KanbanContext';
 import { useRole } from '../../context/RoleContext';
 import { sb } from '../../lib/supabase';
+import { usePushNotifications } from '../../hooks/usePushNotifications';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function nameInitials(name = '') {
@@ -546,6 +547,7 @@ export default function ChatView() {
   const [replyTo, setReplyTo] = useState(null);
   const [unread, setUnread] = useState({});
   const [dbStatus, setDbStatus] = useState('ok'); // 'ok' | 'migrating' | 'error'
+  const { subscribe: subscribePush, unsubscribe: unsubscribePush, subscribed: pushSubscribed, permission: pushPerm, isSupported: pushSupported } = usePushNotifications(userId);
 
   const feedRef = useRef(null);
   const realtimeRef = useRef(null);
@@ -646,7 +648,24 @@ export default function ChatView() {
       reply_preview: rt ? JSON.stringify({ user_name: rt.user_name, content: rt.content?.slice(0, 100) }) : null,
     };
     const { error } = await sb.from('kanban_messages').insert(msg);
-    if (error) alert('Erro ao enviar: ' + error.message);
+    if (error) { alert('Erro ao enviar: ' + error.message); return; }
+
+    // Send push notifications to @mentioned users (fire and forget)
+    const userMentions = mentions?.filter(m => m.type === 'user') || [];
+    if (userMentions.length) {
+      fetch('/api/push/notify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          content,
+          user_name: myName,
+          channel_name: selected.name,
+          channel_type: selected.type,
+          channel_id: selected.id,
+          mentions: userMentions,
+        }),
+      }).catch(() => {});
+    }
   }
 
   function handleSelectChannel(ch) {
@@ -698,6 +717,16 @@ export default function ChatView() {
             <span style={{ fontSize: '1.1rem' }}>{selected.icon}</span>
             <span style={{ fontWeight: 700, fontSize: '.95rem' }}>{selected.name}</span>
             {selected.group && <span style={{ fontSize: '.75rem', color: 'var(--text-muted)', background: 'var(--surface2)', padding: '2px 8px', borderRadius: 10 }}>{selected.group}</span>}
+            {pushSupported && (
+              <button
+                onClick={pushSubscribed ? unsubscribePush : subscribePush}
+                title={pushSubscribed ? 'Desativar notificações' : pushPerm === 'denied' ? 'Notificações bloqueadas no navegador' : 'Ativar notificações de @menção'}
+                disabled={pushPerm === 'denied'}
+                style={{ marginLeft: 'auto', background: 'none', border: 'none', cursor: pushPerm === 'denied' ? 'not-allowed' : 'pointer', fontSize: '1rem', opacity: pushPerm === 'denied' ? 0.4 : 1, padding: '4px 8px', borderRadius: 6, color: pushSubscribed ? 'var(--accent)' : 'var(--text-muted)' }}
+              >
+                {pushSubscribed ? '🔔' : '🔕'}
+              </button>
+            )}
           </div>
 
           <MessageFeed messages={messages} loading={loading} feedRef={feedRef} currentUserId={userId} onReply={setReplyTo} />

@@ -9,6 +9,17 @@ const SUPABASE_URL = process.env.SUPABASE_URL || 'https://imsqnoxztoxlmiumdalu.s
 const ANON_KEY = process.env.SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imltc3Fub3h6dG94bG1pdW1kYWx1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ4OTk5NTEsImV4cCI6MjA5MDQ3NTk1MX0.CaFrcNJokpvdRD9v9AIp3rlDd8wXIrW6k1urepMDnqw';
 const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
+// ── Web Push (VAPID) ───────────────────────────────────────────────────────────
+const VAPID_PUBLIC_KEY = process.env.VAPID_PUBLIC_KEY || 'BDDSPNsZfA0VrQAGoi8pHOQBVyRX46a1_nhDwKj8MZ3w7SMpO6cNFi7Iw3tI6rCi2AKT_uiHCulCIfJ1QEa-GIY';
+const VAPID_PRIVATE_KEY = process.env.VAPID_PRIVATE_KEY || 'CBjdCU-L0y4mAtvzlCx358hQWAaKiDnV7WaXBuFPs68';
+let webpush;
+try {
+  webpush = require('web-push');
+  webpush.setVapidDetails('mailto:kanbanpro@app.com', VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY);
+} catch (e) {
+  console.warn('[Push] web-push not available:', e.message);
+}
+
 // ── Startup DB migration ──────────────────────────────────────────────────────
 // Creates all required tables if they don't exist.
 // Uses DATABASE_URL (direct Postgres) or SUPABASE_ACCESS_TOKEN (Management API).
@@ -76,6 +87,16 @@ const MIGRATION_SQL = `
     ALTER PUBLICATION supabase_realtime ADD TABLE kanban_messages;
   EXCEPTION WHEN duplicate_object THEN NULL;
   END $$;
+  CREATE TABLE IF NOT EXISTS kanban_push_subscriptions (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    endpoint TEXT NOT NULL,
+    subscription JSONB NOT NULL,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    UNIQUE(endpoint)
+  );
+  CREATE INDEX IF NOT EXISTS idx_push_subs_user ON kanban_push_subscriptions (user_id);
+  ALTER TABLE kanban_push_subscriptions DISABLE ROW LEVEL SECURITY;
 `;
 
 const PROJECT_REF = 'imsqnoxztoxlmiumdalu';
@@ -210,6 +231,107 @@ app.post('/api/db/migrate', async (req, res) => {
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
+});
+
+// ── Push Notification endpoints ────────────────────────────────────────────────
+
+// Return VAPID public key so clients can subscribe
+app.get('/api/push/vapid-public-key', (req, res) => {
+  res.json({ publicKey: VAPID_PUBLIC_KEY });
+});
+
+// Helper: verify user JWT and return user id
+async function verifyJWT(req) {
+  const token = req.headers.authorization?.replace('Bearer ', '');
+  if (!token) return null;
+  const r = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
+    headers: { Authorization: `Bearer ${token}`, apikey: ANON_KEY },
+  });
+  if (!r.ok) return null;
+  const u = await r.json();
+  return u?.id || null;
+}
+
+// Save push subscription for current user
+app.post('/api/push/subscribe', async (req, res) => {
+  if (!SERVICE_KEY) return res.status(503).json({ error: 'SERVICE_KEY não configurada.' });
+  const userId = await verifyJWT(req);
+  if (!userId) return res.status(401).json({ error: 'Token inválido.' });
+
+  const { subscription } = req.body;
+  if (!subscription?.endpoint) return res.status(400).json({ error: 'subscription.endpoint obrigatório.' });
+
+  const id = 'ps_' + Buffer.from(subscription.endpoint).toString('base64').slice(0, 32).replace(/[^a-zA-Z0-9]/g, '');
+  await fetch(`${SUPABASE_URL}/rest/v1/kanban_push_subscriptions`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${SERVICE_KEY}`, apikey: SERVICE_KEY,
+      'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates',
+    },
+    body: JSON.stringify({ id, user_id: userId, endpoint: subscription.endpoint, subscription }),
+  });
+  res.json({ ok: true });
+});
+
+// Remove push subscription for current user
+app.delete('/api/push/subscribe', async (req, res) => {
+  if (!SERVICE_KEY) return res.status(503).json({ error: 'SERVICE_KEY não configurada.' });
+  const userId = await verifyJWT(req);
+  if (!userId) return res.status(401).json({ error: 'Token inválido.' });
+
+  await fetch(`${SUPABASE_URL}/rest/v1/kanban_push_subscriptions?user_id=eq.${userId}`, {
+    method: 'DELETE',
+    headers: { Authorization: `Bearer ${SERVICE_KEY}`, apikey: SERVICE_KEY, Prefer: 'return=minimal' },
+  });
+  res.json({ ok: true });
+});
+
+// Send push to mentioned users
+app.post('/api/push/notify', async (req, res) => {
+  if (!SERVICE_KEY || !webpush) return res.json({ ok: true, skipped: true });
+
+  const { content, user_name, channel_name, channel_type, channel_id, mentions } = req.body;
+  if (!mentions?.length) return res.json({ ok: true });
+
+  // Collect unique user IDs from mentions (only type:'user')
+  const userIds = [...new Set(mentions.filter(m => m.type === 'user' && m.id).map(m => m.id))];
+  if (!userIds.length) return res.json({ ok: true });
+
+  try {
+    // Fetch subscriptions for mentioned users
+    const filter = userIds.map(id => `user_id=eq.${id}`).join(',');
+    const subsRes = await fetch(
+      `${SUPABASE_URL}/rest/v1/kanban_push_subscriptions?or=(${filter})`,
+      { headers: { Authorization: `Bearer ${SERVICE_KEY}`, apikey: SERVICE_KEY } }
+    );
+    const subs = await subsRes.json();
+    if (!Array.isArray(subs) || !subs.length) return res.json({ ok: true });
+
+    const payload = JSON.stringify({
+      title: `${user_name} mencionou você`,
+      body: `#${channel_name}: ${(content || '').slice(0, 120)}`,
+      tag: `mention-${channel_type}-${channel_id}`,
+      url: '/',
+    });
+
+    await Promise.allSettled(subs.map(async (row) => {
+      try {
+        await webpush.sendNotification(row.subscription, payload, { TTL: 86400 });
+      } catch (e) {
+        // 410 Gone = subscription expired, remove it
+        if (e.statusCode === 410) {
+          fetch(`${SUPABASE_URL}/rest/v1/kanban_push_subscriptions?id=eq.${row.id}`, {
+            method: 'DELETE',
+            headers: { Authorization: `Bearer ${SERVICE_KEY}`, apikey: SERVICE_KEY },
+          }).catch(() => {});
+        }
+      }
+    }));
+  } catch (e) {
+    console.warn('[Push] notify error:', e.message);
+  }
+
+  res.json({ ok: true });
 });
 
 // List all auth users (admin only — requires SUPABASE_SERVICE_ROLE_KEY env var)
