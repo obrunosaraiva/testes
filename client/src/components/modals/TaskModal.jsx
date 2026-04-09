@@ -3,19 +3,29 @@ import { useKanban } from '../../context/KanbanContext';
 import { useRole } from '../../context/RoleContext';
 import { useConfirm } from '../../hooks/useConfirm';
 
-// Seletor de usuários do sistema — substitui campos de texto livre de responsável
+// Combobox de responsável — selecionar membro cadastrado OU digitar nome livre
 function UserSelect({ value, onChange, placeholder = 'Sem responsável' }) {
-  const { allProfiles, loadAllProfiles } = useRole();
-  useEffect(() => { loadAllProfiles(); }, []);
+  const { members } = useKanban();
+  const listId = 'members-datalist';
   return (
-    <select value={value || ''} onChange={e => onChange(e.target.value)}>
-      <option value="">{placeholder}</option>
-      {allProfiles.map(u => (
-        <option key={u.id} value={u.email}>
-          {u.name ? `${u.name} (${u.email})` : u.email}
-        </option>
-      ))}
-    </select>
+    <div style={{ position: 'relative' }}>
+      <input
+        type="text"
+        list={listId}
+        value={value || ''}
+        onChange={e => onChange(e.target.value)}
+        placeholder={placeholder}
+        style={{ width: '100%' }}
+        autoComplete="off"
+      />
+      <datalist id={listId}>
+        {members.map(m => (
+          <option key={m.id} value={m.name}>
+            {m.email ? `${m.name} (${m.email})` : m.name}
+          </option>
+        ))}
+      </datalist>
+    </div>
   );
 }
 

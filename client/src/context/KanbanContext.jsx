@@ -69,6 +69,7 @@ const initialState = {
   trashedProjects: [],
   templates: [],
   resources: [],
+  members: [],
   costCenters: DEFAULT_COST_CENTERS,
   activeProject: '__all__',
   combinedProjects: [],       // array of project names for multi-view
@@ -107,6 +108,17 @@ function reducer(state, action) {
       return { ...state, templates: action.payload };
     case 'SET_RESOURCES':
       return { ...state, resources: action.payload };
+    case 'SET_MEMBERS':
+      return { ...state, members: action.payload };
+    case 'ADD_MEMBER': {
+      const exists = state.members.some(m => m.id === action.payload.id);
+      if (exists) return state;
+      return { ...state, members: [...state.members, action.payload] };
+    }
+    case 'UPDATE_MEMBER':
+      return { ...state, members: state.members.map(m => m.id === action.payload.id ? { ...m, ...action.payload } : m) };
+    case 'DELETE_MEMBER':
+      return { ...state, members: state.members.filter(m => m.id !== action.payload) };
     case 'SET_TRASH':
       return { ...state, trashedTasks: action.payload.trashedTasks || [], trashedProjects: action.payload.trashedProjects || [] };
 
@@ -345,6 +357,18 @@ export function KanbanProvider({ children }) {
         }));
     }
 
+    // Helper: fetch members from DB — stored in kanban_cost_centers with __mbr_ prefix
+    async function fetchMembersFromDb() {
+      const { data, error } = await sb.from('kanban_cost_centers').select('*').like('key', '__mbr_%');
+      if (error) return null;
+      return (data || []).map(row => ({
+        id: row.key.slice(6), // strip '__mbr_'
+        name: row.label,
+        email: row.created_by || '',
+        isVirtual: row.is_private || false,
+      }));
+    }
+
     // Helper: fetch resources from DB (null = table missing)
     async function fetchResourcesFromDb() {
       const { data, error } = await sb.from('kanban_resources').select('*').order('created_at');
@@ -384,13 +408,14 @@ export function KanbanProvider({ children }) {
 
     async function loadSupabase() {
       try {
-        const [mapped, dbMapped, ccMapped, tplMapped, resMapped, trashMapped] = await Promise.all([
+        const [mapped, dbMapped, ccMapped, tplMapped, resMapped, trashMapped, membersMapped] = await Promise.all([
           fetchTasksFromDb(), fetchProjectsFromDb(), fetchCostCentersFromDb(),
-          fetchTemplatesFromDb(), fetchResourcesFromDb(), fetchTrashFromDb(),
+          fetchTemplatesFromDb(), fetchResourcesFromDb(), fetchTrashFromDb(), fetchMembersFromDb(),
         ]);
 
         dispatch({ type: 'SET_TASKS', payload: mapped });
         dispatch({ type: 'SET_PROJECTS', payload: dbMapped });
+        if (membersMapped !== null) dispatch({ type: 'SET_MEMBERS', payload: membersMapped });
 
         // Cost centers
         if (ccMapped !== null) {
@@ -467,15 +492,16 @@ export function KanbanProvider({ children }) {
     // Refresh all data from DB (called on visibilitychange and Realtime project events)
     async function refreshFromDb() {
       try {
-        const [mapped, dbMapped, ccMapped, tplMapped, resMapped] = await Promise.all([
+        const [mapped, dbMapped, ccMapped, tplMapped, resMapped, membersMapped] = await Promise.all([
           fetchTasksFromDb(), fetchProjectsFromDb(), fetchCostCentersFromDb(),
-          fetchTemplatesFromDb(), fetchResourcesFromDb(),
+          fetchTemplatesFromDb(), fetchResourcesFromDb(), fetchMembersFromDb(),
         ]);
         dispatch({ type: 'SET_TASKS', payload: mapped });
         if (dbMapped.length > 0) dispatch({ type: 'SET_PROJECTS', payload: dbMapped });
         if (ccMapped && ccMapped.length > 0) dispatch({ type: 'SET_COST_CENTERS', payload: ccMapped });
         if (tplMapped !== null) dispatch({ type: 'SET_TEMPLATES', payload: tplMapped });
         if (resMapped !== null) dispatch({ type: 'SET_RESOURCES', payload: resMapped });
+        if (membersMapped !== null) dispatch({ type: 'SET_MEMBERS', payload: membersMapped });
       } catch (e) {
         console.warn('[Kanban] refresh error:', e.message);
       }
@@ -501,6 +527,7 @@ export function KanbanProvider({ children }) {
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'kanban_cost_centers' }, () => {
         fetchCostCentersFromDb().then(cc => { if (cc) dispatch({ type: 'SET_COST_CENTERS', payload: cc }); });
+        fetchMembersFromDb().then(members => { if (members !== null) dispatch({ type: 'SET_MEMBERS', payload: members }); });
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'kanban_templates' }, () => {
         fetchTemplatesFromDb().then(tpl => { if (tpl !== null) dispatch({ type: 'SET_TEMPLATES', payload: tpl }); });
@@ -819,6 +846,40 @@ export function KanbanProvider({ children }) {
     sb.from('kanban_cost_centers').delete().eq('key', key)
       .then(({ error }) => { if (error) console.warn('[Kanban] CC delete error:', error.message); });
   }
+
+  // ── Member (Responsável) DB helpers ────────────────────────────────────────
+  async function saveMemberToDb({ id, name, email, isVirtual }) {
+    const { error } = await sb.from('kanban_cost_centers').upsert({
+      key: '__mbr_' + id,
+      label: name,
+      color: '#6366f1',
+      is_private: isVirtual || false,
+      created_by: email || null,
+      shared_with: [],
+    }, { onConflict: 'key' });
+    if (error) console.warn('[Kanban] member save error:', error.message);
+  }
+
+  function addMember(name, email = '', isVirtual = false) {
+    const id = 'm_' + Date.now() + '_' + Math.random().toString(36).slice(2, 5);
+    const member = { id, name: name.trim(), email: email.trim(), isVirtual };
+    dispatch({ type: 'ADD_MEMBER', payload: member });
+    saveMemberToDb(member);
+    return member;
+  }
+
+  function updateMember(id, patch) {
+    dispatch({ type: 'UPDATE_MEMBER', payload: { id, ...patch } });
+    const existing = stateRef.current.members.find(m => m.id === id);
+    if (existing) saveMemberToDb({ ...existing, ...patch });
+  }
+
+  function deleteMember(id) {
+    dispatch({ type: 'DELETE_MEMBER', payload: id });
+    sb.from('kanban_cost_centers').delete().eq('key', '__mbr_' + id)
+      .then(({ error }) => { if (error) console.warn('[Kanban] member delete error:', error.message); });
+  }
+
   function addTemplate(tpl) {
     dispatch({ type: 'ADD_TEMPLATE', payload: tpl });
     saveTemplateToDb(tpl);
@@ -842,6 +903,7 @@ export function KanbanProvider({ children }) {
       setActiveProject, toggleCombinedProject, clearCombinedProjects,
       setView, setViewFilter, toggleCostCenterFilter, clearCostCenterFilter,
       addCostCenter, updateCostCenter, deleteCostCenter,
+      addMember, updateMember, deleteMember,
       addTemplate, deleteTemplate,
       addResource, updateResource, deleteResource,
       saveTaskToDb, saveDraft, loadDraft, clearDraft,

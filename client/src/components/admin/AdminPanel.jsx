@@ -1,133 +1,263 @@
 import { useState, useEffect } from 'react';
 import { useRole, ROLE_LABELS } from '../../context/RoleContext';
+import { useKanban } from '../../context/KanbanContext';
 
 const ROLE_COLORS = { admin: 'var(--accent)', editor: 'var(--warning)', viewer: 'var(--text-muted)' };
 
 export default function AdminPanel({ onClose }) {
-  const { userId, userEmail, role, allProfiles, loadAllProfiles, updateUserRole, addUserProfile } = useRole();
-  const [loading, setLoading] = useState(true);
-  const [newEmail, setNewEmail] = useState('');
-  const [newRole, setNewRole] = useState('viewer');
-  const [saving, setSaving] = useState(null);
+  const { userId, userEmail, role, allProfiles, loadAllProfiles, updateUserRole } = useRole();
+  const { members, addMember, updateMember, deleteMember } = useKanban();
+
+  const [tab, setTab] = useState('members'); // 'members' | 'users'
+  const [loadingUsers, setLoadingUsers] = useState(false);
+  const [savingRole, setSavingRole] = useState(null);
   const [msg, setMsg] = useState('');
 
-  useEffect(() => {
-    loadAllProfiles().finally(() => setLoading(false));
-  }, []);
+  // Member form state
+  const [memberName, setMemberName] = useState('');
+  const [memberEmail, setMemberEmail] = useState('');
+  const [editingId, setEditingId] = useState(null);
+  const [editName, setEditName] = useState('');
+  const [editEmail, setEditEmail] = useState('');
 
-  async function handleChangeRole(targetId, r) {
-    setSaving(targetId);
-    await updateUserRole(targetId, r);
-    setSaving(null);
-    setMsg('Role atualizado!');
-    setTimeout(() => setMsg(''), 2000);
+  useEffect(() => {
+    if (tab === 'users' && allProfiles.length === 0) {
+      setLoadingUsers(true);
+      loadAllProfiles().finally(() => setLoadingUsers(false));
+    }
+  }, [tab]);
+
+  function flash(text) {
+    setMsg(text);
+    setTimeout(() => setMsg(''), 2500);
   }
 
-  async function handleAddUser(e) {
+  // ── Members ────────────────────────────────────────────────────────────────
+  function handleAddMember(e) {
     e.preventDefault();
-    if (!newEmail.trim()) return;
-    await addUserProfile(newEmail.trim(), newRole);
-    setNewEmail('');
-    setMsg(`Usuário ${newEmail} adicionado como ${ROLE_LABELS[newRole]}.`);
-    setTimeout(() => setMsg(''), 3000);
+    if (!memberName.trim()) return;
+    addMember(memberName, memberEmail);
+    setMemberName('');
+    setMemberEmail('');
+    flash('Membro adicionado!');
+  }
+
+  function startEdit(m) {
+    setEditingId(m.id);
+    setEditName(m.name);
+    setEditEmail(m.email || '');
+  }
+
+  function handleSaveEdit(id) {
+    if (!editName.trim()) return;
+    updateMember(id, { name: editName.trim(), email: editEmail.trim() });
+    setEditingId(null);
+    flash('Membro atualizado!');
+  }
+
+  function handleDeleteMember(id, name) {
+    if (!window.confirm(`Remover "${name}" da lista de responsáveis?`)) return;
+    deleteMember(id);
+    flash('Membro removido.');
+  }
+
+  // ── Users ──────────────────────────────────────────────────────────────────
+  async function handleChangeRole(targetId, r) {
+    setSavingRole(targetId);
+    await updateUserRole(targetId, r);
+    setSavingRole(null);
+    flash('Role atualizado!');
   }
 
   return (
     <div className="modal-overlay active" onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
-      <div className="modal" style={{ maxWidth: 560 }} onClick={e => e.stopPropagation()}>
+      <div className="modal" style={{ maxWidth: 580 }} onClick={e => e.stopPropagation()}>
         <div className="modal-head">
           <h2>🛡 Painel Admin</h2>
           <button className="modal-close" onClick={onClose}>&times;</button>
         </div>
+
+        {/* Tab switcher */}
+        <div style={{ display: 'flex', gap: 4, padding: '0 20px', borderBottom: '1px solid var(--border)' }}>
+          {[
+            { key: 'members', label: 'Responsáveis' },
+            { key: 'users', label: 'Usuários do sistema' },
+          ].map(t => (
+            <button
+              key={t.key}
+              onClick={() => setTab(t.key)}
+              style={{
+                background: 'none', border: 'none', cursor: 'pointer',
+                padding: '10px 14px', fontSize: '.85rem', fontWeight: tab === t.key ? 700 : 400,
+                color: tab === t.key ? 'var(--accent)' : 'var(--text-muted)',
+                borderBottom: tab === t.key ? '2px solid var(--accent)' : '2px solid transparent',
+                marginBottom: -1,
+              }}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
+
         <div className="modal-body">
-          <p style={{ fontSize: '.82rem', color: 'var(--text-muted)' }}>
-            Gerencie usuários e permissões do workspace.
-          </p>
+          {/* ── Members tab ───────────────────────────────────────────────── */}
+          {tab === 'members' && (
+            <>
+              <p style={{ fontSize: '.82rem', color: 'var(--text-muted)', marginTop: 0 }}>
+                Cadastre os responsáveis que aparecem no campo de atribuição das tarefas. Pode ser qualquer pessoa — com ou sem conta no sistema.
+              </p>
 
-          {/* Current user badge */}
-          <div style={{ background: 'var(--surface2)', borderRadius: 10, padding: '10px 14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <div>
-              <div style={{ fontSize: '.82rem', fontWeight: 600 }}>{userEmail}</div>
-              <div style={{ fontSize: '.72rem', color: 'var(--text-muted)' }}>Você</div>
-            </div>
-            <span style={{ fontSize: '.75rem', fontWeight: 700, color: ROLE_COLORS[role], background: 'var(--surface3)', padding: '3px 10px', borderRadius: 20 }}>
-              {ROLE_LABELS[role]}
-            </span>
-          </div>
+              {/* Add member form */}
+              <form onSubmit={handleAddMember} style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                <input
+                  type="text"
+                  placeholder="Nome do responsável *"
+                  value={memberName}
+                  onChange={e => setMemberName(e.target.value)}
+                  style={{ flex: '2 1 160px' }}
+                  required
+                />
+                <input
+                  type="email"
+                  placeholder="Email (opcional)"
+                  value={memberEmail}
+                  onChange={e => setMemberEmail(e.target.value)}
+                  style={{ flex: '2 1 180px' }}
+                />
+                <button type="submit" className="btn btn-primary" style={{ whiteSpace: 'nowrap' }}>
+                  + Adicionar
+                </button>
+              </form>
 
-          {/* User list */}
-          <div>
-            <label className="field-label">Usuários do workspace</label>
-            {loading ? (
-              <div style={{ fontSize: '.82rem', color: 'var(--text-muted)', padding: 12 }}>Carregando...</div>
-            ) : allProfiles.length === 0 ? (
-              <div style={{ fontSize: '.82rem', color: 'var(--text-muted)', padding: 12 }}>Nenhum usuário encontrado.</div>
-            ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                {allProfiles.map(u => (
-                  <div key={u.id} style={{ background: 'var(--surface2)', borderRadius: 10, padding: '10px 14px', display: 'flex', alignItems: 'center', gap: 12 }}>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: '.83rem', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        {u.email || u.id}
-                        {u.id === userId && <span style={{ fontSize: '.68rem', color: 'var(--accent)', marginLeft: 6 }}>você</span>}
-                      </div>
-                    </div>
-                    <select
-                      value={u.role || 'viewer'}
-                      onChange={e => handleChangeRole(u.id, e.target.value)}
-                      disabled={saving === u.id || u.id === userId}
-                      style={{ width: 140, fontSize: '.8rem' }}
-                    >
-                      <option value="admin">Admin</option>
-                      <option value="editor">Editor</option>
-                      <option value="viewer">Visualizador</option>
-                    </select>
-                    {saving === u.id && <span style={{ fontSize: '.72rem', color: 'var(--text-muted)' }}>...</span>}
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* Add user */}
-          <div>
-            <label className="field-label">Adicionar usuário</label>
-            <form onSubmit={handleAddUser} style={{ display: 'flex', gap: 8 }}>
-              <input
-                type="email"
-                placeholder="email@exemplo.com"
-                value={newEmail}
-                onChange={e => setNewEmail(e.target.value)}
-                style={{ flex: 1 }}
-              />
-              <select value={newRole} onChange={e => setNewRole(e.target.value)} style={{ width: 140 }}>
-                <option value="admin">Admin</option>
-                <option value="editor">Editor</option>
-                <option value="viewer">Visualizador</option>
-              </select>
-              <button type="submit" className="btn btn-primary" style={{ whiteSpace: 'nowrap' }}>+ Add</button>
-            </form>
-            <div style={{ fontSize: '.72rem', color: 'var(--text-muted)', marginTop: 4 }}>
-              O usuário precisa criar uma conta no Supabase com este email para ter acesso.
-            </div>
-          </div>
-
-          {/* Role legend */}
-          <div style={{ background: 'var(--surface2)', borderRadius: 10, padding: 12 }}>
-            <label className="field-label" style={{ marginBottom: 8 }}>Permissões por role</label>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, fontSize: '.8rem' }}>
-              {[
-                { role: 'admin', desc: 'Controle total — criar, editar, excluir, restaurar da lixeira, gerenciar usuários' },
-                { role: 'editor', desc: 'Criar e editar tarefas — não pode excluir' },
-                { role: 'viewer', desc: 'Apenas visualizar e acompanhar' },
-              ].map(({ role: r, desc }) => (
-                <div key={r} style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
-                  <span style={{ fontWeight: 700, color: ROLE_COLORS[r], minWidth: 80 }}>{ROLE_LABELS[r]}</span>
-                  <span style={{ color: 'var(--text-muted)' }}>{desc}</span>
+              {/* Member list */}
+              {members.length === 0 ? (
+                <div style={{ fontSize: '.82rem', color: 'var(--text-muted)', padding: '12px 0' }}>
+                  Nenhum responsável cadastrado. Adicione acima.
                 </div>
-              ))}
-            </div>
-          </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  {members.map(m => (
+                    <div key={m.id} style={{ background: 'var(--surface2)', borderRadius: 10, padding: '10px 14px' }}>
+                      {editingId === m.id ? (
+                        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+                          <input
+                            type="text"
+                            value={editName}
+                            onChange={e => setEditName(e.target.value)}
+                            style={{ flex: '2 1 140px', fontSize: '.85rem' }}
+                            autoFocus
+                          />
+                          <input
+                            type="email"
+                            value={editEmail}
+                            onChange={e => setEditEmail(e.target.value)}
+                            placeholder="Email (opcional)"
+                            style={{ flex: '2 1 160px', fontSize: '.85rem' }}
+                          />
+                          <div style={{ display: 'flex', gap: 6 }}>
+                            <button className="btn btn-primary" style={{ fontSize: '.78rem', padding: '4px 10px' }} onClick={() => handleSaveEdit(m.id)}>
+                              Salvar
+                            </button>
+                            <button className="btn" style={{ fontSize: '.78rem', padding: '4px 10px' }} onClick={() => setEditingId(null)}>
+                              Cancelar
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontSize: '.85rem', fontWeight: 600 }}>{m.name}</div>
+                            {m.email && <div style={{ fontSize: '.73rem', color: 'var(--text-muted)' }}>{m.email}</div>}
+                          </div>
+                          <button
+                            title="Editar"
+                            onClick={() => startEdit(m)}
+                            style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: '.9rem', padding: '2px 6px' }}
+                          >
+                            ✏️
+                          </button>
+                          <button
+                            title="Remover"
+                            onClick={() => handleDeleteMember(m.id, m.name)}
+                            style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--danger)', fontSize: '.9rem', padding: '2px 6px' }}
+                          >
+                            ✕
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </>
+          )}
+
+          {/* ── Users tab ─────────────────────────────────────────────────── */}
+          {tab === 'users' && (
+            <>
+              <p style={{ fontSize: '.82rem', color: 'var(--text-muted)', marginTop: 0 }}>
+                Gerencie os usuários com conta no sistema e seus níveis de acesso.
+              </p>
+
+              {/* Current user badge */}
+              <div style={{ background: 'var(--surface2)', borderRadius: 10, padding: '10px 14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div>
+                  <div style={{ fontSize: '.82rem', fontWeight: 600 }}>{userEmail}</div>
+                  <div style={{ fontSize: '.72rem', color: 'var(--text-muted)' }}>Você</div>
+                </div>
+                <span style={{ fontSize: '.75rem', fontWeight: 700, color: ROLE_COLORS[role], background: 'var(--surface3)', padding: '3px 10px', borderRadius: 20 }}>
+                  {ROLE_LABELS[role]}
+                </span>
+              </div>
+
+              {loadingUsers ? (
+                <div style={{ fontSize: '.82rem', color: 'var(--text-muted)', padding: 12 }}>Carregando...</div>
+              ) : allProfiles.length === 0 ? (
+                <div style={{ fontSize: '.82rem', color: 'var(--text-muted)', padding: 12 }}>Nenhum usuário encontrado.</div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {allProfiles.map(u => (
+                    <div key={u.id} style={{ background: 'var(--surface2)', borderRadius: 10, padding: '10px 14px', display: 'flex', alignItems: 'center', gap: 12 }}>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: '.83rem', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {u.email || u.id}
+                          {u.id === userId && <span style={{ fontSize: '.68rem', color: 'var(--accent)', marginLeft: 6 }}>você</span>}
+                        </div>
+                      </div>
+                      <select
+                        value={u.role || 'viewer'}
+                        onChange={e => handleChangeRole(u.id, e.target.value)}
+                        disabled={savingRole === u.id || u.id === userId}
+                        style={{ width: 140, fontSize: '.8rem' }}
+                      >
+                        <option value="admin">Admin</option>
+                        <option value="editor">Editor</option>
+                        <option value="viewer">Visualizador</option>
+                      </select>
+                      {savingRole === u.id && <span style={{ fontSize: '.72rem', color: 'var(--text-muted)' }}>...</span>}
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Role legend */}
+              <div style={{ background: 'var(--surface2)', borderRadius: 10, padding: 12 }}>
+                <label className="field-label" style={{ marginBottom: 8 }}>Permissões por role</label>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6, fontSize: '.8rem' }}>
+                  {[
+                    { role: 'admin', desc: 'Controle total — criar, editar, excluir, restaurar da lixeira, gerenciar usuários' },
+                    { role: 'editor', desc: 'Criar e editar tarefas — não pode excluir' },
+                    { role: 'viewer', desc: 'Apenas visualizar e acompanhar' },
+                  ].map(({ role: r, desc }) => (
+                    <div key={r} style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+                      <span style={{ fontWeight: 700, color: ROLE_COLORS[r], minWidth: 80 }}>{ROLE_LABELS[r]}</span>
+                      <span style={{ color: 'var(--text-muted)' }}>{desc}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </>
+          )}
 
           {msg && <div style={{ textAlign: 'center', fontSize: '.82rem', color: 'var(--success)' }}>✓ {msg}</div>}
         </div>
