@@ -22,6 +22,7 @@ import ReportModal from './components/modals/ReportModal';
 import AdminPanel from './components/admin/AdminPanel';
 import TrashPanel from './components/admin/TrashPanel';
 import ChatView from './components/chat/ChatView';
+import MindMapView from './components/mindmap/MindMapView';
 
 export default function App() {
   const { user, loading } = useAuth();
@@ -129,10 +130,11 @@ function KanbanApp() {
       <ProjectBar />
 
       <div style={{ flex: 1, minHeight: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column', paddingBottom: isMobile && view === 'board' ? 64 : 0 }}>
-        {view === 'board' && <BoardView onOpenTask={id => setTaskModalId(id)} onNewTask={openNewTask} mobileStatus={mobileStatus} />}
-        {view === 'gantt' && <GanttView onOpenTask={id => setTaskModalId(id)} />}
-        {view === 'list' && <ListView onOpenTask={id => setTaskModalId(id)} onNewTask={openNewTask} />}
-        {view === 'chat' && <ChatView />}
+        {view === 'board'    && <BoardView onOpenTask={id => setTaskModalId(id)} onNewTask={openNewTask} mobileStatus={mobileStatus} />}
+        {view === 'gantt'    && <GanttView onOpenTask={id => setTaskModalId(id)} />}
+        {view === 'list'     && <ListView onOpenTask={id => setTaskModalId(id)} onNewTask={openNewTask} />}
+        {view === 'mindmap'  && <MindMapView onOpenTask={id => setTaskModalId(id)} />}
+        {view === 'chat'     && <ChatView />}
       </div>
 
       {isMobile && view === 'board' && (

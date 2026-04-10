@@ -48,6 +48,7 @@ export default function Header({ onOpenTemplates, onOpenReport, onOpenAdmin, onO
           <button className={`view-btn${view === 'board' ? ' active' : ''}`} onClick={() => setView('board')}>Board</button>
           <button className={`view-btn${view === 'list' ? ' active' : ''}`} onClick={() => setView('list')}>Lista</button>
           <button className={`view-btn${view === 'gantt' ? ' active' : ''}`} onClick={() => setView('gantt')}>Gantt</button>
+          <button className={`view-btn${view === 'mindmap' ? ' active' : ''}`} onClick={() => setView('mindmap')}>🗺 Mapa</button>
           <button className={`view-btn${view === 'chat' ? ' active' : ''}`} onClick={() => setView('chat')} style={{ position: 'relative' }}>
             💬 Chat
             {mentionCount > 0 && (
