@@ -84,6 +84,14 @@ export default function ReportModal({ onClose }) {
     const allTasks = [...activeTasks, ...doneTasks];
     if (!allTasks.length) return 'Nenhuma tarefa encontrada com os filtros selecionados.';
 
+    const fmtDate = (d) => d ? new Date(d + 'T00:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }) : null;
+    const sEmoji = (ts) => (TASK_STATUS_MAP[ts || 'pendente']?.label || '⚪').split(' ')[0];
+    const itemEmoji = (c) => {
+      if (subDone(c)) return '🟢';
+      if (c.status && TASK_STATUS_MAP[c.status]) return TASK_STATUS_MAP[c.status].label.split(' ')[0];
+      return null;
+    };
+
     const now = new Date();
     const dateStr = now.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
     const timeStr = now.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
@@ -92,48 +100,86 @@ export default function ReportModal({ onClose }) {
     lines.push('📋 *Relatório Kanban Pro*');
     lines.push(`${dateStr} - ${timeStr}`);
 
+    // Destaques — tarefas que precisam de atenção
+    const attention = allTasks.filter(t => ['correcao', 'atrasado', 'impedimento_interno', 'impedimento_externo'].includes(t.taskStatus));
+    if (attention.length) {
+      lines.push('');
+      attention.forEach(t => {
+        const dl = fmtDate(t.deadline);
+        const assignee = t.assignee ? ` · 👤 ${t.assignee}` : '';
+        const dlPart = dl ? ` · 📅 ${dl}` : '';
+        const statusName = TASK_STATUS_MAP[t.taskStatus]?.label?.split(' ').slice(1).join(' ') || '';
+        lines.push(`${sEmoji(t.taskStatus)} ${t.title}${assignee}${dlPart} · ${statusName}`);
+      });
+    }
+
     const allProjs = filterProj === '__all__'
       ? [...new Set(allTasks.map(t => t.project || 'Sem Projeto'))]
       : [filterProj];
 
     allProjs.forEach(pName => {
-      const active = activeTasks.filter(t => (t.project || 'Sem Projeto') === pName);
-      const done = doneTasks.filter(t => (t.project || 'Sem Projeto') === pName);
-      if (!active.length && !done.length) return;
+      const projTasks = allTasks.filter(t => (t.project || 'Sem Projeto') === pName);
+      if (!projTasks.length) return;
 
-      lines.push(''); lines.push(`📁 *${pName}*`); lines.push('');
+      lines.push('');
+      lines.push(`📁 ${pName}`);
+      lines.push('');
 
-      let i = 1;
-      active.forEach(t => {
-        const dl = t.deadline ? new Date(t.deadline + 'T00:00:00') : null;
-        const late = dl && dl < today;
-        const dlStr = dl ? dl.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' }) : 'Sem prazo';
-        const tsLabel = TASK_STATUS_MAP[t.taskStatus]?.label || '';
-        lines.push(`${i++}. *${t.title}*`);
-        lines.push(`   👤 Responsável: ${t.assignee || '—'}`);
-        lines.push(`   ${tsLabel || STATUS_LABEL[t.status] || t.status}${tsLabel ? ` · ${STATUS_LABEL[t.status] || t.status}` : ''}${late ? ' · ⚠️ Atrasado' : ''}`);
-        lines.push(`   📅 Prazo: ${dlStr}`);
-        (t.checklist || []).forEach(c => {
-          const clDl = c.deadline ? ` · 📅 ${new Date(c.deadline + 'T00:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}` : '';
-          const clA = c.assignee ? ` · 👤 ${c.assignee}` : '';
-          const clStatus = c.status ? ` · ${TASK_STATUS_MAP[c.status]?.label || c.status}` : '';
-          lines.push(`      ${subDone(c) ? '☑' : '☐'} ${c.text || c.label || '—'}${clA}${clDl}${clStatus}`);
-        });
-      });
+      let num = 1;
+      projTasks.forEach(t => {
+        const dl = fmtDate(t.deadline);
+        const checklist = t.checklist || [];
+        const hasChecklist = checklist.length > 0;
+        const isNotable = t.taskStatus && t.taskStatus !== 'pendente';
+        const hasUndone = checklist.some(c => !subDone(c));
 
-      done.forEach(t => {
-        lines.push(`${i++}. ${t.title} — ${t.assignee || '—'} ✅`);
-        (t.checklist || []).forEach(c => {
-          lines.push(`      ${c.done ? '☑' : '☐'} ${c.text || '—'}`);
-        });
+        if (!hasChecklist) {
+          // Sem checklist: linha única com emoji de status
+          const dlPart = dl ? ` · 📅 ${dl}` : '';
+          const assignee = t.assignee ? ` · 👤 ${t.assignee}` : '';
+          lines.push(`${sEmoji(t.taskStatus)}${dlPart} · ${t.title}${assignee}`);
+        } else {
+          // Com checklist: cabeçalho da tarefa
+          if (isNotable) {
+            const dlPart = dl ? ` · 📅 ${dl}` : '';
+            const assignee = t.assignee ? ` · 👤 ${t.assignee}` : '';
+            lines.push(`${sEmoji(t.taskStatus)}${dlPart} · ${t.title}${assignee}`);
+          } else if (hasUndone) {
+            lines.push(`${num++}. ${t.title}`);
+          } else {
+            lines.push(t.title);
+          }
+          // Itens do checklist
+          checklist.forEach(c => {
+            const cDl = fmtDate(c.deadline);
+            const cAssignee = c.assignee ? ` · 👤 ${c.assignee}` : '';
+            const cDlPart = cDl ? ` · 📅 ${cDl}` : '';
+            const text = c.text || c.label || '—';
+            const emoji = itemEmoji(c);
+            if (emoji) {
+              lines.push(`      ${emoji}${cDlPart} · ${text}${cAssignee}`);
+            } else {
+              lines.push(`      ☐ ${text}${cAssignee}${cDlPart} ${sEmoji(c.status || 'pendente')}`);
+            }
+          });
+        }
       });
     });
 
-    lines.push(''); lines.push('---');
-    lines.push(`📊 Total: ${allTasks.length} tarefa${allTasks.length !== 1 ? 's' : ''}`);
-    if (includeDone && doneTasks.length) lines.push(`✅ Concluídas: ${doneTasks.length}`);
-    const lateCount = activeTasks.filter(t => t.deadline && new Date(t.deadline + 'T00:00:00') < today).length;
-    if (lateCount) lines.push(`⚠️ Atrasadas: ${lateCount}`);
+    lines.push('');
+    lines.push('> Legenda:');
+    lines.push('⚪ Pendente');
+    lines.push('🟠 Solicitado');
+    lines.push('🔵 Andamento');
+    lines.push('🔴 Atrasado');
+    lines.push('');
+    lines.push('🟡 Correção necessária');
+    lines.push('🟢 Concluído');
+    lines.push('⚫ Cancelado');
+    lines.push('');
+    lines.push('🟧 Impedimento Interno');
+    lines.push('🟪 Impedimento Externo');
+
     return lines.join('\n');
   }
 
