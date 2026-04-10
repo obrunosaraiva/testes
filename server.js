@@ -98,6 +98,7 @@ const MIGRATION_SQL = `
   );
   CREATE INDEX IF NOT EXISTS idx_push_subs_user ON kanban_push_subscriptions (user_id);
   ALTER TABLE kanban_push_subscriptions DISABLE ROW LEVEL SECURITY;
+  ALTER TABLE kanban_tasks ADD COLUMN IF NOT EXISTS dependencies JSONB DEFAULT '[]'::jsonb;
 `;
 
 const PROJECT_REF = 'imsqnoxztoxlmiumdalu';

@@ -59,6 +59,88 @@ function newId() {
   return 't_' + Date.now() + '_' + Math.random().toString(36).slice(2, 5);
 }
 
+function clItemId() {
+  return 'cl_' + Date.now() + '_' + Math.random().toString(36).slice(2, 5);
+}
+
+// DFS cycle detection: returns true if adding depId as a dependency of taskId would create a cycle
+function hasCycle(taskId, depId, allTasks) {
+  const visited = new Set();
+  function dfs(id) {
+    if (id === taskId) return true;
+    if (visited.has(id)) return false;
+    visited.add(id);
+    const t = allTasks.find(x => x.id === id);
+    if (!t) return false;
+    return (t.dependencies || []).some(d => dfs(d));
+  }
+  return dfs(depId);
+}
+
+// Multi-select combobox for picking task dependencies
+function DepsCombobox({ value = [], onChange, currentTaskId, tasks }) {
+  const [search, setSearch] = useState('');
+  const [open, setOpen] = useState(false);
+
+  const selected = value.map(id => tasks.find(t => t.id === id)).filter(Boolean);
+  const filtered = tasks.filter(t =>
+    t.id !== currentTaskId &&
+    !value.includes(t.id) &&
+    (t.title.toLowerCase().includes(search.toLowerCase()) ||
+     (t.project || '').toLowerCase().includes(search.toLowerCase()))
+  ).slice(0, 12);
+
+  return (
+    <div style={{ position: 'relative' }}>
+      {selected.length > 0 && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 6 }}>
+          {selected.map(t => (
+            <span key={t.id} style={{
+              background: 'var(--surface3)', border: '1px solid var(--border)',
+              borderRadius: 20, padding: '2px 10px', fontSize: '.75rem',
+              display: 'inline-flex', alignItems: 'center', gap: 4,
+            }}>
+              {t.title.length > 28 ? t.title.slice(0, 28) + '…' : t.title}
+              <button
+                onMouseDown={e => { e.preventDefault(); onChange(value.filter(id => id !== t.id)); }}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: '.85rem', padding: 0, lineHeight: 1 }}
+              >×</button>
+            </span>
+          ))}
+        </div>
+      )}
+      <input
+        value={search}
+        onChange={e => { setSearch(e.target.value); setOpen(true); }}
+        onFocus={() => setOpen(true)}
+        onBlur={() => setTimeout(() => setOpen(false), 160)}
+        placeholder="Buscar tarefa..."
+        autoComplete="off"
+      />
+      {open && filtered.length > 0 && (
+        <div style={{
+          position: 'absolute', top: 'calc(100% + 2px)', left: 0, right: 0, zIndex: 200,
+          background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 8,
+          maxHeight: 200, overflowY: 'auto', boxShadow: '0 4px 12px rgba(0,0,0,.3)',
+        }}>
+          {filtered.map(t => (
+            <div
+              key={t.id}
+              onMouseDown={e => { e.preventDefault(); onChange([...value, t.id]); setSearch(''); setOpen(false); }}
+              style={{ padding: '8px 12px', cursor: 'pointer', borderBottom: '1px solid var(--border)', fontSize: '.82rem' }}
+              onMouseEnter={e => e.currentTarget.style.background = 'var(--surface2)'}
+              onMouseLeave={e => e.currentTarget.style.background = ''}
+            >
+              <span style={{ fontWeight: 500 }}>{t.title}</span>
+              {t.project && <span style={{ color: 'var(--text-muted)', fontSize: '.72rem', marginLeft: 8 }}>{t.project}</span>}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 const EMPTY_FORM = {
   title: '', description: '', project: '', status: 'backlog',
   assignee: '', urgency: '', startDate: '', deadline: '', deadlineTime: '',
@@ -66,6 +148,7 @@ const EMPTY_FORM = {
   ticketGoal: '', ticketsSold: '',
   links: [],
   taskStatus: 'pendente',
+  dependencies: [],
 };
 
 const TASK_STATUSES = [
@@ -124,8 +207,13 @@ export default function TaskModal({ taskId, defaultStatus, templateData, onClose
         ticketsSold: task.ticketsSold ?? '',
         links: task.links || [],
         taskStatus: task.taskStatus || 'pendente',
+        dependencies: task.dependencies || [],
       });
-      setChecklist(JSON.parse(JSON.stringify(task.checklist || [])));
+      setChecklist(JSON.parse(JSON.stringify(task.checklist || [])).map(item => ({
+        ...item,
+        id: item.id || clItemId(),
+        dependencies: item.dependencies || [],
+      })));
       setAttachments(JSON.parse(JSON.stringify(task.attachments || [])));
     } else {
       // New task — template takes priority, then draft, then blank
@@ -150,8 +238,13 @@ export default function TaskModal({ taskId, defaultStatus, templateData, onClose
           ticketsSold: src.ticketsSold ?? '',
           links: src.links || [],
           taskStatus: src.taskStatus || 'pendente',
+          dependencies: [],
         });
-        setChecklist(JSON.parse(JSON.stringify(src.checklist || [])));
+        setChecklist(JSON.parse(JSON.stringify(src.checklist || [])).map(item => ({
+          ...item,
+          id: clItemId(),
+          dependencies: [],
+        })));
         setAttachments([]);
       } else {
         setForm(f => ({
@@ -178,7 +271,7 @@ export default function TaskModal({ taskId, defaultStatus, templateData, onClose
     setAutosaveStatus('Modificado...');
     autosaveTimer.current = setTimeout(() => {
       if (!task) return;
-      const updated = { ...task, ...form, checklist, attachments };
+      const updated = { ...task, ...form, checklist: cleanChecklist(checklist), attachments };
       updateTask(updated);
       setAutosaveStatus('Salvo ✓');
       setTimeout(() => setAutosaveStatus(''), 2000);
@@ -197,6 +290,10 @@ export default function TaskModal({ taskId, defaultStatus, templateData, onClose
     setForm(f => ({ ...f, [key]: value }));
   }
 
+  function cleanChecklist(cl) {
+    return cl.map(({ _showDeps, ...item }) => item);
+  }
+
   async function handleSave() {
     if (!form.title.trim()) return alert('Digite um título!');
     if (isNew) {
@@ -204,7 +301,7 @@ export default function TaskModal({ taskId, defaultStatus, templateData, onClose
         id: newId(),
         createdAt: new Date().toISOString(),
         ...form,
-        checklist,
+        checklist: cleanChecklist(checklist),
         attachments,
       };
       const error = await addTask(newTask);
@@ -216,7 +313,7 @@ export default function TaskModal({ taskId, defaultStatus, templateData, onClose
       clearDraft();
     } else if (task) {
       clearTimeout(autosaveTimer.current);
-      updateTask({ ...task, ...form, checklist, attachments });
+      updateTask({ ...task, ...form, checklist: cleanChecklist(checklist), attachments });
     }
     onClose();
   }
@@ -236,7 +333,7 @@ export default function TaskModal({ taskId, defaultStatus, templateData, onClose
 
   // Subtask helpers
   function addCLItem() {
-    setChecklist(cl => [...cl, { text: '', status: 'pendente', done: false, assignee: '', deadline: '', time: '' }]);
+    setChecklist(cl => [...cl, { id: clItemId(), text: '', status: 'pendente', done: false, assignee: '', deadline: '', time: '', dependencies: [] }]);
   }
   function updateCL(i, patch) {
     setChecklist(cl => cl.map((item, idx) => {
@@ -357,6 +454,28 @@ export default function TaskModal({ taskId, defaultStatus, templateData, onClose
             <select value={form.taskStatus || 'pendente'} onChange={e => setField('taskStatus', e.target.value)}>
               {TASK_STATUSES.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
             </select>
+          </div>
+
+          {/* Row: Dependencies */}
+          <div>
+            <label className="field-label">🔗 Depende de (finish-to-start)</label>
+            <DepsCombobox
+              value={form.dependencies}
+              currentTaskId={task?.id}
+              tasks={tasks}
+              onChange={depIds => {
+                // cycle detection: reject any dep that would create a cycle
+                const safe = depIds.filter(depId => {
+                  if (!task?.id) return true;
+                  if (hasCycle(task.id, depId, tasks)) {
+                    alert(`Dependência circular detectada! A tarefa já depende (direta ou indiretamente) desta tarefa.`);
+                    return false;
+                  }
+                  return true;
+                });
+                setField('dependencies', safe);
+              }}
+            />
           </div>
 
           {/* Row: Assignee + Urgency */}
@@ -516,7 +635,27 @@ export default function TaskModal({ taskId, defaultStatus, templateData, onClose
                     <input type="date" value={item.deadline || ''} onChange={e => updateCL(i, { deadline: e.target.value })} />
                     <input type="time" value={item.time || ''} onChange={e => updateCL(i, { time: e.target.value })} title="Hora da entrega" />
                   </div>
-                  {isOverdue && <div style={{ fontSize: '.7rem', color: 'var(--danger)', marginTop: 4 }}>🔴 Atrasada!</div>}
+                  {/* Row 3: subtask dependencies */}
+                  {(item.dependencies?.length > 0 || item._showDeps) && (
+                    <div style={{ marginTop: 6 }}>
+                      <label style={{ fontSize: '.68rem', color: 'var(--text-muted)', display: 'block', marginBottom: 3 }}>🔗 Depende de</label>
+                      <DepsCombobox
+                        value={item.dependencies || []}
+                        currentTaskId={null}
+                        tasks={tasks}
+                        onChange={depIds => updateCL(i, { dependencies: depIds })}
+                      />
+                    </div>
+                  )}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 4 }}>
+                    {isOverdue && <span style={{ fontSize: '.7rem', color: 'var(--danger)' }}>🔴 Atrasada!</span>}
+                    {!item._showDeps && !item.dependencies?.length && (
+                      <button
+                        onClick={() => updateCL(i, { _showDeps: true })}
+                        style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '.68rem', color: 'var(--text-muted)', padding: 0 }}
+                      >🔗 + dependência</button>
+                    )}
+                  </div>
                 </div>
               );
             })}

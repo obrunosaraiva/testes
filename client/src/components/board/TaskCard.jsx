@@ -11,8 +11,13 @@ function formatDateShort(iso) {
   return d.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' });
 }
 
+function isDepDone(dep) {
+  if (!dep) return true; // missing dep — don't block
+  return dep.status === 'done' || dep.taskStatus === 'concluido' || dep.taskStatus === 'cancelado';
+}
+
 export default function TaskCard({ task, projIndex, onOpen }) {
-  const { softDeleteTask } = useKanban();
+  const { softDeleteTask, tasks } = useKanban();
   const { can, userId } = useRole();
   const [ConfirmDialog, confirm] = useConfirm();
   const cl = task.checklist || [];
@@ -21,6 +26,8 @@ export default function TaskCard({ task, projIndex, onOpen }) {
   const isOverdue = task.deadline && new Date(task.deadline + 'T23:59:59') < new Date() && task.status !== 'done';
   const lateChecklistItems = cl.filter(c => c.deadline && !c.done && new Date(c.deadline + 'T23:59:59') < new Date()).length;
   const attCount = (task.attachments || []).length;
+  const deps = task.dependencies || [];
+  const isBlocked = deps.length > 0 && deps.some(depId => !isDepDone(tasks.find(t => t.id === depId)));
 
   function handleDragStart(e) {
     e.dataTransfer.setData('text/plain', task.id);
@@ -45,11 +52,14 @@ export default function TaskCard({ task, projIndex, onOpen }) {
       onDragStart={handleDragStart}
       onClick={() => onOpen(task.id)}
       className={`card card-c-${task.cardColor || 'none'}`}
-      style={{ cursor: 'pointer' }}
+      style={{ cursor: 'pointer', borderLeft: isBlocked ? '3px solid #f97316' : undefined }}
     >
       <div className="card-color-bar" />
       <div className="card-top">
         <span className={`card-proj-tag ${pc}`}>{task.project}</span>
+        {isBlocked && (
+          <span style={{ fontSize: '.65rem', padding: '2px 6px', borderRadius: 10, background: 'rgba(249,115,22,.15)', color: '#f97316', fontWeight: 600 }}>🔒 Bloqueada</span>
+        )}
         {task.urgency && task.urgency !== 'medium' && (
           <span className={`urgency-badge urgency-${task.urgency}`}>{URGENCY_LABEL[task.urgency]}</span>
         )}
