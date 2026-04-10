@@ -636,14 +636,16 @@ export default function TaskModal({ taskId, defaultStatus, templateData, onClose
                     <input type="date" value={item.deadline || ''} onChange={e => updateCL(i, { deadline: e.target.value })} />
                     <input type="time" value={item.time || ''} onChange={e => updateCL(i, { time: e.target.value })} title="Hora da entrega" />
                   </div>
-                  {/* Row 3: subtask dependencies */}
+                  {/* Row 3: subtask dependencies — only other subtasks of THIS task */}
                   {(item.dependencies?.length > 0 || item._showDeps) && (
                     <div style={{ marginTop: 6 }}>
-                      <label style={{ fontSize: '.68rem', color: 'var(--text-muted)', display: 'block', marginBottom: 3 }}>🔗 Depende de</label>
+                      <label style={{ fontSize: '.68rem', color: 'var(--text-muted)', display: 'block', marginBottom: 3 }}>🔗 Depende de (subtarefa)</label>
                       <DepsCombobox
                         value={item.dependencies || []}
-                        currentTaskId={null}
-                        tasks={tasks}
+                        currentTaskId={item.id}
+                        tasks={checklist
+                          .filter(cl => cl.id && cl.id !== item.id)
+                          .map(cl => ({ id: cl.id, title: cl.text || '(sem título)', project: '' }))}
                         onChange={depIds => updateCL(i, { dependencies: depIds })}
                       />
                     </div>
