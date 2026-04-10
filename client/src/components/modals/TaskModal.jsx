@@ -644,7 +644,7 @@ export default function TaskModal({ taskId, defaultStatus, templateData, onClose
                         value={item.dependencies || []}
                         currentTaskId={item.id}
                         tasks={checklist
-                          .filter(cl => cl.id && cl.id !== item.id)
+                          .filter(cl => cl.id && cl.id !== item.id && !subDone(cl))
                           .map(cl => ({ id: cl.id, title: cl.text || '(sem título)', project: '' }))}
                         onChange={depIds => updateCL(i, { dependencies: depIds })}
                       />
