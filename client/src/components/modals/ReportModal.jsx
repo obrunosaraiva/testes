@@ -47,8 +47,7 @@ function calcEventStats(task) {
 }
 
 export default function ReportModal({ onClose }) {
-  const { tasks, projects } = useKanban();
-  const [tab, setTab] = useState('tasks');
+  const { tasks, projects } = useKanban();  const [tab, setTab] = useState('tasks');
   const [filterProj, setFilterProj] = useState('__all__');
   const [statuses, setStatuses] = useState({ backlog: true, todo: true, doing: true, paused: true, review: true });
   const [includeDone, setIncludeDone] = useState(false);
@@ -92,6 +91,18 @@ export default function ReportModal({ onClose }) {
       return null;
     };
 
+    // Helper: resolve task dependencies — returns pending blocking tasks
+    const taskById = (id) => tasks.find(t => t.id === id);
+    const isTaskDone = (t) => !t || t.status === 'done' || t.taskStatus === 'concluido' || t.taskStatus === 'cancelado';
+    const pendingTaskDeps = (t) => (t.dependencies || [])
+      .map(id => taskById(id))
+      .filter(dep => dep && !isTaskDone(dep));
+
+    // Helper: resolve checklist item dependencies — returns pending blocking items
+    const pendingCLDeps = (item, checklist) => (item.dependencies || [])
+      .map(id => checklist.find(c => c.id === id))
+      .filter(dep => dep && !subDone(dep));
+
     const now = new Date();
     const dateStr = now.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
     const timeStr = now.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
@@ -133,16 +144,15 @@ export default function ReportModal({ onClose }) {
         const isNotable = t.taskStatus && t.taskStatus !== 'pendente';
         const hasUndone = checklist.some(c => !subDone(c));
 
+        const dlPart = dl ? ` · 📅 ${dl}` : '';
+        const assignee = t.assignee ? ` · 👤 ${t.assignee}` : '';
+
         if (!hasChecklist) {
           // Sem checklist: linha única com emoji de status
-          const dlPart = dl ? ` · 📅 ${dl}` : '';
-          const assignee = t.assignee ? ` · 👤 ${t.assignee}` : '';
           lines.push(`${sEmoji(t.taskStatus)}${dlPart} · ${t.title}${assignee}`);
         } else {
           // Com checklist: cabeçalho da tarefa
           if (isNotable) {
-            const dlPart = dl ? ` · 📅 ${dl}` : '';
-            const assignee = t.assignee ? ` · 👤 ${t.assignee}` : '';
             lines.push(`${sEmoji(t.taskStatus)}${dlPart} · ${t.title}${assignee}`);
           } else if (hasUndone) {
             lines.push(`${num++}. ${t.title}`);
@@ -161,7 +171,20 @@ export default function ReportModal({ onClose }) {
             } else {
               lines.push(`      ☐ ${text}${cAssignee}${cDlPart} ${sEmoji(c.status || 'pendente')}`);
             }
+            // Subtask pending dependencies
+            const clBlocking = pendingCLDeps(c, checklist);
+            if (clBlocking.length) {
+              const names = clBlocking.map(b => `${b.text || '—'} (${sEmoji(b.status || 'pendente')} ${TASK_STATUS_MAP[b.status || 'pendente']?.label?.split(' ').slice(1).join(' ') || 'Pendente'})`).join(', ');
+              lines.push(`         🔗 Aguarda: ${names}`);
+            }
           });
+        }
+
+        // Task-level pending dependencies
+        const blocking = pendingTaskDeps(t);
+        if (blocking.length) {
+          const names = blocking.map(b => `${b.title} (${sEmoji(b.taskStatus)} ${TASK_STATUS_MAP[b.taskStatus || 'pendente']?.label?.split(' ').slice(1).join(' ') || 'Pendente'})`).join(', ');
+          lines.push(`   🔒 Aguarda: ${names}`);
         }
       });
     });
