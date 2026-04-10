@@ -175,7 +175,7 @@ export default function ReportModal({ onClose }) {
             const clBlocking = pendingCLDeps(c, checklist);
             if (clBlocking.length) {
               const names = clBlocking.map(b => `${b.text || '—'} (${sEmoji(b.status || 'pendente')} ${TASK_STATUS_MAP[b.status || 'pendente']?.label?.split(' ').slice(1).join(' ') || 'Pendente'})`).join(', ');
-              lines.push(`         🔗 Aguarda: ${names}`);
+              lines.push(`         🟧 Aguarda: ${names}`);
             }
           });
         }
@@ -184,7 +184,7 @@ export default function ReportModal({ onClose }) {
         const blocking = pendingTaskDeps(t);
         if (blocking.length) {
           const names = blocking.map(b => `${b.title} (${sEmoji(b.taskStatus)} ${TASK_STATUS_MAP[b.taskStatus || 'pendente']?.label?.split(' ').slice(1).join(' ') || 'Pendente'})`).join(', ');
-          lines.push(`   🔒 Aguarda: ${names}`);
+          lines.push(`   🟧 Aguarda: ${names}`);
         }
       });
     });
@@ -195,11 +195,12 @@ export default function ReportModal({ onClose }) {
     lines.push('🟠 Solicitado');
     lines.push('🔵 Andamento');
     lines.push('🔴 Atrasado');
-    lines.push('');
+    lines.push('🩷 Revisão');
     lines.push('🟡 Correção necessária');
     lines.push('🟢 Concluído');
     lines.push('⚫ Cancelado');
     lines.push('');
+    lines.push('🟧 Aguardando dependência');
     lines.push('🟧 Impedimento Interno');
     lines.push('🟪 Impedimento Externo');
 

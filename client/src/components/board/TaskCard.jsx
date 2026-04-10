@@ -58,7 +58,7 @@ export default function TaskCard({ task, projIndex, onOpen }) {
       <div className="card-top">
         <span className={`card-proj-tag ${pc}`}>{task.project}</span>
         {isBlocked && (
-          <span style={{ fontSize: '.65rem', padding: '2px 6px', borderRadius: 10, background: 'rgba(249,115,22,.15)', color: '#f97316', fontWeight: 600 }}>🔒 Bloqueada</span>
+          <span style={{ fontSize: '.65rem', padding: '2px 6px', borderRadius: 10, background: 'rgba(249,115,22,.15)', color: '#f97316', fontWeight: 600 }}>🟧 Bloqueada</span>
         )}
         {task.urgency && task.urgency !== 'medium' && (
           <span className={`urgency-badge urgency-${task.urgency}`}>{URGENCY_LABEL[task.urgency]}</span>
