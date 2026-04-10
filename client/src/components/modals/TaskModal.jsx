@@ -622,11 +622,12 @@ export default function TaskModal({ taskId, defaultStatus, templateData, onClose
                       value={item.status || 'pendente'}
                       onChange={e => updateCL(i, { status: e.target.value })}
                       style={{
-                        background: ts.color + '22', color: ts.color,
-                        border: `1px solid ${ts.color}55`, borderRadius: 20,
-                        padding: '2px 10px', fontSize: '.7rem', fontWeight: 700,
+                        background: 'transparent', color: ts.color,
+                        border: 'none', borderRadius: 6,
+                        padding: '0 4px', fontSize: '.72rem', fontWeight: 600,
                         outline: 'none', cursor: 'pointer',
                         width: 'auto', height: 'auto',
+                        appearance: 'none', WebkitAppearance: 'none',
                       }}
                     >
                       {TASK_STATUSES.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
@@ -705,11 +706,12 @@ export default function TaskModal({ taskId, defaultStatus, templateData, onClose
                               value={item.status || 'concluido'}
                               onChange={e => updateCL(i, { status: e.target.value })}
                               style={{
-                                background: ts.color + '22', color: ts.color,
-                                border: `1px solid ${ts.color}55`, borderRadius: 20,
-                                padding: '2px 10px', fontSize: '.7rem', fontWeight: 700,
+                                background: 'transparent', color: ts.color,
+                                border: 'none', borderRadius: 6,
+                                padding: '0 4px', fontSize: '.72rem', fontWeight: 600,
                                 outline: 'none', cursor: 'pointer',
                                 width: 'auto', height: 'auto', flexShrink: 0,
+                                appearance: 'none', WebkitAppearance: 'none',
                               }}
                             >
                               {TASK_STATUSES.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
