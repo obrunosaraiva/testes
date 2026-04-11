@@ -246,7 +246,33 @@ function SubtaskNode({ node, searchQ }) {
   );
 }
 
-// ── Main view ─────────────────────────────────────────────────────────────────
+// ── Fit-to-view ───────────────────────────────────────────────────────────────
+function computeFit(nodes, size) {
+  if (!nodes.length || size.w === 0 || size.h === 0) return { scale: 1, pan: { x: 0, y: 0 } };
+
+  const PAD = 64; // padding around content (content units)
+  let minX = -(R_PROJ + 12), maxX = R_PROJ + 12;
+  let minY = -(R_PROJ + 12), maxY = R_PROJ + 12;
+
+  nodes.forEach(n => {
+    const hw = n.type === 'task' ? NODE_W / 2 + 32 : 72;
+    const hh = n.type === 'task' ? 42                : 22;
+    minX = Math.min(minX, n.x - hw);
+    maxX = Math.max(maxX, n.x + hw);
+    minY = Math.min(minY, n.y - hh);
+    maxY = Math.max(maxY, n.y + hh);
+  });
+
+  const contentW = maxX - minX + PAD * 2;
+  const contentH = maxY - minY + PAD * 2;
+  const s = Math.min(size.w / contentW, size.h / contentH, 1);
+  const centerX = (minX + maxX) / 2;
+  const centerY = (minY + maxY) / 2;
+
+  return { scale: Math.max(0.2, s), pan: { x: -centerX * s, y: -centerY * s } };
+}
+
+
 export default function MindMapView({ onOpenTask }) {
   const { tasks, projects, activeProject, combinedProjects } = useKanban();
 
@@ -333,6 +359,20 @@ export default function MindMapView({ onOpenTask }) {
 
   const cx = size.w / 2, cy = size.h / 2;
 
+  // Auto fit-to-view when the project/filter changes or size becomes known
+  const fitKeyRef = useRef('');
+  useEffect(() => {
+    if (size.w === 0) return;
+    const key = filteredTasks.map(t => t.id).join(',') + size.w + size.h;
+    if (fitKeyRef.current === key) return;
+    fitKeyRef.current = key;
+    // Build a collapsed layout (level 1 only) to compute the fit
+    const { nodes: fitNodes } = buildLayout(filteredTasks, new Set());
+    const { scale: s, pan: p } = computeFit(fitNodes, size);
+    setScale(s);
+    setPan(p);
+  }, [filteredTasks, size]);
+
   // Pan handlers
   function onMouseDown(e) {
     // Only pan when clicking on SVG background (not on a node)
@@ -362,7 +402,11 @@ export default function MindMapView({ onOpenTask }) {
   }
   function expandAll()   { setExpanded(new Set(filteredTasks.map(t => t.id))); }
   function collapseAll() { setExpanded(new Set()); }
-  function centerView()  { setPan({ x: 0, y: 0 }); setScale(1); }
+  function centerView()  {
+    const { nodes: fitNodes } = buildLayout(filteredTasks, new Set());
+    const { scale: s, pan: p } = computeFit(fitNodes, size);
+    setScale(s); setPan(p);
+  }
 
   const activeFilters = [
     filters.statuses.length > 0,
