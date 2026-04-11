@@ -186,7 +186,6 @@ const MIGRATION_SQL = `
   CREATE INDEX IF NOT EXISTS idx_kanban_messages_channel
     ON kanban_messages (channel_type, channel_id, created_at);
   ALTER TABLE kanban_messages ADD COLUMN IF NOT EXISTS edited BOOLEAN DEFAULT false;
-  ALTER TABLE kanban_messages DISABLE ROW LEVEL SECURITY;
   DO $$ BEGIN
     ALTER PUBLICATION supabase_realtime ADD TABLE kanban_messages;
   EXCEPTION WHEN duplicate_object THEN NULL;
@@ -200,8 +199,61 @@ const MIGRATION_SQL = `
     UNIQUE(endpoint)
   );
   CREATE INDEX IF NOT EXISTS idx_push_subs_user ON kanban_push_subscriptions (user_id);
-  ALTER TABLE kanban_push_subscriptions DISABLE ROW LEVEL SECURITY;
   ALTER TABLE kanban_tasks ADD COLUMN IF NOT EXISTS dependencies JSONB DEFAULT '[]'::jsonb;
+
+  -- ── Row Level Security: apenas usuários autenticados acessam dados ──
+  -- O service role (servidor) ignora RLS automaticamente — sem impacto no backend.
+  ALTER TABLE IF EXISTS profiles                  ENABLE ROW LEVEL SECURITY;
+  ALTER TABLE IF EXISTS kanban_tasks              ENABLE ROW LEVEL SECURITY;
+  ALTER TABLE IF EXISTS kanban_projects           ENABLE ROW LEVEL SECURITY;
+  ALTER TABLE IF EXISTS kanban_cost_centers       ENABLE ROW LEVEL SECURITY;
+  ALTER TABLE IF EXISTS kanban_templates          ENABLE ROW LEVEL SECURITY;
+  ALTER TABLE IF EXISTS kanban_resources          ENABLE ROW LEVEL SECURITY;
+  ALTER TABLE IF EXISTS kanban_trash              ENABLE ROW LEVEL SECURITY;
+  ALTER TABLE IF EXISTS kanban_messages           ENABLE ROW LEVEL SECURITY;
+  ALTER TABLE IF EXISTS kanban_push_subscriptions ENABLE ROW LEVEL SECURITY;
+
+  -- Remove todas as policies existentes nessas tabelas antes de recriar
+  DO $pol$ DECLARE r RECORD; BEGIN
+    FOR r IN
+      SELECT tablename, policyname FROM pg_policies
+      WHERE tablename IN (
+        'profiles','kanban_tasks','kanban_projects','kanban_cost_centers',
+        'kanban_templates','kanban_resources','kanban_trash',
+        'kanban_messages','kanban_push_subscriptions'
+      )
+    LOOP
+      EXECUTE format('DROP POLICY IF EXISTS %I ON %I', r.policyname, r.tablename);
+    END LOOP;
+  END $pol$;
+
+  -- Tabelas compartilhadas: qualquer usuário autenticado pode ler/escrever
+  CREATE POLICY "auth_all" ON kanban_tasks
+    FOR ALL TO authenticated USING (true) WITH CHECK (true);
+  CREATE POLICY "auth_all" ON kanban_projects
+    FOR ALL TO authenticated USING (true) WITH CHECK (true);
+  CREATE POLICY "auth_all" ON kanban_cost_centers
+    FOR ALL TO authenticated USING (true) WITH CHECK (true);
+  CREATE POLICY "auth_all" ON kanban_templates
+    FOR ALL TO authenticated USING (true) WITH CHECK (true);
+  CREATE POLICY "auth_all" ON kanban_resources
+    FOR ALL TO authenticated USING (true) WITH CHECK (true);
+  CREATE POLICY "auth_all" ON kanban_trash
+    FOR ALL TO authenticated USING (true) WITH CHECK (true);
+  CREATE POLICY "auth_all" ON kanban_messages
+    FOR ALL TO authenticated USING (true) WITH CHECK (true);
+
+  -- Profiles: leitura por todos autenticados; escrita somente no próprio perfil
+  CREATE POLICY "auth_select" ON profiles
+    FOR SELECT TO authenticated USING (true);
+  CREATE POLICY "auth_own" ON profiles
+    FOR ALL TO authenticated
+    USING (auth.uid()::text = id) WITH CHECK (auth.uid()::text = id);
+
+  -- Push subscriptions: cada usuário gerencia apenas as próprias
+  CREATE POLICY "auth_own" ON kanban_push_subscriptions
+    FOR ALL TO authenticated
+    USING (auth.uid()::text = user_id) WITH CHECK (auth.uid()::text = user_id);
 `;
 
 const PROJECT_REF = process.env.SUPABASE_PROJECT_REF
