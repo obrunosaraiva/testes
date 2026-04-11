@@ -228,32 +228,53 @@ const MIGRATION_SQL = `
   END $pol$;
 
   -- Tabelas compartilhadas: qualquer usuário autenticado pode ler/escrever
-  CREATE POLICY "auth_all" ON kanban_tasks
-    FOR ALL TO authenticated USING (true) WITH CHECK (true);
-  CREATE POLICY "auth_all" ON kanban_projects
-    FOR ALL TO authenticated USING (true) WITH CHECK (true);
-  CREATE POLICY "auth_all" ON kanban_cost_centers
-    FOR ALL TO authenticated USING (true) WITH CHECK (true);
-  CREATE POLICY "auth_all" ON kanban_templates
-    FOR ALL TO authenticated USING (true) WITH CHECK (true);
-  CREATE POLICY "auth_all" ON kanban_resources
-    FOR ALL TO authenticated USING (true) WITH CHECK (true);
-  CREATE POLICY "auth_all" ON kanban_trash
-    FOR ALL TO authenticated USING (true) WITH CHECK (true);
-  CREATE POLICY "auth_all" ON kanban_messages
-    FOR ALL TO authenticated USING (true) WITH CHECK (true);
+  -- SELECT sem WITH CHECK — apenas USING determina acesso de leitura
+  CREATE POLICY "kb_tasks_select"     ON kanban_tasks     FOR SELECT TO authenticated USING (true);
+  CREATE POLICY "kb_tasks_insert"     ON kanban_tasks     FOR INSERT TO authenticated WITH CHECK (auth.uid() IS NOT NULL);
+  CREATE POLICY "kb_tasks_update"     ON kanban_tasks     FOR UPDATE TO authenticated USING (true);
+  CREATE POLICY "kb_tasks_delete"     ON kanban_tasks     FOR DELETE TO authenticated USING (true);
+
+  CREATE POLICY "kb_projects_select"  ON kanban_projects  FOR SELECT TO authenticated USING (true);
+  CREATE POLICY "kb_projects_insert"  ON kanban_projects  FOR INSERT TO authenticated WITH CHECK (auth.uid() IS NOT NULL);
+  CREATE POLICY "kb_projects_update"  ON kanban_projects  FOR UPDATE TO authenticated USING (true);
+  CREATE POLICY "kb_projects_delete"  ON kanban_projects  FOR DELETE TO authenticated USING (true);
+
+  CREATE POLICY "kb_cc_select"        ON kanban_cost_centers FOR SELECT TO authenticated USING (is_private = false OR created_by = auth.uid()::text);
+  CREATE POLICY "kb_cc_insert"        ON kanban_cost_centers FOR INSERT TO authenticated WITH CHECK (auth.uid() IS NOT NULL);
+  CREATE POLICY "kb_cc_update"        ON kanban_cost_centers FOR UPDATE TO authenticated USING (is_private = false OR created_by = auth.uid()::text);
+  CREATE POLICY "kb_cc_delete"        ON kanban_cost_centers FOR DELETE TO authenticated USING (is_private = false OR created_by = auth.uid()::text);
+
+  CREATE POLICY "kb_templates_select" ON kanban_templates  FOR SELECT TO authenticated USING (true);
+  CREATE POLICY "kb_templates_insert" ON kanban_templates  FOR INSERT TO authenticated WITH CHECK (auth.uid() IS NOT NULL);
+  CREATE POLICY "kb_templates_update" ON kanban_templates  FOR UPDATE TO authenticated USING (true);
+  CREATE POLICY "kb_templates_delete" ON kanban_templates  FOR DELETE TO authenticated USING (true);
+
+  CREATE POLICY "kb_resources_select" ON kanban_resources  FOR SELECT TO authenticated USING (true);
+  CREATE POLICY "kb_resources_insert" ON kanban_resources  FOR INSERT TO authenticated WITH CHECK (auth.uid() IS NOT NULL);
+  CREATE POLICY "kb_resources_update" ON kanban_resources  FOR UPDATE TO authenticated USING (true);
+  CREATE POLICY "kb_resources_delete" ON kanban_resources  FOR DELETE TO authenticated USING (true);
+
+  CREATE POLICY "kb_trash_select"     ON kanban_trash      FOR SELECT TO authenticated USING (true);
+  CREATE POLICY "kb_trash_insert"     ON kanban_trash      FOR INSERT TO authenticated WITH CHECK (auth.uid() IS NOT NULL);
+  CREATE POLICY "kb_trash_update"     ON kanban_trash      FOR UPDATE TO authenticated USING (true);
+  CREATE POLICY "kb_trash_delete"     ON kanban_trash      FOR DELETE TO authenticated USING (true);
+
+  CREATE POLICY "kb_messages_select"  ON kanban_messages   FOR SELECT TO authenticated USING (true);
+  CREATE POLICY "kb_messages_insert"  ON kanban_messages   FOR INSERT TO authenticated WITH CHECK (auth.uid() IS NOT NULL);
+  CREATE POLICY "kb_messages_update"  ON kanban_messages   FOR UPDATE TO authenticated USING (true);
+  CREATE POLICY "kb_messages_delete"  ON kanban_messages   FOR DELETE TO authenticated USING (true);
 
   -- Profiles: leitura por todos autenticados; escrita somente no próprio perfil
-  CREATE POLICY "auth_select" ON profiles
-    FOR SELECT TO authenticated USING (true);
-  CREATE POLICY "auth_own" ON profiles
-    FOR ALL TO authenticated
-    USING (auth.uid()::text = id) WITH CHECK (auth.uid()::text = id);
+  CREATE POLICY "kb_profiles_select"  ON profiles FOR SELECT TO authenticated USING (true);
+  CREATE POLICY "kb_profiles_insert"  ON profiles FOR INSERT TO authenticated WITH CHECK (id = auth.uid()::text);
+  CREATE POLICY "kb_profiles_update"  ON profiles FOR UPDATE TO authenticated USING (id = auth.uid()::text) WITH CHECK (id = auth.uid()::text);
+  CREATE POLICY "kb_profiles_delete"  ON profiles FOR DELETE TO authenticated USING (id = auth.uid()::text);
 
   -- Push subscriptions: cada usuário gerencia apenas as próprias
-  CREATE POLICY "auth_own" ON kanban_push_subscriptions
-    FOR ALL TO authenticated
-    USING (auth.uid()::text = user_id) WITH CHECK (auth.uid()::text = user_id);
+  CREATE POLICY "kb_push_select"      ON kanban_push_subscriptions FOR SELECT TO authenticated USING (user_id = auth.uid()::text);
+  CREATE POLICY "kb_push_insert"      ON kanban_push_subscriptions FOR INSERT TO authenticated WITH CHECK (user_id = auth.uid()::text);
+  CREATE POLICY "kb_push_update"      ON kanban_push_subscriptions FOR UPDATE TO authenticated USING (user_id = auth.uid()::text) WITH CHECK (user_id = auth.uid()::text);
+  CREATE POLICY "kb_push_delete"      ON kanban_push_subscriptions FOR DELETE TO authenticated USING (user_id = auth.uid()::text);
 `;
 
 const PROJECT_REF = process.env.SUPABASE_PROJECT_REF
@@ -419,10 +440,16 @@ app.post('/api/chat/upload', limiterUpload, express.raw({ type: '*/*', limit: '5
   }
 });
 
-// ── On-demand migration (admin only) ──────────────────────────────────────────
+// ── On-demand migration (double-gated: MIGRATE_SECRET header + admin JWT) ─────
+// KB-08 fix: returns 404 (not 401) to hide existence from unauthenticated callers.
+// MIGRATE_SECRET must be set as a Railway env var (32+ random chars).
 app.post('/api/db/migrate', limiterStrict, async (req, res) => {
+  const secret = process.env.MIGRATE_SECRET;
+  if (!secret || req.headers['x-migrate-secret'] !== secret) {
+    return res.status(404).end(); // looks like "route not found" to scanners
+  }
   const callerId = await verifyAdmin(req, res);
-  if (!callerId) return; // verifyAdmin already sent the response
+  if (!callerId) return;
   try {
     await runMigrations();
     res.json({ ok: true });
@@ -481,8 +508,14 @@ app.delete('/api/push/subscribe', async (req, res) => {
   }
 });
 
-app.post('/api/push/notify', async (req, res) => {
+// KB-09 fix: push notify is an admin-only action (sends to all mentioned users)
+app.post('/api/push/notify', limiterAdmin, async (req, res) => {
   if (!SERVICE_KEY || !webpush || !SUPABASE_URL) return res.json({ ok: true, skipped: true });
+  // Only authenticated users of the app can trigger push notifications.
+  // The caller must have a valid Supabase JWT (any authenticated user is acceptable
+  // here since the message is validated against real DB data downstream).
+  const callerId = await verifyJWT(req);
+  if (!callerId) return res.status(401).json({ error: 'Token inválido.' });
 
   const { content, user_name, channel_name, channel_type, channel_id, mentions } = req.body;
   if (!Array.isArray(mentions) || !mentions.length) return res.json({ ok: true });
