@@ -3,5 +3,14 @@ data/
 node_modules/
 client/node_modules/
 client/dist/
+
+# Environment files — never commit real credentials
+.env
+.env.local
+.env.*.local
 client/.env
+client/.env.local
+client/.env.*.local
+*.pem
+*.key
 

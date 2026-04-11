@@ -1,28 +1,118 @@
+// ╔══════════════════════════════════════════════════════════════════════╗
+// ║  🛡️  Ximinoze protege este app.                                      ║
+// ║                                                                       ║
+// ║  Se você está tentando explorar, escanear ou invadir este sistema:   ║
+// ║  cada tentativa está sendo registrada com IP, horário e rota.        ║
+// ║  Acesso não autorizado é crime — Art. 154-A do Código Penal (BR)     ║
+// ║  e Computer Fraud and Abuse Act (US).                                ║
+// ║                                                                       ║
+// ║  Ximinoze is watching. Turn back now.                                ║
+// ╚══════════════════════════════════════════════════════════════════════╝
+
 const express = require('express');
-const path = require('path');
-const app = express();
-const PORT = process.env.PORT || 3000;
+const path    = require('path');
+const app     = express();
+const PORT    = process.env.PORT || 3000;
 
-app.use(express.json());
+// ── Security packages (optional — loaded gracefully if present) ────────────────
+let helmet, rateLimit;
+try { helmet    = require('helmet');            } catch (_) { console.warn('[Security] helmet not installed — run npm install'); }
+try { rateLimit = require('express-rate-limit'); } catch (_) { console.warn('[Security] express-rate-limit not installed — run npm install'); }
 
-const SUPABASE_URL = process.env.SUPABASE_URL || 'https://imsqnoxztoxlmiumdalu.supabase.co';
-const ANON_KEY = process.env.SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imltc3Fub3h6dG94bG1pdW1kYWx1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ4OTk5NTEsImV4cCI6MjA5MDQ3NTk1MX0.CaFrcNJokpvdRD9v9AIp3rlDd8wXIrW6k1urepMDnqw';
-const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
+// ── Security headers via helmet ────────────────────────────────────────────────
+if (helmet) {
+  app.use(helmet({
+    contentSecurityPolicy: false, // React app manages its own CSP
+    crossOriginEmbedderPolicy: false,
+  }));
+}
+
+// Custom header: attacker-facing signature on every response
+app.use((req, res, next) => {
+  res.setHeader('X-Protected-By', 'Ximinoze');
+  next();
+});
+
+// ── Rate limiters ──────────────────────────────────────────────────────────────
+function makeRateLimit(windowMs, max, message) {
+  if (!rateLimit) return (req, res, next) => next();
+  return rateLimit({ windowMs, max, standardHeaders: true, legacyHeaders: false,
+    handler: (req, res) => res.status(429).json({ error: message }),
+  });
+}
+const limiterGeneral  = makeRateLimit(15 * 60 * 1000, 300,  'Muitas requisições. Tente novamente em instantes.');
+const limiterStrict   = makeRateLimit(15 * 60 * 1000,  10,  'Limite de tentativas atingido. Aguarde 15 minutos.');
+const limiterUpload   = makeRateLimit(60  * 60 * 1000,  30, 'Limite de uploads atingido. Aguarde 1 hora.');
+const limiterAdmin    = makeRateLimit(15 * 60 * 1000,  50,  'Muitas requisições admin. Tente novamente em instantes.');
+
+app.use('/api/', limiterGeneral);
+
+// ── Honeypot: trap common attack/scan paths ────────────────────────────────────
+const HONEYPOT = [
+  '/wp-admin', '/wp-login', '/phpmyadmin', '/phpinfo', '/.env',
+  '/config', '/.git', '/.ssh', '/etc', '/admin.php', '/shell',
+  '/backup', '/api/debug', '/api/env', '/api/config',
+];
+app.use((req, res, next) => {
+  const p = req.path.toLowerCase();
+  if (HONEYPOT.some(h => p === h || p.startsWith(h + '/'))) {
+    console.warn(`[SECURITY] Honeypot hit: ${req.method} ${req.path} | IP: ${req.ip} | UA: ${(req.headers['user-agent'] || '').slice(0, 80)}`);
+    return res.status(404).json({
+      error: 'Not found.',
+      notice: '🛡️ Ximinoze protege este app. Esta tentativa foi registrada.',
+    });
+  }
+  next();
+});
+
+app.use(express.json({ limit: '1mb' }));
+
+// ── Required env vars ──────────────────────────────────────────────────────────
+// Credentials must come ONLY from environment variables — never hardcoded.
+// Set these in Railway (or .env locally):
+//   SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY
+//   VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY
+const SUPABASE_URL = process.env.SUPABASE_URL;
+const ANON_KEY     = process.env.SUPABASE_ANON_KEY;
+const SERVICE_KEY  = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+if (!SUPABASE_URL || !ANON_KEY) {
+  console.error('[CRITICAL] SUPABASE_URL e SUPABASE_ANON_KEY são obrigatórias. Defina as variáveis de ambiente.');
+}
+
+const VAPID_PUBLIC_KEY  = process.env.VAPID_PUBLIC_KEY;
+const VAPID_PRIVATE_KEY = process.env.VAPID_PRIVATE_KEY;
 
 // ── Web Push (VAPID) ───────────────────────────────────────────────────────────
-const VAPID_PUBLIC_KEY = process.env.VAPID_PUBLIC_KEY || 'BDDSPNsZfA0VrQAGoi8pHOQBVyRX46a1_nhDwKj8MZ3w7SMpO6cNFi7Iw3tI6rCi2AKT_uiHCulCIfJ1QEa-GIY';
-const VAPID_PRIVATE_KEY = process.env.VAPID_PRIVATE_KEY || 'CBjdCU-L0y4mAtvzlCx358hQWAaKiDnV7WaXBuFPs68';
 let webpush;
 try {
-  webpush = require('web-push');
-  webpush.setVapidDetails('mailto:kanbanpro@app.com', VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY);
+  if (VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY) {
+    webpush = require('web-push');
+    webpush.setVapidDetails('mailto:kanbanpro@app.com', VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY);
+  } else {
+    console.warn('[Push] VAPID_PUBLIC_KEY / VAPID_PRIVATE_KEY não configuradas — push desativado.');
+  }
 } catch (e) {
-  console.warn('[Push] web-push not available:', e.message);
+  console.warn('[Push] web-push não disponível:', e.message);
+}
+
+// ── Input validation helpers ───────────────────────────────────────────────────
+const UUID_RE  = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const EMAIL_RE = /^[^\s@]{1,64}@[^\s@]{1,255}\.[^\s@]{2,}$/;
+const ALLOWED_ROLES = ['admin', 'editor', 'viewer'];
+
+function isValidUUID(v)  { return typeof v === 'string' && UUID_RE.test(v); }
+function isValidEmail(v) { return typeof v === 'string' && EMAIL_RE.test(v.trim()) && v.length <= 320; }
+function isValidRole(v)  { return ALLOWED_ROLES.includes(v); }
+function safeStr(v, max) { return typeof v === 'string' ? v.slice(0, max) : ''; }
+
+// Generic internal error — never leak exception details to clients
+function internalErr(res, e) {
+  console.error('[API Error]', e?.message || e);
+  return res.status(500).json({ error: 'Erro interno do servidor.' });
 }
 
 // ── Startup DB migration ──────────────────────────────────────────────────────
-// Creates all required tables if they don't exist.
-// Uses DATABASE_URL (direct Postgres) or SUPABASE_ACCESS_TOKEN (Management API).
 const MIGRATION_SQL = `
   CREATE TABLE IF NOT EXISTS kanban_cost_centers (
     key TEXT PRIMARY KEY,
@@ -101,9 +191,9 @@ const MIGRATION_SQL = `
   ALTER TABLE kanban_tasks ADD COLUMN IF NOT EXISTS dependencies JSONB DEFAULT '[]'::jsonb;
 `;
 
-const PROJECT_REF = 'imsqnoxztoxlmiumdalu';
+const PROJECT_REF = process.env.SUPABASE_PROJECT_REF
+  || (SUPABASE_URL ? SUPABASE_URL.split('//')[1]?.split('.')[0] : '');
 
-// Run migration via a single pg Client (returns the client host on success, throws on failure)
 function tryPgClient(clientOpts, sql) {
   return new Promise((resolve, reject) => {
     const { Client } = require('pg');
@@ -117,7 +207,6 @@ function tryPgClient(clientOpts, sql) {
 }
 
 async function runMigrations(sql = MIGRATION_SQL) {
-  // Strategy 1: Direct Postgres via DATABASE_URL env var
   if (process.env.DATABASE_URL) {
     try {
       await tryPgClient({ connectionString: process.env.DATABASE_URL, ssl: { rejectUnauthorized: false } }, sql);
@@ -128,9 +217,8 @@ async function runMigrations(sql = MIGRATION_SQL) {
     }
   }
 
-  // Strategy 2: Supabase Management API (requires SUPABASE_ACCESS_TOKEN)
   const accessToken = process.env.SUPABASE_ACCESS_TOKEN;
-  if (accessToken) {
+  if (accessToken && PROJECT_REF) {
     try {
       const res = await fetch(`https://api.supabase.com/v1/projects/${PROJECT_REF}/database/query`, {
         method: 'POST',
@@ -138,14 +226,13 @@ async function runMigrations(sql = MIGRATION_SQL) {
         body: JSON.stringify({ query: sql }),
       });
       if (res.ok) { console.log('[DB] Migration via Management API OK'); return; }
-      console.warn('[DB] Management API:', res.status, await res.text());
+      console.warn('[DB] Management API:', res.status);
     } catch (e) {
       console.warn('[DB] Management API failed:', e.message);
     }
   }
 
-  // Strategy 3: Supavisor pooler — try all regions IN PARALLEL (fastest region wins)
-  if (SERVICE_KEY) {
+  if (SERVICE_KEY && PROJECT_REF) {
     const regions = ['sa-east-1', 'us-east-1', 'us-east-2', 'us-west-2',
       'eu-west-1', 'eu-central-1', 'ap-southeast-1', 'ap-southeast-2',
       'ap-northeast-1', 'ap-south-1', 'eu-north-1', 'ca-central-1'];
@@ -162,7 +249,7 @@ async function runMigrations(sql = MIGRATION_SQL) {
       const region = await Promise.any(attempts);
       console.log(`[DB] Migration via Supavisor (${region}) OK`);
       return;
-    } catch (agg) {
+    } catch (_) {
       console.warn('[DB] Supavisor: all regions failed');
     }
   }
@@ -174,7 +261,7 @@ runMigrations();
 
 // ── Chat storage bucket setup ─────────────────────────────────────────────────
 async function ensureChatBucket() {
-  if (!SERVICE_KEY) return false;
+  if (!SERVICE_KEY || !SUPABASE_URL) return false;
   try {
     const res = await fetch(`${SUPABASE_URL}/storage/v1/bucket`, {
       method: 'POST',
@@ -184,7 +271,7 @@ async function ensureChatBucket() {
     const body = await res.json().catch(() => ({}));
     if (res.ok) console.log('[Chat] Storage bucket chat-files created.');
     else if (body.error === 'Duplicate') console.log('[Chat] Bucket chat-files already exists.');
-    else console.warn('[Chat] Bucket creation response:', res.status, body);
+    else console.warn('[Chat] Bucket creation response:', res.status);
     return true;
   } catch (e) {
     console.warn('[Chat] Bucket setup error:', e.message);
@@ -193,11 +280,53 @@ async function ensureChatBucket() {
 }
 ensureChatBucket();
 
-// ── Chat file upload (proxy using service key) ────────────────────────────────
-app.post('/api/chat/upload', express.raw({ type: '*/*', limit: '100mb' }), async (req, res) => {
-  if (!SERVICE_KEY) return res.status(503).json({ error: 'SUPABASE_SERVICE_ROLE_KEY não configurada no servidor.' });
+// ── JWT verification ───────────────────────────────────────────────────────────
+async function verifyJWT(req) {
+  if (!SUPABASE_URL || !ANON_KEY) return null;
+  const token = req.headers.authorization?.replace('Bearer ', '').trim();
+  if (!token) return null;
+  try {
+    const r = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
+      headers: { Authorization: `Bearer ${token}`, apikey: ANON_KEY },
+    });
+    if (!r.ok) return null;
+    const u = await r.json();
+    return u?.id || null;
+  } catch (_) {
+    return null;
+  }
+}
+
+async function verifyAdmin(req, res) {
+  if (!SERVICE_KEY || !SUPABASE_URL) {
+    res.status(503).json({ error: 'Servidor não configurado.' });
+    return null;
+  }
+  const userId = await verifyJWT(req);
+  if (!userId) { res.status(401).json({ error: 'Token inválido ou ausente.' }); return null; }
+
+  const profileRes = await fetch(
+    `${SUPABASE_URL}/rest/v1/profiles?id=eq.${userId}&select=role`,
+    { headers: { Authorization: `Bearer ${SERVICE_KEY}`, apikey: SERVICE_KEY } }
+  );
+  const profiles = await profileRes.json().catch(() => []);
+  if (!profiles?.[0] || profiles[0].role !== 'admin') {
+    res.status(403).json({ error: 'Acesso negado.' });
+    return null;
+  }
+  return userId;
+}
+
+// ── Chat file upload (authenticated) ──────────────────────────────────────────
+app.post('/api/chat/upload', limiterUpload, express.raw({ type: '*/*', limit: '50mb' }), async (req, res) => {
+  if (!SERVICE_KEY || !SUPABASE_URL) return res.status(503).json({ error: 'Servidor não configurado.' });
+
+  // Require authenticated user
+  const userId = await verifyJWT(req);
+  if (!userId) return res.status(401).json({ error: 'Autenticação necessária para upload.' });
+
   const raw = req.headers['x-filename'] || `file_${Date.now()}`;
-  const filename = decodeURIComponent(raw).replace(/[^a-zA-Z0-9._\- ]/g, '_');
+  const filename = decodeURIComponent(raw).replace(/[^a-zA-Z0-9._\-]/g, '_').slice(0, 120);
   const contentType = req.headers['x-content-type'] || 'application/octet-stream';
   const storagePath = `chat/${Date.now()}_${filename}`;
 
@@ -209,98 +338,99 @@ app.post('/api/chat/upload', express.raw({ type: '*/*', limit: '100mb' }), async
     });
   }
 
-  let uploadRes = await doUpload();
-  if (!uploadRes.ok) {
-    const errBody = await uploadRes.json().catch(() => ({}));
-    // Bucket not found — create it and retry once
-    if (uploadRes.status === 400 && errBody.error === 'Bucket not found') {
-      await ensureChatBucket();
-      uploadRes = await doUpload();
-    }
+  try {
+    let uploadRes = await doUpload();
     if (!uploadRes.ok) {
-      const err = await uploadRes.json().catch(() => ({}));
-      return res.status(400).json({ error: err.error || err.message || 'Upload failed' });
+      const errBody = await uploadRes.json().catch(() => ({}));
+      if (uploadRes.status === 400 && errBody.error === 'Bucket not found') {
+        await ensureChatBucket();
+        uploadRes = await doUpload();
+      }
+      if (!uploadRes.ok) return res.status(400).json({ error: 'Falha no upload.' });
     }
+    res.json({ url: `${SUPABASE_URL}/storage/v1/object/public/chat-files/${storagePath}`, name: filename, type: contentType });
+  } catch (e) {
+    internalErr(res, e);
   }
-  res.json({ url: `${SUPABASE_URL}/storage/v1/object/public/chat-files/${storagePath}`, name: filename, type: contentType });
 });
 
-// On-demand migration endpoint — lets the client trigger DB setup if table is missing
-app.post('/api/db/migrate', async (req, res) => {
+// ── On-demand migration (admin only) ──────────────────────────────────────────
+app.post('/api/db/migrate', limiterStrict, async (req, res) => {
+  const callerId = await verifyAdmin(req, res);
+  if (!callerId) return; // verifyAdmin already sent the response
   try {
     await runMigrations();
     res.json({ ok: true });
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    internalErr(res, e);
   }
 });
 
 // ── Push Notification endpoints ────────────────────────────────────────────────
-
-// Return VAPID public key so clients can subscribe
 app.get('/api/push/vapid-public-key', (req, res) => {
+  if (!VAPID_PUBLIC_KEY) return res.status(503).json({ error: 'Push não configurado.' });
   res.json({ publicKey: VAPID_PUBLIC_KEY });
 });
 
-// Helper: verify user JWT and return user id
-async function verifyJWT(req) {
-  const token = req.headers.authorization?.replace('Bearer ', '');
-  if (!token) return null;
-  const r = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
-    headers: { Authorization: `Bearer ${token}`, apikey: ANON_KEY },
-  });
-  if (!r.ok) return null;
-  const u = await r.json();
-  return u?.id || null;
-}
-
-// Save push subscription for current user
 app.post('/api/push/subscribe', async (req, res) => {
-  if (!SERVICE_KEY) return res.status(503).json({ error: 'SERVICE_KEY não configurada.' });
+  if (!SERVICE_KEY || !SUPABASE_URL) return res.status(503).json({ error: 'Servidor não configurado.' });
   const userId = await verifyJWT(req);
   if (!userId) return res.status(401).json({ error: 'Token inválido.' });
 
   const { subscription } = req.body;
   if (!subscription?.endpoint) return res.status(400).json({ error: 'subscription.endpoint obrigatório.' });
+  if (typeof subscription.endpoint !== 'string' || subscription.endpoint.length > 2048) {
+    return res.status(400).json({ error: 'Endpoint inválido.' });
+  }
 
   const id = 'ps_' + Buffer.from(subscription.endpoint).toString('base64').slice(0, 32).replace(/[^a-zA-Z0-9]/g, '');
-  await fetch(`${SUPABASE_URL}/rest/v1/kanban_push_subscriptions`, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${SERVICE_KEY}`, apikey: SERVICE_KEY,
-      'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates',
-    },
-    body: JSON.stringify({ id, user_id: userId, endpoint: subscription.endpoint, subscription }),
-  });
-  res.json({ ok: true });
+  try {
+    await fetch(`${SUPABASE_URL}/rest/v1/kanban_push_subscriptions`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${SERVICE_KEY}`, apikey: SERVICE_KEY,
+        'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates',
+      },
+      body: JSON.stringify({ id, user_id: userId, endpoint: subscription.endpoint, subscription }),
+    });
+    res.json({ ok: true });
+  } catch (e) {
+    internalErr(res, e);
+  }
 });
 
-// Remove push subscription for current user
 app.delete('/api/push/subscribe', async (req, res) => {
-  if (!SERVICE_KEY) return res.status(503).json({ error: 'SERVICE_KEY não configurada.' });
+  if (!SERVICE_KEY || !SUPABASE_URL) return res.status(503).json({ error: 'Servidor não configurado.' });
   const userId = await verifyJWT(req);
   if (!userId) return res.status(401).json({ error: 'Token inválido.' });
 
-  await fetch(`${SUPABASE_URL}/rest/v1/kanban_push_subscriptions?user_id=eq.${userId}`, {
-    method: 'DELETE',
-    headers: { Authorization: `Bearer ${SERVICE_KEY}`, apikey: SERVICE_KEY, Prefer: 'return=minimal' },
-  });
-  res.json({ ok: true });
+  if (!isValidUUID(userId)) return res.status(400).json({ error: 'ID inválido.' });
+  try {
+    await fetch(`${SUPABASE_URL}/rest/v1/kanban_push_subscriptions?user_id=eq.${userId}`, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${SERVICE_KEY}`, apikey: SERVICE_KEY, Prefer: 'return=minimal' },
+    });
+    res.json({ ok: true });
+  } catch (e) {
+    internalErr(res, e);
+  }
 });
 
-// Send push to mentioned users
 app.post('/api/push/notify', async (req, res) => {
-  if (!SERVICE_KEY || !webpush) return res.json({ ok: true, skipped: true });
+  if (!SERVICE_KEY || !webpush || !SUPABASE_URL) return res.json({ ok: true, skipped: true });
 
   const { content, user_name, channel_name, channel_type, channel_id, mentions } = req.body;
-  if (!mentions?.length) return res.json({ ok: true });
+  if (!Array.isArray(mentions) || !mentions.length) return res.json({ ok: true });
 
-  // Collect unique user IDs from mentions (only type:'user')
-  const userIds = [...new Set(mentions.filter(m => m.type === 'user' && m.id).map(m => m.id))];
+  // Validate and sanitize mention IDs — only accept valid UUIDs
+  const userIds = [...new Set(
+    mentions
+      .filter(m => m?.type === 'user' && isValidUUID(m?.id))
+      .map(m => m.id)
+  )].slice(0, 50); // cap to 50 recipients per notification
   if (!userIds.length) return res.json({ ok: true });
 
   try {
-    // Fetch subscriptions for mentioned users
     const filter = userIds.map(id => `user_id=eq.${id}`).join(',');
     const subsRes = await fetch(
       `${SUPABASE_URL}/rest/v1/kanban_push_subscriptions?or=(${filter})`,
@@ -310,9 +440,9 @@ app.post('/api/push/notify', async (req, res) => {
     if (!Array.isArray(subs) || !subs.length) return res.json({ ok: true });
 
     const payload = JSON.stringify({
-      title: `${user_name} mencionou você`,
-      body: `#${channel_name}: ${(content || '').slice(0, 120)}`,
-      tag: `mention-${channel_type}-${channel_id}`,
+      title: `${safeStr(user_name, 80)} mencionou você`,
+      body: `#${safeStr(channel_name, 80)}: ${safeStr(content, 120)}`,
+      tag: `mention-${safeStr(channel_type, 40)}-${safeStr(channel_id, 80)}`,
       url: '/',
     });
 
@@ -320,8 +450,7 @@ app.post('/api/push/notify', async (req, res) => {
       try {
         await webpush.sendNotification(row.subscription, payload, { TTL: 86400 });
       } catch (e) {
-        // 410 Gone = subscription expired, remove it
-        if (e.statusCode === 410) {
+        if (e.statusCode === 410 && isValidUUID(row.id)) {
           fetch(`${SUPABASE_URL}/rest/v1/kanban_push_subscriptions?id=eq.${row.id}`, {
             method: 'DELETE',
             headers: { Authorization: `Bearer ${SERVICE_KEY}`, apikey: SERVICE_KEY },
@@ -336,40 +465,16 @@ app.post('/api/push/notify', async (req, res) => {
   res.json({ ok: true });
 });
 
-// List all auth users (admin only — requires SUPABASE_SERVICE_ROLE_KEY env var)
-app.get('/api/admin/users', async (req, res) => {
-  if (!SERVICE_KEY) {
-    return res.status(503).json({ error: 'SUPABASE_SERVICE_ROLE_KEY não configurada no servidor.' });
-  }
-
-  const token = req.headers.authorization?.replace('Bearer ', '');
-  if (!token) return res.status(401).json({ error: 'Token não fornecido.' });
-
+// ── Admin: list users ──────────────────────────────────────────────────────────
+app.get('/api/admin/users', limiterAdmin, async (req, res) => {
+  const callerId = await verifyAdmin(req, res);
+  if (!callerId) return;
   try {
-    // Verify the user's JWT using anon key
-    const verifyRes = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
-      headers: { Authorization: `Bearer ${token}`, apikey: ANON_KEY },
-    });
-    if (!verifyRes.ok) return res.status(401).json({ error: 'Token inválido.' });
-    const caller = await verifyRes.json();
-
-    // Check if caller is admin in profiles table
-    const profileRes = await fetch(
-      `${SUPABASE_URL}/rest/v1/profiles?id=eq.${caller.id}&select=role`,
-      { headers: { Authorization: `Bearer ${SERVICE_KEY}`, apikey: SERVICE_KEY } }
-    );
-    const profiles = await profileRes.json();
-    if (!profiles?.[0] || profiles[0].role !== 'admin') {
-      return res.status(403).json({ error: 'Acesso negado. Apenas admins podem listar usuários.' });
-    }
-
-    // List all auth users
     const usersRes = await fetch(`${SUPABASE_URL}/auth/v1/admin/users?per_page=1000`, {
       headers: { Authorization: `Bearer ${SERVICE_KEY}`, apikey: SERVICE_KEY },
     });
     const usersData = await usersRes.json();
 
-    // Get all profiles for roles
     const allProfilesRes = await fetch(
       `${SUPABASE_URL}/rest/v1/profiles?select=*`,
       { headers: { Authorization: `Bearer ${SERVICE_KEY}`, apikey: SERVICE_KEY } }
@@ -388,40 +493,31 @@ app.get('/api/admin/users', async (req, res) => {
 
     res.json({ users });
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    internalErr(res, e);
   }
 });
 
-// Update user role (admin only)
-app.post('/api/admin/users/:id/role', async (req, res) => {
-  if (!SERVICE_KEY) return res.status(503).json({ error: 'SERVICE_KEY não configurada.' });
-  const token = req.headers.authorization?.replace('Bearer ', '');
-  if (!token) return res.status(401).json({ error: 'Token não fornecido.' });
+// ── Admin: update user role ────────────────────────────────────────────────────
+app.post('/api/admin/users/:id/role', limiterAdmin, async (req, res) => {
+  const callerId = await verifyAdmin(req, res);
+  if (!callerId) return;
+
+  const { id } = req.params;
+  if (!isValidUUID(id)) return res.status(400).json({ error: 'ID inválido.' });
+
+  const { role, name, whatsapp } = req.body;
+
+  // Validate role against allowlist
+  if (role !== undefined && !isValidRole(role)) {
+    return res.status(400).json({ error: 'Role inválida. Use: admin, editor ou viewer.' });
+  }
+
+  const patch = {};
+  if (role     !== undefined) patch.role     = role;
+  if (name     !== undefined) patch.name     = safeStr(name, 200);
+  if (whatsapp !== undefined) patch.whatsapp = safeStr(whatsapp, 30);
 
   try {
-    const verifyRes = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
-      headers: { Authorization: `Bearer ${token}`, apikey: ANON_KEY },
-    });
-    if (!verifyRes.ok) return res.status(401).json({ error: 'Token inválido.' });
-    const caller = await verifyRes.json();
-
-    const profileRes = await fetch(
-      `${SUPABASE_URL}/rest/v1/profiles?id=eq.${caller.id}&select=role`,
-      { headers: { Authorization: `Bearer ${SERVICE_KEY}`, apikey: SERVICE_KEY } }
-    );
-    const profiles = await profileRes.json();
-    if (!profiles?.[0] || profiles[0].role !== 'admin') {
-      return res.status(403).json({ error: 'Acesso negado.' });
-    }
-
-    const { role, name, whatsapp } = req.body;
-    const { id } = req.params;
-
-    const patch = {};
-    if (role !== undefined) patch.role = role;
-    if (name !== undefined) patch.name = name;
-    if (whatsapp !== undefined) patch.whatsapp = whatsapp;
-
     await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${id}`, {
       method: 'PATCH',
       headers: {
@@ -430,36 +526,38 @@ app.post('/api/admin/users/:id/role', async (req, res) => {
       },
       body: JSON.stringify(patch),
     });
-
     res.json({ ok: true });
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    internalErr(res, e);
   }
 });
 
-// Public signup — creates user + profile with editor role (no admin required)
-app.post('/api/auth/signup', async (req, res) => {
-  if (!SERVICE_KEY) return res.status(503).json({ error: 'Servidor não configurado para criar contas.' });
+// ── Public signup ──────────────────────────────────────────────────────────────
+app.post('/api/auth/signup', limiterStrict, async (req, res) => {
+  if (!SERVICE_KEY || !SUPABASE_URL) return res.status(503).json({ error: 'Servidor não configurado para criar contas.' });
 
   const { email, password, name = '', phone = '' } = req.body;
-  if (!email || !password) return res.status(400).json({ error: 'Email e senha são obrigatórios.' });
-  if (password.length < 6) return res.status(400).json({ error: 'A senha precisa ter pelo menos 6 caracteres.' });
+  if (!email || !password)         return res.status(400).json({ error: 'Email e senha são obrigatórios.' });
+  if (!isValidEmail(email))        return res.status(400).json({ error: 'Email inválido.' });
+  if (password.length < 8)         return res.status(400).json({ error: 'A senha precisa ter pelo menos 8 caracteres.' });
+  if (password.length > 128)       return res.status(400).json({ error: 'Senha muito longa.' });
 
   try {
-    // Create user via admin API (email_confirm: true skips confirmation email)
     const createRes = await fetch(`${SUPABASE_URL}/auth/v1/admin/users`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${SERVICE_KEY}`, apikey: SERVICE_KEY, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, password, email_confirm: true }),
+      body: JSON.stringify({ email: email.trim().toLowerCase(), password, email_confirm: true }),
     });
-    const createText = await createRes.text();
     let userData = {};
-    try { userData = JSON.parse(createText); } catch (_) {}
+    try { userData = await createRes.json(); } catch (_) {}
+
     if (!createRes.ok) {
-      return res.status(createRes.status).json({ error: userData.message || userData.msg || userData.error || `Erro ao criar conta (${createRes.status}).` });
+      // Return a safe error — avoid leaking internal Supabase messages
+      const userMsg = userData?.message || userData?.msg || userData?.error || '';
+      const safe = userMsg.toLowerCase().includes('already') ? 'Este email já está cadastrado.' : 'Não foi possível criar a conta.';
+      return res.status(createRes.status).json({ error: safe });
     }
 
-    // Create profile with editor role, name and phone
     if (userData.id) {
       await fetch(`${SUPABASE_URL}/rest/v1/profiles`, {
         method: 'POST',
@@ -467,112 +565,85 @@ app.post('/api/auth/signup', async (req, res) => {
           Authorization: `Bearer ${SERVICE_KEY}`, apikey: SERVICE_KEY,
           'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates',
         },
-        body: JSON.stringify({ id: userData.id, email, role: 'editor', name, whatsapp: phone }),
+        body: JSON.stringify({
+          id: userData.id,
+          email: email.trim().toLowerCase(),
+          role: 'editor',
+          name: safeStr(name, 200),
+          whatsapp: safeStr(phone, 30),
+        }),
       });
     }
 
     res.json({ ok: true });
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    internalErr(res, e);
   }
 });
 
-// Invite user by email (admin only) — sends Supabase magic link, no manual signup needed
-app.post('/api/admin/invite', async (req, res) => {
-  if (!SERVICE_KEY) return res.status(503).json({ error: 'SUPABASE_SERVICE_ROLE_KEY não configurada no servidor.' });
-  const token = req.headers.authorization?.replace('Bearer ', '');
-  if (!token) return res.status(401).json({ error: 'Token não fornecido.' });
+// ── Admin: invite user ─────────────────────────────────────────────────────────
+app.post('/api/admin/invite', limiterAdmin, async (req, res) => {
+  const callerId = await verifyAdmin(req, res);
+  if (!callerId) return;
+
+  const { email, role: inviteRole = 'viewer', name = '', whatsapp = '' } = req.body;
+  if (!email)               return res.status(400).json({ error: 'Email obrigatório.' });
+  if (!isValidEmail(email)) return res.status(400).json({ error: 'Email inválido.' });
+  if (!isValidRole(inviteRole)) return res.status(400).json({ error: 'Role inválida.' });
 
   try {
-    const verifyRes = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
-      headers: { Authorization: `Bearer ${token}`, apikey: ANON_KEY },
-    });
-    if (!verifyRes.ok) return res.status(401).json({ error: 'Token inválido.' });
-    const caller = await verifyRes.json();
-
-    const profileRes = await fetch(
-      `${SUPABASE_URL}/rest/v1/profiles?id=eq.${caller.id}&select=role`,
-      { headers: { Authorization: `Bearer ${SERVICE_KEY}`, apikey: SERVICE_KEY } }
-    );
-    const profiles = await profileRes.json();
-    if (!profiles?.[0] || profiles[0].role !== 'admin') {
-      return res.status(403).json({ error: 'Acesso negado. Apenas admins podem convidar usuários.' });
-    }
-
-    const { email, role: inviteRole = 'viewer', name = '', whatsapp = '' } = req.body;
-    if (!email) return res.status(400).json({ error: 'Email obrigatório.' });
-
-    // Create/invite user via Supabase Admin API — sends email with sign-in link
     const inviteRes = await fetch(`${SUPABASE_URL}/auth/v1/admin/invite`, {
       method: 'POST',
-      headers: {
-        Authorization: `Bearer ${SERVICE_KEY}`,
-        apikey: SERVICE_KEY,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ email }),
+      headers: { Authorization: `Bearer ${SERVICE_KEY}`, apikey: SERVICE_KEY, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: email.trim().toLowerCase() }),
     });
-    const inviteData = await inviteRes.json();
+    let inviteData = {};
+    try { inviteData = await inviteRes.json(); } catch (_) {}
 
     if (!inviteRes.ok) {
-      return res.status(inviteRes.status).json({ error: inviteData.message || inviteData.error || 'Erro ao convidar.' });
+      return res.status(inviteRes.status).json({ error: 'Não foi possível convidar o usuário.' });
     }
 
-    // Set role, name and whatsapp in profiles table.
-    // Use PATCH first (overrides any trigger default), then upsert as fallback.
     if (inviteData.id) {
       const profileHeaders = {
         Authorization: `Bearer ${SERVICE_KEY}`, apikey: SERVICE_KEY,
         'Content-Type': 'application/json', Prefer: 'return=minimal',
       };
-      const profileBody = { role: inviteRole, name, whatsapp };
+      const profileBody = {
+        role: inviteRole,
+        name: safeStr(name, 200),
+        whatsapp: safeStr(whatsapp, 30),
+      };
 
-      // PATCH — wins over trigger that may have already created the row with a default role
       const patchRes = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${inviteData.id}`, {
         method: 'PATCH', headers: profileHeaders, body: JSON.stringify(profileBody),
       });
 
-      // If PATCH updated 0 rows (trigger didn't run), insert the row
       if (patchRes.headers.get('content-range') === '*/0' || patchRes.status === 204) {
         await fetch(`${SUPABASE_URL}/rest/v1/profiles`, {
           method: 'POST',
           headers: { ...profileHeaders, Prefer: 'resolution=merge-duplicates' },
-          body: JSON.stringify({ id: inviteData.id, email, ...profileBody }),
+          body: JSON.stringify({ id: inviteData.id, email: email.trim().toLowerCase(), ...profileBody }),
         });
       }
     }
 
     res.json({ ok: true, userId: inviteData.id });
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    internalErr(res, e);
   }
 });
 
-// Delete auth user (admin only)
-app.delete('/api/admin/users/:id', async (req, res) => {
-  if (!SERVICE_KEY) return res.status(503).json({ error: 'SERVICE_KEY não configurada.' });
-  const token = req.headers.authorization?.replace('Bearer ', '');
-  if (!token) return res.status(401).json({ error: 'Token não fornecido.' });
+// ── Admin: delete user ─────────────────────────────────────────────────────────
+app.delete('/api/admin/users/:id', limiterAdmin, async (req, res) => {
+  const callerId = await verifyAdmin(req, res);
+  if (!callerId) return;
+
+  const { id } = req.params;
+  if (!isValidUUID(id)) return res.status(400).json({ error: 'ID inválido.' });
+  if (id === callerId) return res.status(400).json({ error: 'Você não pode remover a si mesmo.' });
 
   try {
-    const verifyRes = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
-      headers: { Authorization: `Bearer ${token}`, apikey: ANON_KEY },
-    });
-    if (!verifyRes.ok) return res.status(401).json({ error: 'Token inválido.' });
-    const caller = await verifyRes.json();
-
-    const profileRes = await fetch(
-      `${SUPABASE_URL}/rest/v1/profiles?id=eq.${caller.id}&select=role`,
-      { headers: { Authorization: `Bearer ${SERVICE_KEY}`, apikey: SERVICE_KEY } }
-    );
-    const profs = await profileRes.json();
-    if (!profs?.[0] || profs[0].role !== 'admin') {
-      return res.status(403).json({ error: 'Acesso negado.' });
-    }
-
-    const { id } = req.params;
-    if (id === caller.id) return res.status(400).json({ error: 'Você não pode remover a si mesmo.' });
-
     await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${id}`, {
       method: 'DELETE',
       headers: { Authorization: `Bearer ${SERVICE_KEY}`, apikey: SERVICE_KEY },
@@ -581,14 +652,13 @@ app.delete('/api/admin/users/:id', async (req, res) => {
       method: 'DELETE',
       headers: { Authorization: `Bearer ${SERVICE_KEY}`, apikey: SERVICE_KEY, Prefer: 'return=minimal' },
     });
-
     res.json({ ok: true });
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    internalErr(res, e);
   }
 });
 
-// Serve React build output
+// ── Serve React build ──────────────────────────────────────────────────────────
 const distPath = path.join(__dirname, 'client', 'dist');
 app.use(express.static(distPath));
 
@@ -598,5 +668,5 @@ app.get('*', (req, res) => {
 });
 
 app.listen(PORT, () => {
-  console.log(`Kanban Pro running on port ${PORT}`);
+  console.log(`🛡️  Kanban Pro running on port ${PORT} — Ximinoze on guard.`);
 });
