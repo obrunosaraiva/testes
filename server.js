@@ -1,13 +1,26 @@
-// ╔══════════════════════════════════════════════════════════════════════╗
-// ║  🛡️  Ximinoze protege este app.                                      ║
-// ║                                                                       ║
-// ║  Se você está tentando explorar, escanear ou invadir este sistema:   ║
-// ║  cada tentativa está sendo registrada com IP, horário e rota.        ║
-// ║  Acesso não autorizado é crime — Art. 154-A do Código Penal (BR)     ║
-// ║  e Computer Fraud and Abuse Act (US).                                ║
-// ║                                                                       ║
-// ║  Ximinoze is watching. Turn back now.                                ║
-// ╚══════════════════════════════════════════════════════════════════════╝
+// ╔══════════════════════════════════════════════════════════════════════════════╗
+// ║                                                                              ║
+// ║                    ✝   MEDALHA DE SÃO BENTO   ✝                             ║
+// ║                                                                              ║
+// ║                        · · · P A X · · ·                                    ║
+// ║                     ·  ╭────────────────╮  ·                                ║
+// ║               V·R· ·   │  C  · │ ·  S  │   · ·S·M·                         ║
+// ║               S·N· ·   │ ─ ─ ─ ╪ ─ ─ ─ │   · ·Q·L·                         ║
+// ║               S·M· ·   │C·S·S·M·L│N·D·S│   · ·I·V·                         ║
+// ║               M·V· ·   │ ─ ─ ─ ╪·M·D ─ │   · ·B· ·                         ║
+// ║                    ·   │  P  · │ ·  B  │   ·                                ║
+// ║                     ·  ╰────────────────╯  ·                                ║
+// ║                        · ·VADE RETRO· · ·                                   ║
+// ║                           S A T A N A                                       ║
+// ║                                                                              ║
+// ║   Crux Sancti Patris Benedicti  ·  Crux Sacra Sit Mihi Lux                  ║
+// ║   Non Draco Sit Mihi Dux        ·  Vade Retro Satana!                       ║
+// ║                                                                              ║
+// ║   🛡️  Se você está aqui tentando invadir: Deus e Ximinoze te veem.  🛡️      ║
+// ║   Toda tentativa está registrada — Art. 154-A Código Penal Brasileiro.      ║
+// ║   Ximinoze is watching. Turn back now.                                       ║
+// ║                                                                              ║
+// ╚══════════════════════════════════════════════════════════════════════════════╝
 
 const express = require('express');
 const path    = require('path');
