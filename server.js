@@ -265,10 +265,12 @@ const MIGRATION_SQL = `
   CREATE POLICY "kb_messages_delete"  ON kanban_messages   FOR DELETE TO authenticated USING (true);
 
   -- Profiles: leitura por todos autenticados; escrita somente no próprio perfil
+  -- id::text cast: profiles.id é uuid; auth.uid() também, mas o double-cast evita
+  -- o erro "operator does not exist: uuid = text" em qualquer variação de ambiente.
   CREATE POLICY "kb_profiles_select"  ON profiles FOR SELECT TO authenticated USING (true);
-  CREATE POLICY "kb_profiles_insert"  ON profiles FOR INSERT TO authenticated WITH CHECK (id = auth.uid()::text);
-  CREATE POLICY "kb_profiles_update"  ON profiles FOR UPDATE TO authenticated USING (id = auth.uid()::text) WITH CHECK (id = auth.uid()::text);
-  CREATE POLICY "kb_profiles_delete"  ON profiles FOR DELETE TO authenticated USING (id = auth.uid()::text);
+  CREATE POLICY "kb_profiles_insert"  ON profiles FOR INSERT TO authenticated WITH CHECK (id::text = auth.uid()::text);
+  CREATE POLICY "kb_profiles_update"  ON profiles FOR UPDATE TO authenticated USING (id::text = auth.uid()::text) WITH CHECK (id::text = auth.uid()::text);
+  CREATE POLICY "kb_profiles_delete"  ON profiles FOR DELETE TO authenticated USING (id::text = auth.uid()::text);
 
   -- Push subscriptions: cada usuário gerencia apenas as próprias
   CREATE POLICY "kb_push_select"      ON kanban_push_subscriptions FOR SELECT TO authenticated USING (user_id = auth.uid()::text);

@@ -199,6 +199,9 @@ CREATE POLICY "kb_cc_delete"
 -- ── profiles (read-all / write-own) ───────────────────────────────
 -- Any authenticated user can read all profiles (needed for assignee
 -- dropdowns and member lists). Only the row owner can write.
+-- NOTE: id::text cast is intentional — profiles.id is uuid in Supabase
+-- while auth.uid() also returns uuid, but casting both sides to text
+-- avoids operator errors if the type ever differs between environments.
 CREATE POLICY "kb_profiles_select"
   ON public.profiles FOR SELECT
   TO authenticated USING (true);
@@ -206,18 +209,18 @@ CREATE POLICY "kb_profiles_select"
 CREATE POLICY "kb_profiles_insert"
   ON public.profiles FOR INSERT
   TO authenticated
-  WITH CHECK (id = auth.uid()::text);
+  WITH CHECK (id::text = auth.uid()::text);
 
 CREATE POLICY "kb_profiles_update"
   ON public.profiles FOR UPDATE
   TO authenticated
-  USING (id = auth.uid()::text)
-  WITH CHECK (id = auth.uid()::text);
+  USING  (id::text = auth.uid()::text)
+  WITH CHECK (id::text = auth.uid()::text);
 
 CREATE POLICY "kb_profiles_delete"
   ON public.profiles FOR DELETE
   TO authenticated
-  USING (id = auth.uid()::text);
+  USING (id::text = auth.uid()::text);
 
 -- ── kanban_push_subscriptions (strict per-user) ───────────────────
 CREATE POLICY "kb_push_select"
