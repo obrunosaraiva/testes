@@ -265,11 +265,11 @@ function computeFit(nodes, size) {
 
   const contentW = maxX - minX + PAD * 2;
   const contentH = maxY - minY + PAD * 2;
-  const s = Math.min(size.w / contentW, size.h / contentH, 1);
+  const s = Math.min(size.w / contentW, size.h / contentH);   // no upper cap — allow zoom-in
   const centerX = (minX + maxX) / 2;
   const centerY = (minY + maxY) / 2;
 
-  return { scale: Math.max(0.2, s), pan: { x: -centerX * s, y: -centerY * s } };
+  return { scale: Math.max(0.2, Math.min(1.8, s)), pan: { x: -centerX * s, y: -centerY * s } };
 }
 
 
