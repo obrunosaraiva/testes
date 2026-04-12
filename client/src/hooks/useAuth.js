@@ -11,25 +11,14 @@ export function useAuth() {
       setLoading(false);
     });
 
+    // onAuthStateChange cobre: login, logout, TOKEN_REFRESHED, SIGNED_OUT.
+    // O Supabase client já faz auto-refresh do JWT nativamente — não precisa
+    // de getSession() manual no visibilitychange (causava conflito de lock).
     const { data: { subscription } } = sb.auth.onAuthStateChange((_event, session) => {
       setUser(session?.user ?? null);
     });
 
-    // Quando o usuário volta para a aba após ficar em background, revalida a sessão.
-    // Isso evita que o JWT expire em silêncio e os dados sumam sem redirecionar ao login.
-    function handleVisibility() {
-      if (document.visibilityState === 'visible') {
-        sb.auth.getSession().then(({ data: { session } }) => {
-          setUser(session?.user ?? null);
-        });
-      }
-    }
-    document.addEventListener('visibilitychange', handleVisibility);
-
-    return () => {
-      subscription.unsubscribe();
-      document.removeEventListener('visibilitychange', handleVisibility);
-    };
+    return () => subscription.unsubscribe();
   }, []);
 
   async function signIn(email, password) {
