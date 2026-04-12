@@ -15,7 +15,21 @@ export function useAuth() {
       setUser(session?.user ?? null);
     });
 
-    return () => subscription.unsubscribe();
+    // Quando o usuário volta para a aba após ficar em background, revalida a sessão.
+    // Isso evita que o JWT expire em silêncio e os dados sumam sem redirecionar ao login.
+    function handleVisibility() {
+      if (document.visibilityState === 'visible') {
+        sb.auth.getSession().then(({ data: { session } }) => {
+          setUser(session?.user ?? null);
+        });
+      }
+    }
+    document.addEventListener('visibilitychange', handleVisibility);
+
+    return () => {
+      subscription.unsubscribe();
+      document.removeEventListener('visibilitychange', handleVisibility);
+    };
   }, []);
 
   async function signIn(email, password) {
