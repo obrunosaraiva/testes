@@ -265,11 +265,13 @@ function computeFit(nodes, size) {
 
   const contentW = maxX - minX + PAD * 2;
   const contentH = maxY - minY + PAD * 2;
-  const s = Math.min(size.w / contentW, size.h / contentH);   // no upper cap — allow zoom-in
+  const rawS  = Math.min(size.w / contentW, size.h / contentH);
+  const scale = Math.max(0.2, Math.min(1.8, rawS));
   const centerX = (minX + maxX) / 2;
   const centerY = (minY + maxY) / 2;
 
-  return { scale: Math.max(0.2, Math.min(1.8, s)), pan: { x: -centerX * s, y: -centerY * s } };
+  // pan must use the same capped scale so the content stays centred on screen
+  return { scale, pan: { x: -centerX * scale, y: -centerY * scale } };
 }
 
 
@@ -582,7 +584,7 @@ export default function MindMapView({ onOpenTask }) {
       <div ref={wrapRef} style={{ flex: 1, minHeight: 0, position: 'relative', overflow: 'hidden' }}>
         <svg
           ref={svgRef}
-          width={size.w} height={size.h}
+          width="100%" height="100%"
           style={{ display: 'block', cursor: dragging ? 'grabbing' : 'grab', touchAction: 'none' }}
           onMouseDown={onMouseDown}
           onMouseMove={onMouseMove}
