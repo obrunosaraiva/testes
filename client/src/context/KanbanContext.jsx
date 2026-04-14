@@ -633,13 +633,21 @@ export function KanbanProvider({ children }) {
     };
     const { error } = await sb.from('kanban_tasks').upsert(row, { onConflict: 'id' });
     if (error) {
-      // Retry without optional columns that may not exist in the DB yet (migration pending)
-      const { deadline_time, is_event, event_start_date, event_end_date, card_color, ticket_goal, tickets_sold, event_type, links, task_status, dependencies, deleted, ...basic } = row;
-      const { error: e2 } = await sb.from('kanban_tasks').upsert(basic, { onConflict: 'id' });
-      if (e2) {
-        console.error('[Kanban] task save failed:', e2.message, '| task id:', task.id);
+      // Only retry if the error is a missing column (42703) — not on timeouts or server errors.
+      // Retrying on 500/504 doubles the load on an already-overloaded database.
+      const isMissingColumn = error.code === '42703' || error.message?.includes('column');
+      if (isMissingColumn) {
+        const { deadline_time, is_event, event_start_date, event_end_date, card_color, ticket_goal, tickets_sold, event_type, links, task_status, dependencies, deleted, ...basic } = row;
+        const { error: e2 } = await sb.from('kanban_tasks').upsert(basic, { onConflict: 'id' });
+        if (e2) {
+          console.error('[Kanban] task save failed:', e2.message, '| task id:', task.id);
+          dispatch({ type: 'SET_SYNC_STATUS', payload: '⚠ Erro ao salvar' });
+          return e2;
+        }
+      } else {
+        console.error('[Kanban] task save failed:', error.message, '| task id:', task.id);
         dispatch({ type: 'SET_SYNC_STATUS', payload: '⚠ Erro ao salvar' });
-        return e2; // propagate so callers can react
+        return error;
       }
     }
     return null; // success
