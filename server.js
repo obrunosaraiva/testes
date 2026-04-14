@@ -270,7 +270,11 @@ async function runMigrations(sql = MIGRATION_SQL) {
   console.log('[DB] Migration skipped — set DATABASE_URL or SUPABASE_ACCESS_TOKEN to enable.');
 }
 
-runMigrations();
+if (process.env.SKIP_MIGRATIONS === 'true') {
+  console.log('[DB] Migrations skipped — SKIP_MIGRATIONS=true');
+} else {
+  runMigrations();
+}
 
 // ── Chat storage bucket setup ─────────────────────────────────────────────────
 async function ensureChatBucket() {
