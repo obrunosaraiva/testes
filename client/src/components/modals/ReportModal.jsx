@@ -46,41 +46,48 @@ function calcEventStats(task) {
   return { goal, sold, remaining, daysRemaining, pacing, salesPct, status };
 }
 
+const DEFAULT_TASK_STATUSES = {
+  pendente: true, solicitado: true, andamento: true, revisao: true,
+  correcao: true, concluido: false, cancelado: false,
+  atrasado: true, impedimento_interno: true, impedimento_externo: true,
+};
+
 export default function ReportModal({ onClose }) {
-  const { tasks, projects } = useKanban();  const [tab, setTab] = useState('tasks');
+  const { tasks, projects } = useKanban();
+  const [tab, setTab] = useState('tasks');
   const [filterProj, setFilterProj] = useState('__all__');
-  const [statuses, setStatuses] = useState({ backlog: true, todo: true, doing: true, paused: true, review: true });
-  const [includeDone, setIncludeDone] = useState(false);
+  const [colStatuses, setColStatuses] = useState({ backlog: true, todo: true, doing: true, paused: true, review: true, done: false });
+  const [taskStatuses, setTaskStatuses] = useState(DEFAULT_TASK_STATUSES);
   const [onlyLate, setOnlyLate] = useState(false);
   const [preview, setPreview] = useState('');
   const [copied, setCopied] = useState(false);
 
-  function toggleStatus(s) {
-    setStatuses(prev => ({ ...prev, [s]: !prev[s] }));
+  function toggleCol(s) {
+    setColStatuses(prev => ({ ...prev, [s]: !prev[s] }));
+  }
+  function toggleTaskStatus(s) {
+    setTaskStatuses(prev => ({ ...prev, [s]: !prev[s] }));
+  }
+  function allTaskStatuses(val) {
+    setTaskStatuses(Object.fromEntries(Object.keys(DEFAULT_TASK_STATUSES).map(k => [k, val])));
   }
 
   // ── Tarefas report ─────────────────────────────────────────────────────────
   function buildReport() {
     const today = new Date(); today.setHours(0, 0, 0, 0);
-    const activeStatuses = Object.entries(statuses).filter(([,v]) => v).map(([k]) => k);
+    const activeColStatuses = Object.entries(colStatuses).filter(([,v]) => v).map(([k]) => k);
+    const activeTaskStatuses = Object.entries(taskStatuses).filter(([,v]) => v).map(([k]) => k);
 
-    const activeTasks = tasks.filter(t => {
+    const allTasks = tasks.filter(t => {
       if (filterProj !== '__all__' && t.project !== filterProj) return false;
-      if (!activeStatuses.includes(t.status)) return false;
+      if (!activeColStatuses.includes(t.status)) return false;
+      if (!activeTaskStatuses.includes(t.taskStatus || 'pendente')) return false;
       if (onlyLate) {
         if (!t.deadline) return false;
         if (new Date(t.deadline + 'T00:00:00') >= today) return false;
       }
       return true;
     });
-
-    const doneTasks = includeDone ? tasks.filter(t => {
-      if (t.status !== 'done') return false;
-      if (filterProj !== '__all__' && t.project !== filterProj) return false;
-      return true;
-    }) : [];
-
-    const allTasks = [...activeTasks, ...doneTasks];
     if (!allTasks.length) return 'Nenhuma tarefa encontrada com os filtros selecionados.';
 
     const fmtDate = (d) => d ? new Date(d + 'T00:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }) : null;
@@ -372,22 +379,37 @@ export default function ReportModal({ onClose }) {
           {tab === 'tasks' && (
             <>
               <div>
-                <label className="field-label">Status</label>
+                <label className="field-label">Coluna do Kanban</label>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
-                  {[['backlog','📥 Backlog'],['todo','📌 To Do'],['doing','🔄 Doing'],['paused','⏸ Pausado'],['review','👀 Review']].map(([s, label]) => (
+                  {[['backlog','📥 Backlog'],['todo','📌 To Do'],['doing','🔄 Doing'],['paused','⏸ Pausado'],['review','👀 Review'],['done','✅ Done']].map(([s, label]) => (
                     <label key={s} style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: '.85rem', cursor: 'pointer' }}>
-                      <input type="checkbox" checked={statuses[s]} onChange={() => toggleStatus(s)} />
+                      <input type="checkbox" checked={colStatuses[s]} onChange={() => { toggleCol(s); setPreview(''); }} />
                       {label}
                     </label>
                   ))}
                 </div>
               </div>
+
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+                  <label className="field-label" style={{ margin: 0 }}>Status da tarefa</label>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <button onClick={() => { allTaskStatuses(true); setPreview(''); }} style={{ background: 'none', border: 'none', fontSize: '.75rem', color: 'var(--accent)', cursor: 'pointer', padding: 0 }}>Todos</button>
+                    <button onClick={() => { allTaskStatuses(false); setPreview(''); }} style={{ background: 'none', border: 'none', fontSize: '.75rem', color: 'var(--text-muted)', cursor: 'pointer', padding: 0 }}>Nenhum</button>
+                  </div>
+                </div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                  {TASK_STATUSES.map(({ value, label }) => (
+                    <label key={value} style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: '.82rem', cursor: 'pointer' }}>
+                      <input type="checkbox" checked={taskStatuses[value]} onChange={() => { toggleTaskStatus(value); setPreview(''); }} />
+                      {label}
+                    </label>
+                  ))}
+                </div>
+              </div>
+
               <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '.85rem', cursor: 'pointer' }}>
-                <input type="checkbox" checked={includeDone} onChange={e => setIncludeDone(e.target.checked)} />
-                ✅ Incluir tarefas concluídas?
-              </label>
-              <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '.85rem', cursor: 'pointer' }}>
-                <input type="checkbox" checked={onlyLate} onChange={e => setOnlyLate(e.target.checked)} />
+                <input type="checkbox" checked={onlyLate} onChange={e => { setOnlyLate(e.target.checked); setPreview(''); }} />
                 ⚠️ Apenas tarefas atrasadas
               </label>
             </>
