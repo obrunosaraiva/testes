@@ -1,6 +1,7 @@
 import { useState, useMemo, useRef, useEffect } from 'react';
 import { useKanban } from '../../context/KanbanContext';
 import { useRole } from '../../context/RoleContext';
+import { useMobile } from '../../hooks/useMobile';
 
 const TASK_STATUSES = [
   { value: 'pendente',            label: '⚪ Pendente',             short: 'Pendente',       color: '#9ca3af' },
@@ -187,10 +188,68 @@ function HeaderRow() {
   );
 }
 
+// ── Mobile task card ───────────────────────────────────────────────────────────
+function TaskCard({ task, dl, late, onOpen, onChangeTaskStatus, can }) {
+  const ts = STATUS_MAP[task.taskStatus || 'pendente'];
+  const done = task.checklist?.filter(c => subDone(c)).length || 0;
+  const total = task.checklist?.length || 0;
+
+  return (
+    <div
+      onClick={onOpen}
+      style={{
+        padding: '12px 14px',
+        borderBottom: '1px solid var(--border)',
+        cursor: 'pointer',
+        background: 'var(--surface)',
+        activeBackground: 'var(--surface2)',
+      }}
+    >
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8, marginBottom: 6 }}>
+        {/* Title */}
+        <span style={{ fontSize: '.9rem', fontWeight: 600, flex: 1, lineHeight: 1.3,
+          color: task.taskStatus === 'concluido' || task.taskStatus === 'cancelado' ? 'var(--text-muted)' : 'var(--text)',
+          textDecoration: task.taskStatus === 'concluido' || task.taskStatus === 'cancelado' ? 'line-through' : 'none',
+        }}>
+          {task.title}
+        </span>
+        {/* Status pill */}
+        <div
+          onClick={e => { e.stopPropagation(); }}
+          style={{ flexShrink: 0 }}
+        >
+          <StatusCell value={task.taskStatus || 'pendente'} onChange={onChangeTaskStatus || (() => {})} disabled={!onChangeTaskStatus} small />
+        </div>
+      </div>
+
+      {/* Meta row */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+        {task.assignee && (
+          <span style={{ fontSize: '.78rem', color: 'var(--text-muted)' }}>👤 {task.assignee}</span>
+        )}
+        {dl && (
+          <span style={{ fontSize: '.78rem', fontWeight: late ? 700 : 400, color: late ? 'var(--danger)' : 'var(--text-muted)' }}>
+            📅 {dl.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}{late ? ' ⚠' : ''}
+          </span>
+        )}
+        {task.urgency && (
+          <span style={{ fontSize: '.72rem', fontWeight: 700, color: URGENCY_COLORS[task.urgency], background: URGENCY_COLORS[task.urgency] + '22', padding: '2px 7px', borderRadius: 10 }}>
+            {URGENCY_LABELS[task.urgency]}
+          </span>
+        )}
+        {total > 0 && (
+          <span style={{ fontSize: '.72rem', color: 'var(--text-muted)' }}>☑ {done}/{total}</span>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ── Main component ─────────────────────────────────────────────────────────────
 export default function ListView({ onOpenTask, onNewTask }) {
   const { tasks, activeProject, costCenterFilter, projects, members, updateTask } = useKanban();
   const { can } = useRole();
+  const isMobile = useMobile();
   const [collapsed, setCollapsed]         = useState({});
   const [assigneeFilter, setAssigneeFilter] = useState(new Set());
   const [statusFilter, setStatusFilter]   = useState(new Set());
@@ -263,26 +322,26 @@ export default function ListView({ onOpenTask, onNewTask }) {
   const groupIcon = groupBy === 'assignee' ? '👤' : '📁';
 
   return (
-    <div style={{ flex: 1, overflowY: 'auto', padding: '12px 24px 24px' }}>
+    <div style={{ flex: 1, overflowY: 'auto', padding: isMobile ? '8px 12px 80px' : '12px 24px 24px' }}>
       <div style={{ maxWidth: 1200, margin: '0 auto' }}>
 
         {/* ── Filter bar ── */}
         <div style={{
-          display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap',
-          padding: '10px 0 14px', borderBottom: '1px solid var(--border)',
-          marginBottom: 12,
+          display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap',
+          padding: '8px 0 12px', borderBottom: '1px solid var(--border)',
+          marginBottom: 10,
         }}>
           <MultiDropdown
-            label="Responsável"
-            icon="👤"
+            label={isMobile ? '👤' : '👤 Responsável'}
+            icon=""
             options={allAssignees}
             selected={assigneeFilter}
             onToggle={toggleAssignee}
             onClear={() => setAssigneeFilter(new Set())}
           />
           <MultiDropdown
-            label="Status"
-            icon="🏷"
+            label={isMobile ? '🏷' : '🏷 Status'}
+            icon=""
             options={TASK_STATUSES}
             selected={statusFilter}
             onToggle={toggleStatus}
@@ -292,12 +351,12 @@ export default function ListView({ onOpenTask, onNewTask }) {
 
           {/* Group by toggle */}
           <div style={{ display: 'flex', background: 'var(--surface2)', borderRadius: 8, border: '1px solid var(--border)', overflow: 'hidden' }}>
-            {[['project', '📁 Projeto'], ['assignee', '👤 Responsável']].map(([val, lbl]) => (
+            {[['project', isMobile ? '📁' : '📁 Projeto'], ['assignee', isMobile ? '👤' : '👤 Responsável']].map(([val, lbl]) => (
               <button
                 key={val}
                 onClick={() => setGroupBy(val)}
                 style={{
-                  padding: '6px 12px', border: 'none', cursor: 'pointer',
+                  padding: isMobile ? '6px 10px' : '6px 12px', border: 'none', cursor: 'pointer',
                   fontSize: '.80rem', fontWeight: groupBy === val ? 700 : 400,
                   background: groupBy === val ? 'var(--accent)' : 'transparent',
                   color: groupBy === val ? '#fff' : 'var(--text-muted)',
@@ -311,17 +370,15 @@ export default function ListView({ onOpenTask, onNewTask }) {
           {hasFilters && (
             <button
               onClick={() => { setAssigneeFilter(new Set()); setStatusFilter(new Set()); }}
-              style={{ background: 'none', border: '1px solid var(--border)', borderRadius: 8, padding: '6px 12px', fontSize: '.80rem', color: 'var(--text-muted)', cursor: 'pointer' }}
-            >
-              × Limpar filtros
-            </button>
+              style={{ background: 'none', border: '1px solid var(--border)', borderRadius: 8, padding: '6px 10px', fontSize: '.80rem', color: 'var(--text-muted)', cursor: 'pointer' }}
+            >×</button>
           )}
 
           {/* Stats */}
-          <div style={{ marginLeft: 'auto', display: 'flex', gap: 14, fontSize: '.78rem', color: 'var(--text-muted)', alignItems: 'center' }}>
-            <span>{stats.total} tarefa{stats.total !== 1 ? 's' : ''}</span>
-            {stats.done > 0  && <span style={{ color: 'var(--success)' }}>✅ {stats.done} concluída{stats.done !== 1 ? 's' : ''}</span>}
-            {stats.late > 0  && <span style={{ color: 'var(--danger)'  }}>⚠ {stats.late} atrasada{stats.late !== 1 ? 's' : ''}</span>}
+          <div style={{ marginLeft: 'auto', display: 'flex', gap: 10, fontSize: '.75rem', color: 'var(--text-muted)', alignItems: 'center' }}>
+            <span>{stats.total}</span>
+            {stats.done > 0 && <span style={{ color: 'var(--success)' }}>✅{stats.done}</span>}
+            {stats.late > 0 && <span style={{ color: 'var(--danger)'  }}>⚠{stats.late}</span>}
           </div>
         </div>
 
@@ -344,7 +401,7 @@ export default function ListView({ onOpenTask, onNewTask }) {
         {/* ── Groups ── */}
         {grouped.length > 0 && (
           <>
-            <HeaderRow />
+            {!isMobile && <HeaderRow />}
             {grouped.map(([groupName, groupTasks]) => {
               const isCollapsed = collapsed[groupName];
               const doneCount = groupTasks.filter(t => t.taskStatus === 'concluido').length;
@@ -355,26 +412,42 @@ export default function ListView({ onOpenTask, onNewTask }) {
                   <div
                     onClick={() => setCollapsed(p => ({ ...p, [groupName]: !p[groupName] }))}
                     style={{
-                      display: 'flex', alignItems: 'center', gap: 10,
+                      display: 'flex', alignItems: 'center', gap: 8,
                       padding: '8px 14px', cursor: 'pointer', userSelect: 'none',
                       background: 'var(--surface2)',
                       borderRadius: isCollapsed ? 10 : '10px 10px 0 0',
                       borderBottom: isCollapsed ? 'none' : '1px solid var(--border)',
                     }}
                   >
-                    <span style={{ fontSize: '.7rem', color: 'var(--text-muted)', transition: 'transform .15s', display: 'inline-block', transform: isCollapsed ? 'rotate(-90deg)' : 'rotate(0)' }}>▼</span>
-                    <span style={{ fontWeight: 700, fontSize: '.9rem' }}>{groupIcon} {groupName}</span>
-                    <span style={{ fontSize: '.75rem', color: 'var(--text-muted)' }}>{groupTasks.length} tarefa{groupTasks.length !== 1 ? 's' : ''}</span>
-                    {doneCount > 0 && <span style={{ fontSize: '.72rem', color: 'var(--success)' }}>✅ {doneCount} concluída{doneCount !== 1 ? 's' : ''}</span>}
-                    {lateCount > 0 && <span style={{ fontSize: '.72rem', color: 'var(--danger)' }}>⚠ {lateCount} atrasada{lateCount !== 1 ? 's' : ''}</span>}
+                    <span style={{ fontSize: '.7rem', color: 'var(--text-muted)', display: 'inline-block', transform: isCollapsed ? 'rotate(-90deg)' : 'rotate(0)', transition: 'transform .15s' }}>▼</span>
+                    <span style={{ fontWeight: 700, fontSize: '.88rem', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{groupIcon} {groupName}</span>
+                    <span style={{ fontSize: '.72rem', color: 'var(--text-muted)', flexShrink: 0 }}>{groupTasks.length}</span>
+                    {doneCount > 0 && <span style={{ fontSize: '.72rem', color: 'var(--success)', flexShrink: 0 }}>✅{doneCount}</span>}
+                    {lateCount > 0 && <span style={{ fontSize: '.72rem', color: 'var(--danger)', flexShrink: 0 }}>⚠{lateCount}</span>}
                   </div>
 
                   {!isCollapsed && (
                     <div style={{ border: '1px solid var(--border)', borderTop: 'none', borderRadius: '0 0 10px 10px', overflow: 'hidden' }}>
                       {groupTasks.map((task, idx) => {
-                        const dl = task.deadline ? new Date(task.deadline + 'T00:00:00') : null;
+                        const dl   = task.deadline ? new Date(task.deadline + 'T00:00:00') : null;
                         const late = dl && dl < today && task.taskStatus !== 'concluido' && task.taskStatus !== 'cancelado';
-                        return (
+                        const changeStatus = can.edit ? s => updateTask({ ...task, taskStatus: s }) : null;
+                        const changeSubStatus = can.edit ? (subIdx, s) => {
+                          const newCl = task.checklist.map((item, i) => i !== subIdx ? item : { ...item, status: s, done: s === 'concluido' || s === 'cancelado' });
+                          updateTask({ ...task, checklist: newCl });
+                        } : null;
+
+                        return isMobile ? (
+                          <TaskCard
+                            key={task.id}
+                            task={task}
+                            dl={dl}
+                            late={late}
+                            onOpen={() => onOpenTask(task.id)}
+                            onChangeTaskStatus={changeStatus}
+                            can={can}
+                          />
+                        ) : (
                           <TaskRow
                             key={task.id}
                             task={task}
@@ -384,18 +457,15 @@ export default function ListView({ onOpenTask, onNewTask }) {
                             late={late}
                             today={today}
                             onOpen={() => onOpenTask(task.id)}
-                            onChangeTaskStatus={can.edit ? s => updateTask({ ...task, taskStatus: s }) : null}
-                            onChangeSubStatus={can.edit ? (subIdx, s) => {
-                              const newCl = task.checklist.map((item, i) => i !== subIdx ? item : { ...item, status: s, done: s === 'concluido' || s === 'cancelado' });
-                              updateTask({ ...task, checklist: newCl });
-                            } : null}
+                            onChangeTaskStatus={changeStatus}
+                            onChangeSubStatus={changeSubStatus}
                           />
                         );
                       })}
                       {can.create && (
                         <div
                           onClick={() => onNewTask('backlog')}
-                          style={{ padding: '8px 14px', cursor: 'pointer', color: 'var(--text-muted)', fontSize: '.82rem', borderTop: '1px solid var(--border)', background: 'var(--surface2)', transition: 'color .15s' }}
+                          style={{ padding: '10px 14px', cursor: 'pointer', color: 'var(--text-muted)', fontSize: '.82rem', borderTop: '1px solid var(--border)', background: 'var(--surface2)', transition: 'color .15s' }}
                           onMouseEnter={e => e.currentTarget.style.color = 'var(--accent)'}
                           onMouseLeave={e => e.currentTarget.style.color = 'var(--text-muted)'}
                         >
