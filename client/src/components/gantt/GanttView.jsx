@@ -51,7 +51,9 @@ export default function GanttView({ onOpenTask }) {
     const minD = new Date(Math.min(...allDates)); minD.setHours(0,0,0,0);
     const maxD = new Date(Math.max(...allDates)); maxD.setHours(0,0,0,0);
     const rs = inputStart ? new Date(inputStart + 'T00:00:00') : minD;
-    const re = inputEnd ? new Date(inputEnd + 'T00:00:00') : maxD;
+    let re = inputEnd ? new Date(inputEnd + 'T00:00:00') : maxD;
+    // Enforce minimum 14-day range to prevent Gantt collapsing to 1 column
+    if ((re - rs) / 86400000 < 14) re = new Date(rs.getTime() + 14 * 86400000);
     return { rangeStart: rs, rangeEnd: re, autoStart: minD, autoEnd: maxD };
   }, [filtered, inputStart, inputEnd]);
 
@@ -203,21 +205,40 @@ export default function GanttView({ onOpenTask }) {
 }
 
 function GanttControls({ projects, filterProj, setFilterProj, inputStart, setInputStart, inputEnd, setInputEnd, autoStart, autoEnd, isMobile }) {
+  if (isMobile) {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 12 }}>
+        <select value={filterProj} onChange={e => setFilterProj(e.target.value)} style={{ width: '100%', fontSize: '.85rem' }}>
+          <option value="__all__">Todos os projetos</option>
+          {projects.map(p => <option key={p.id || p} value={p.name || p}>{p.name || p}</option>)}
+        </select>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <input type="date" value={inputStart} onChange={e => setInputStart(e.target.value)}
+            style={{ flex: 1, fontSize: '.85rem' }} />
+          <span style={{ color: 'var(--text-muted)', fontSize: '.8rem', flexShrink: 0 }}>até</span>
+          <input type="date" value={inputEnd} onChange={e => setInputEnd(e.target.value)}
+            style={{ flex: 1, fontSize: '.85rem' }} />
+          {(inputStart || inputEnd) && (
+            <button className="btn btn-ghost" style={{ padding: '5px 8px', fontSize: '.85rem', flexShrink: 0 }}
+              onClick={() => { setInputStart(''); setInputEnd(''); }}>×</button>
+          )}
+        </div>
+      </div>
+    );
+  }
   return (
-    <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap', alignItems: 'center' }}>
-      <select value={filterProj} onChange={e => setFilterProj(e.target.value)} style={{ width: 'auto', fontSize: isMobile ? '.8rem' : undefined }}>
+    <div style={{ display: 'flex', gap: 12, marginBottom: 16, flexWrap: 'wrap', alignItems: 'center' }}>
+      <select value={filterProj} onChange={e => setFilterProj(e.target.value)} style={{ width: 'auto' }}>
         <option value="__all__">Todos os projetos</option>
         {projects.map(p => <option key={p.id || p} value={p.name || p}>{p.name || p}</option>)}
       </select>
       <input type="date" value={inputStart} onChange={e => setInputStart(e.target.value)}
-        placeholder={fmtISO(autoStart)} style={{ width: 'auto', fontSize: isMobile ? '.8rem' : undefined }} />
+        placeholder={fmtISO(autoStart)} style={{ width: 'auto' }} />
       <input type="date" value={inputEnd} onChange={e => setInputEnd(e.target.value)}
-        placeholder={fmtISO(autoEnd)} style={{ width: 'auto', fontSize: isMobile ? '.8rem' : undefined }} />
+        placeholder={fmtISO(autoEnd)} style={{ width: 'auto' }} />
       {(inputStart || inputEnd) && (
-        <button className="btn btn-ghost" style={{ padding: '5px 10px', fontSize: '.8rem' }}
-          onClick={() => { setInputStart(''); setInputEnd(''); }}>
-          ×
-        </button>
+        <button className="btn btn-ghost" style={{ padding: '6px 12px' }}
+          onClick={() => { setInputStart(''); setInputEnd(''); }}>Limpar datas</button>
       )}
     </div>
   );
