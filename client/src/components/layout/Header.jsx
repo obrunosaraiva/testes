@@ -118,9 +118,12 @@ export default function Header({ onOpenTemplates, onOpenReport, onOpenAdmin, onO
             {/* View switcher */}
             <div style={{ padding: '14px 20px 4px' }}>
               <div style={{ fontSize: '.7rem', color: 'var(--text-muted)', marginBottom: 8, letterSpacing: '.05em' }}>VISUALIZAÇÃO</div>
-              <div style={{ display: 'flex', gap: 8 }}>
-                <button className={`view-btn${view === 'board' ? ' active' : ''}`} style={{ flex: 1 }} onClick={() => { setView('board'); close(); }}>Board</button>
-                <button className={`view-btn${view === 'gantt' ? ' active' : ''}`} style={{ flex: 1 }} onClick={() => { setView('gantt'); close(); }}>Gantt</button>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                <button className={`view-btn${view === 'board'   ? ' active' : ''}`} style={{ flex: '1 1 40%' }} onClick={() => { setView('board');   close(); }}>Board</button>
+                <button className={`view-btn${view === 'list'    ? ' active' : ''}`} style={{ flex: '1 1 40%' }} onClick={() => { setView('list');    close(); }}>Lista</button>
+                <button className={`view-btn${view === 'gantt'   ? ' active' : ''}`} style={{ flex: '1 1 40%' }} onClick={() => { setView('gantt');   close(); }}>Gantt</button>
+                <button className={`view-btn${view === 'mindmap' ? ' active' : ''}`} style={{ flex: '1 1 40%' }} onClick={() => { setView('mindmap'); close(); }}>🗺 Mapa</button>
+                <button className={`view-btn${view === 'chat'    ? ' active' : ''}`} style={{ flex: '1 1 40%' }} onClick={() => { setView('chat');    close(); }}>💬 Chat</button>
               </div>
             </div>
 
