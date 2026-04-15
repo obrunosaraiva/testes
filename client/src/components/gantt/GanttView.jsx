@@ -1,5 +1,6 @@
 import { useState, useMemo } from 'react';
 import { useKanban } from '../../context/KanbanContext';
+import { useMobile } from '../../hooks/useMobile';
 
 const PROJ_COLORS = ['pc0','pc1','pc2','pc3','pc4','pc5','pc6','pc7'];
 const BAR_COLORS = ['#6366f1','#22c55e','#f59e0b','#ef4444','#3b82f6','#a855f7','#ec4899','#14b8a6'];
@@ -17,22 +18,13 @@ function daysBetween(a, b) {
 
 export default function GanttView({ onOpenTask }) {
   const { tasks, projects, activeProject, costCenterFilter } = useKanban();
+  const isMobile = useMobile();
   const [filterProj, setFilterProj] = useState('__all__');
-
-  // Mobile: gantt is not usable on small screens
-  if (typeof window !== 'undefined' && window.innerWidth <= 768) {
-    return (
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 40, textAlign: 'center', color: 'var(--text-muted)' }}>
-        <div style={{ fontSize: '2.5rem', marginBottom: 16 }}>🖥</div>
-        <div style={{ fontSize: '1rem', fontWeight: 600, color: 'var(--text)', marginBottom: 8 }}>Gantt disponível no desktop</div>
-        <div style={{ fontSize: '.85rem', lineHeight: 1.6 }}>
-          A visualização Gantt requer uma tela maior.<br />Acesse pelo computador para usar esta função.
-        </div>
-      </div>
-    );
-  }
   const [inputStart, setInputStart] = useState('');
   const [inputEnd, setInputEnd] = useState('');
+
+  const DAY_W   = isMobile ? 20 : 40;
+  const LABEL_W = isMobile ? 100 : 240;
 
   const filtered = useMemo(() => {
     let t = tasks.filter(t => (t.startDate || t.deadline) && t.status !== 'done');
@@ -72,15 +64,18 @@ export default function GanttView({ onOpenTask }) {
   }, [rangeStart, rangeEnd]);
 
   const todayISO = fmtISO(new Date());
-  const totalWidth = 240 + days.length * 40;
+  const totalWidth = LABEL_W + days.length * DAY_W;
+  const pad = isMobile ? '8px 8px 80px' : '24px';
+
+  const labelStyle = { width: LABEL_W, minWidth: LABEL_W };
 
   if (!filtered.length) {
     return (
-      <div style={{ flex: 1, overflow: 'auto', padding: 24 }}>
+      <div style={{ flex: 1, overflow: 'auto', padding: pad }}>
         <GanttControls projects={projects} filterProj={filterProj} setFilterProj={setFilterProj}
           inputStart={inputStart} setInputStart={setInputStart}
           inputEnd={inputEnd} setInputEnd={setInputEnd}
-          autoStart={autoStart} autoEnd={autoEnd} />
+          autoStart={autoStart} autoEnd={autoEnd} isMobile={isMobile} />
         <div className="gantt-empty">
           Nenhuma tarefa com datas definidas.<br />
           Adicione datas de início e deadline nas tarefas para visualizar o Gantt.
@@ -90,26 +85,30 @@ export default function GanttView({ onOpenTask }) {
   }
 
   return (
-    <div style={{ flex: 1, overflow: 'auto', padding: 24 }}>
+    <div style={{ flex: 1, overflow: 'auto', padding: pad }}>
       <GanttControls projects={projects} filterProj={filterProj} setFilterProj={setFilterProj}
         inputStart={inputStart} setInputStart={setInputStart}
         inputEnd={inputEnd} setInputEnd={setInputEnd}
-        autoStart={autoStart} autoEnd={autoEnd} />
+        autoStart={autoStart} autoEnd={autoEnd} isMobile={isMobile} />
 
       <div className="gantt-scroll-wrap">
         <div className="gantt-inner" style={{ width: totalWidth }}>
           {/* Header */}
           <div className="gantt-header">
-            <div className="gantt-label-col">Tarefa</div>
+            <div className="gantt-label-col" style={labelStyle}>Tarefa</div>
             <div className="gantt-timeline-header">
               {days.map((day, i) => {
                 const iso = fmtISO(day);
-                const wd = day.getDay();
-                const cls = ['Dom','Seg','Ter','Qua','Qui','Sex','Sab'][wd];
+                const wd  = day.getDay();
+                const dayName = ['D','S','T','Q','Q','S','S'][wd];
                 return (
-                  <div key={i} className={`gantt-day-header${wd===0||wd===6?' weekend':''}${iso===todayISO?' today':''}`}>
-                    {day.getDate()}<br />
-                    <span style={{ fontSize: '.6rem' }}>{cls}</span>
+                  <div key={i}
+                    className={`gantt-day-header${wd===0||wd===6?' weekend':''}${iso===todayISO?' today':''}`}
+                    style={{ width: DAY_W, minWidth: DAY_W }}
+                  >
+                    {day.getDate()}
+                    {!isMobile && <><br /><span style={{ fontSize: '.6rem' }}>{['Dom','Seg','Ter','Qua','Qui','Sex','Sab'][wd]}</span></>}
+                    {isMobile && wd === 1 && <><br /><span style={{ fontSize: '.5rem' }}>{dayName}</span></>}
                   </div>
                 );
               })}
@@ -122,16 +121,16 @@ export default function GanttView({ onOpenTask }) {
             const pc = PROJ_COLORS[pi % PROJ_COLORS.length];
             const barColor = BAR_COLORS[pi % BAR_COLORS.length];
             const start = t.startDate ? new Date(t.startDate + 'T00:00:00') : t.deadline ? new Date(t.deadline + 'T00:00:00') : null;
-            const end = t.deadline ? new Date(t.deadline + 'T00:00:00') : t.startDate ? new Date(t.startDate + 'T00:00:00') : null;
+            const end   = t.deadline  ? new Date(t.deadline  + 'T00:00:00') : t.startDate ? new Date(t.startDate + 'T00:00:00') : null;
             const todayIdx = daysBetween(rangeStart, new Date(todayISO + 'T00:00:00'));
 
             return (
               <div key={t.id} className="gantt-row">
-                <div className="gantt-row-label">
-                  <span className={`gr-proj ${pc}`}>{t.project}</span>
-                  <span className="gr-title" title={t.title}>{t.title}</span>
+                <div className="gantt-row-label" style={labelStyle}>
+                  {!isMobile && <span className={`gr-proj ${pc}`}>{t.project}</span>}
+                  <span className="gr-title" title={t.title} style={{ fontSize: isMobile ? '.7rem' : '.78rem' }}>{t.title}</span>
                 </div>
-                <div className="gantt-row-timeline" style={{ width: days.length * 40, flexShrink: 0 }}>
+                <div className="gantt-row-timeline" style={{ width: days.length * DAY_W, flexShrink: 0, height: isMobile ? 36 : 48 }}>
                   {/* BG cells */}
                   {days.map((day, i) => {
                     const iso = fmtISO(day);
@@ -139,14 +138,14 @@ export default function GanttView({ onOpenTask }) {
                     let cls = 'gantt-cell';
                     if (wd === 0 || wd === 6) cls += ' weekend';
                     if (iso === todayISO) cls += ' today';
-                    return <div key={i} className={cls} />;
+                    return <div key={i} className={cls} style={{ width: DAY_W, minWidth: DAY_W }} />;
                   })}
 
                   {/* Bar */}
                   {start && end && (() => {
                     if (t.isEvent && t.eventStartDate) {
                       const evStart = new Date(t.eventStartDate + 'T00:00:00');
-                      const evEnd = t.eventEndDate ? new Date(t.eventEndDate + 'T00:00:00') : evStart;
+                      const evEnd   = t.eventEndDate ? new Date(t.eventEndDate + 'T00:00:00') : evStart;
                       const prepEnd = new Date(evStart.getTime() - 86400000);
                       const bars = [];
 
@@ -156,7 +155,7 @@ export default function GanttView({ onOpenTask }) {
                         if (prepEI >= prepSI) {
                           bars.push(
                             <div key="prep" className="gantt-bar gantt-bar-prep"
-                              style={{ left: prepSI*40, width: Math.max(12,(prepEI-prepSI+1)*40), background: barColor }}
+                              style={{ left: prepSI*DAY_W, width: Math.max(DAY_W,(prepEI-prepSI+1)*DAY_W), background: barColor, top: isMobile?4:10, height: isMobile?20:28 }}
                               onClick={() => onOpenTask(t.id)} title={`${t.title} — preparação`} />
                           );
                         }
@@ -168,9 +167,9 @@ export default function GanttView({ onOpenTask }) {
                         const cls = start < evStart ? 'gantt-bar gantt-bar-event' : 'gantt-bar gantt-bar-event-only';
                         bars.push(
                           <div key="ev" className={cls}
-                            style={{ left: evSI*40, width: Math.max(12,(evEI-evSI+1)*40) }}
+                            style={{ left: evSI*DAY_W, width: Math.max(DAY_W,(evEI-evSI+1)*DAY_W), top: isMobile?2:6, height: isMobile?28:36 }}
                             onClick={() => onOpenTask(t.id)} title={`${t.title} — EVENTO`}>
-                            {evEI - evSI >= 2 ? t.title : ''}
+                            {!isMobile && evEI - evSI >= 2 ? t.title : ''}
                           </div>
                         );
                       }
@@ -181,9 +180,9 @@ export default function GanttView({ onOpenTask }) {
                       const opacity = t.urgency === 'critical' ? 1 : t.urgency === 'high' ? 0.9 : 0.75;
                       return (
                         <div className="gantt-bar"
-                          style={{ left: si*40, width: Math.max(40,(ei-si+1)*40), background: barColor, opacity }}
+                          style={{ left: si*DAY_W, width: Math.max(DAY_W,(ei-si+1)*DAY_W), background: barColor, opacity, top: isMobile?6:10, height: isMobile?22:28 }}
                           onClick={() => onOpenTask(t.id)} title={t.title}>
-                          {ei - si >= 3 ? t.title : ''}
+                          {!isMobile && ei - si >= 3 ? t.title : ''}
                         </div>
                       );
                     }
@@ -191,7 +190,7 @@ export default function GanttView({ onOpenTask }) {
 
                   {/* Today line */}
                   {todayIdx >= 0 && todayIdx < days.length && (
-                    <div className="gantt-today-line" style={{ left: todayIdx*40+20 }} />
+                    <div className="gantt-today-line" style={{ left: todayIdx*DAY_W + DAY_W/2 }} />
                   )}
                 </div>
               </div>
@@ -203,21 +202,21 @@ export default function GanttView({ onOpenTask }) {
   );
 }
 
-function GanttControls({ projects, filterProj, setFilterProj, inputStart, setInputStart, inputEnd, setInputEnd, autoStart, autoEnd }) {
+function GanttControls({ projects, filterProj, setFilterProj, inputStart, setInputStart, inputEnd, setInputEnd, autoStart, autoEnd, isMobile }) {
   return (
-    <div style={{ display: 'flex', gap: 12, marginBottom: 16, flexWrap: 'wrap', alignItems: 'center' }}>
-      <select value={filterProj} onChange={e => setFilterProj(e.target.value)} style={{ width: 'auto' }}>
+    <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap', alignItems: 'center' }}>
+      <select value={filterProj} onChange={e => setFilterProj(e.target.value)} style={{ width: 'auto', fontSize: isMobile ? '.8rem' : undefined }}>
         <option value="__all__">Todos os projetos</option>
         {projects.map(p => <option key={p.id || p} value={p.name || p}>{p.name || p}</option>)}
       </select>
       <input type="date" value={inputStart} onChange={e => setInputStart(e.target.value)}
-        placeholder={fmtISO(autoStart)} style={{ width: 'auto' }} />
+        placeholder={fmtISO(autoStart)} style={{ width: 'auto', fontSize: isMobile ? '.8rem' : undefined }} />
       <input type="date" value={inputEnd} onChange={e => setInputEnd(e.target.value)}
-        placeholder={fmtISO(autoEnd)} style={{ width: 'auto' }} />
+        placeholder={fmtISO(autoEnd)} style={{ width: 'auto', fontSize: isMobile ? '.8rem' : undefined }} />
       {(inputStart || inputEnd) && (
-        <button className="btn btn-ghost" style={{ padding: '6px 12px' }}
+        <button className="btn btn-ghost" style={{ padding: '5px 10px', fontSize: '.8rem' }}
           onClick={() => { setInputStart(''); setInputEnd(''); }}>
-          Limpar datas
+          ×
         </button>
       )}
     </div>
