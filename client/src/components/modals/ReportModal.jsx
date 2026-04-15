@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useKanban } from '../../context/KanbanContext';
 
 const STATUS_LABEL = { backlog: 'Backlog', todo: 'To Do', doing: 'Fazendo', paused: 'Pausado', review: 'Em Revisão', done: 'Concluído' };
@@ -53,14 +53,21 @@ const DEFAULT_TASK_STATUSES = {
 };
 
 export default function ReportModal({ onClose }) {
-  const { tasks, projects } = useKanban();
+  const { tasks, projects, members } = useKanban();
   const [tab, setTab] = useState('tasks');
   const [filterProj, setFilterProj] = useState('__all__');
+  const [filterAssignee, setFilterAssignee] = useState('__all__');
   const [colStatuses, setColStatuses] = useState({ backlog: true, todo: true, doing: true, paused: true, review: true, done: false });
   const [taskStatuses, setTaskStatuses] = useState(DEFAULT_TASK_STATUSES);
   const [onlyLate, setOnlyLate] = useState(false);
   const [preview, setPreview] = useState('');
   const [copied, setCopied] = useState(false);
+
+  const allAssignees = useMemo(() => {
+    const fromTasks = tasks.map(t => t.assignee).filter(Boolean);
+    const fromMembers = (members || []).map(m => m.name).filter(Boolean);
+    return [...new Set([...fromTasks, ...fromMembers])].sort((a, b) => a.localeCompare(b));
+  }, [tasks, members]);
 
   function toggleCol(s) {
     setColStatuses(prev => ({ ...prev, [s]: !prev[s] }));
@@ -80,6 +87,7 @@ export default function ReportModal({ onClose }) {
 
     const allTasks = tasks.filter(t => {
       if (filterProj !== '__all__' && t.project !== filterProj) return false;
+      if (filterAssignee !== '__all__' && (t.assignee || '') !== filterAssignee) return false;
       if (!activeColStatuses.includes(t.status)) return false;
       if (!activeTaskStatuses.includes(t.taskStatus || 'pendente')) return false;
       if (onlyLate) {
@@ -216,7 +224,7 @@ export default function ReportModal({ onClose }) {
 
   // ── Eventos report ──────────────────────────────────────────────────────────
   function buildEventsReport() {
-    const eventTasks = tasks.filter(t => t.isEvent && (filterProj === '__all__' || t.project === filterProj));
+    const eventTasks = tasks.filter(t => t.isEvent && (filterProj === '__all__' || t.project === filterProj) && (filterAssignee === '__all__' || (t.assignee || '') === filterAssignee));
     if (!eventTasks.length) return 'Nenhum evento encontrado.';
 
     const now = new Date();
@@ -262,7 +270,7 @@ export default function ReportModal({ onClose }) {
   // ── Resumo Executivo ─────────────────────────────────────────────────────────
   function buildResumo() {
     const today = new Date(); today.setHours(0, 0, 0, 0);
-    const allTasks = filterProj === '__all__' ? tasks : tasks.filter(t => t.project === filterProj);
+    const allTasks = tasks.filter(t => (filterProj === '__all__' || t.project === filterProj) && (filterAssignee === '__all__' || (t.assignee || '') === filterAssignee));
     if (!allTasks.length) return 'Nenhuma tarefa encontrada.';
 
     const now = new Date();
@@ -273,7 +281,7 @@ export default function ReportModal({ onClose }) {
     lines.push('');
 
     const projs = filterProj === '__all__'
-      ? [...new Set(allTasks.map(t => t.project || 'Sem Projeto'))]
+      ? [...new Set(allTasks.map(t => t.project || 'Sem Projeto'))].sort()
       : [filterProj];
 
     projs.forEach(pName => {
@@ -366,13 +374,22 @@ export default function ReportModal({ onClose }) {
             ))}
           </div>
 
-          {/* Project filter */}
-          <div>
-            <label className="field-label">Projeto</label>
-            <select value={filterProj} onChange={e => { setFilterProj(e.target.value); setPreview(''); }}>
-              <option value="__all__">Todos os projetos</option>
-              {projects.map(p => <option key={p.id || p} value={p.name || p}>{p.name || p}</option>)}
-            </select>
+          {/* Project + Assignee filters */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+            <div>
+              <label className="field-label">Projeto</label>
+              <select value={filterProj} onChange={e => { setFilterProj(e.target.value); setPreview(''); }}>
+                <option value="__all__">Todos os projetos</option>
+                {projects.map(p => <option key={p.id || p} value={p.name || p}>{p.name || p}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="field-label">Responsável</label>
+              <select value={filterAssignee} onChange={e => { setFilterAssignee(e.target.value); setPreview(''); }}>
+                <option value="__all__">Todos</option>
+                {allAssignees.map(a => <option key={a} value={a}>{a}</option>)}
+              </select>
+            </div>
           </div>
 
           {/* Tasks tab filters */}

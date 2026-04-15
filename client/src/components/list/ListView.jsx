@@ -7,12 +7,12 @@ const TASK_STATUSES = [
   { value: 'solicitado',          label: '🟠 Solicitado',           short: 'Solicitado',     color: '#f97316' },
   { value: 'andamento',           label: '🔵 Andamento',            short: 'Andamento',      color: '#3b82f6' },
   { value: 'revisao',             label: '🩷 Revisão',              short: 'Revisão',        color: '#ec4899' },
-  { value: 'correcao',            label: '🟡 Correção necessária',  short: 'Correção',       color: '#eab308' },
+  { value: 'correcao',            label: '🟡 Correção',             short: 'Correção',       color: '#eab308' },
   { value: 'concluido',           label: '🟢 Concluído',            short: 'Concluído',      color: '#22c55e' },
   { value: 'cancelado',           label: '⚫ Cancelado',            short: 'Cancelado',      color: '#6b7280' },
   { value: 'atrasado',            label: '🔴 Atrasado',             short: 'Atrasado',       color: '#ef4444' },
-  { value: 'impedimento_interno', label: '🟧 Impedimento Interno',  short: 'Imp. Interno',   color: '#ea580c' },
-  { value: 'impedimento_externo', label: '🟪 Impedimento Externo',  short: 'Imp. Externo',   color: '#a855f7' },
+  { value: 'impedimento_interno', label: '🟧 Imp. Interno',         short: 'Imp. Interno',   color: '#ea580c' },
+  { value: 'impedimento_externo', label: '🟪 Imp. Externo',         short: 'Imp. Externo',   color: '#a855f7' },
 ];
 
 const STATUS_MAP = Object.fromEntries(TASK_STATUSES.map(s => [s.value, s]));
@@ -22,9 +22,92 @@ function subDone(item) {
 }
 
 const URGENCY_COLORS = { high: '#ef4444', medium: '#f59e0b', low: '#22c55e' };
-const URGENCY_LABELS = { high: 'Alta', medium: 'Média', low: 'Baixa' };
+const URGENCY_LABELS  = { high: 'Alta',    medium: 'Média',   low: 'Baixa'  };
 
-// Monday.com-style full-width colored status cell
+// ── Dropdown multi-select ──────────────────────────────────────────────────────
+function MultiDropdown({ label, icon, options, selected, onToggle, onClear, colorMap }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+  const count = selected.size;
+
+  useEffect(() => {
+    if (!open) return;
+    const h = e => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    document.addEventListener('mousedown', h);
+    return () => document.removeEventListener('mousedown', h);
+  }, [open]);
+
+  return (
+    <div ref={ref} style={{ position: 'relative' }}>
+      <button
+        onClick={() => setOpen(x => !x)}
+        style={{
+          display: 'flex', alignItems: 'center', gap: 6,
+          padding: '6px 12px', borderRadius: 8, cursor: 'pointer',
+          border: count > 0 ? '1.5px solid var(--accent)' : '1.5px solid var(--border)',
+          background: count > 0 ? 'var(--accent)18' : 'var(--surface2)',
+          color: count > 0 ? 'var(--accent)' : 'var(--text)',
+          fontSize: '.82rem', fontWeight: count > 0 ? 700 : 500,
+          transition: 'all .15s', whiteSpace: 'nowrap',
+        }}
+      >
+        {icon} {label}
+        {count > 0 && (
+          <span style={{ background: 'var(--accent)', color: '#fff', borderRadius: 20, padding: '1px 7px', fontSize: '.72rem', fontWeight: 700 }}>
+            {count}
+          </span>
+        )}
+        <span style={{ fontSize: '.6rem', marginLeft: 2, opacity: .6 }}>{open ? '▲' : '▼'}</span>
+      </button>
+
+      {open && (
+        <div style={{
+          position: 'absolute', top: 'calc(100% + 6px)', left: 0, zIndex: 300,
+          background: 'var(--surface)', border: '1px solid var(--border)',
+          borderRadius: 10, overflow: 'hidden', minWidth: 220,
+          boxShadow: '0 8px 24px rgba(0,0,0,.25)',
+        }}>
+          <div style={{ padding: '8px 10px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span style={{ fontSize: '.72rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '.05em' }}>{label}</span>
+            {count > 0 && (
+              <button onClick={() => { onClear(); setOpen(false); }} style={{ background: 'none', border: 'none', fontSize: '.72rem', color: 'var(--accent)', cursor: 'pointer', padding: 0 }}>
+                Limpar
+              </button>
+            )}
+          </div>
+          <div style={{ maxHeight: 280, overflowY: 'auto' }}>
+            {options.map(opt => {
+              const val = typeof opt === 'string' ? opt : opt.value;
+              const lbl = typeof opt === 'string' ? opt : opt.label;
+              const color = colorMap?.[val];
+              const active = selected.has(val);
+              return (
+                <div
+                  key={val}
+                  onClick={() => onToggle(val)}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 10,
+                    padding: '8px 12px', cursor: 'pointer', fontSize: '.83rem',
+                    background: active ? (color ? color + '18' : 'var(--accent)18') : 'transparent',
+                    borderLeft: `3px solid ${active ? (color || 'var(--accent)') : 'transparent'}`,
+                    transition: 'background .1s',
+                  }}
+                  onMouseEnter={e => { if (!active) e.currentTarget.style.background = 'var(--surface2)'; }}
+                  onMouseLeave={e => { if (!active) e.currentTarget.style.background = 'transparent'; }}
+                >
+                  <span style={{ width: 14, height: 14, borderRadius: 3, border: `2px solid ${active ? (color || 'var(--accent)') : 'var(--border)'}`, background: active ? (color || 'var(--accent)') : 'transparent', flexShrink: 0 }} />
+                  <span style={{ flex: 1 }}>{lbl}</span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Status cell (Monday.com style) ────────────────────────────────────────────
 function StatusCell({ value, onChange, disabled, small = false }) {
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
@@ -32,9 +115,9 @@ function StatusCell({ value, onChange, disabled, small = false }) {
 
   useEffect(() => {
     if (!open) return;
-    function handler(e) { if (ref.current && !ref.current.contains(e.target)) setOpen(false); }
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
+    const h = e => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    document.addEventListener('mousedown', h);
+    return () => document.removeEventListener('mousedown', h);
   }, [open]);
 
   return (
@@ -42,18 +125,15 @@ function StatusCell({ value, onChange, disabled, small = false }) {
       <div
         onClick={() => !disabled && setOpen(x => !x)}
         style={{
-          background: ts.color,
-          color: '#fff',
+          background: ts.color, color: '#fff',
           padding: small ? '4px 8px' : '0 10px',
           height: small ? 'auto' : '100%',
           minHeight: small ? 'auto' : 38,
-          fontWeight: 700,
-          fontSize: small ? '.68rem' : '.75rem',
+          fontWeight: 700, fontSize: small ? '.68rem' : '.75rem',
           cursor: disabled ? 'default' : 'pointer',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           userSelect: 'none', letterSpacing: '.02em',
-          borderRadius: small ? 4 : 0,
-          whiteSpace: 'nowrap',
+          borderRadius: small ? 4 : 0, whiteSpace: 'nowrap',
         }}
       >
         {ts.short}
@@ -107,14 +187,29 @@ function HeaderRow() {
   );
 }
 
+// ── Main component ─────────────────────────────────────────────────────────────
 export default function ListView({ onOpenTask, onNewTask }) {
-  const { tasks, activeProject, costCenterFilter, projects, updateTask } = useKanban();
+  const { tasks, activeProject, costCenterFilter, projects, members, updateTask } = useKanban();
   const { can } = useRole();
-  const [collapsed, setCollapsed] = useState({});
+  const [collapsed, setCollapsed]         = useState({});
+  const [assigneeFilter, setAssigneeFilter] = useState(new Set());
+  const [statusFilter, setStatusFilter]   = useState(new Set());
+  const [groupBy, setGroupBy]             = useState('project'); // 'project' | 'assignee'
 
   const today = useMemo(() => { const d = new Date(); d.setHours(0,0,0,0); return d; }, []);
 
-  const filtered = useMemo(() => {
+  // All unique assignees across visible tasks
+  const allAssignees = useMemo(() => {
+    const fromTasks = tasks.map(t => t.assignee).filter(Boolean);
+    const fromMembers = (members || []).map(m => m.name).filter(Boolean);
+    return [...new Set([...fromTasks, ...fromMembers])].sort((a, b) => a.localeCompare(b));
+  }, [tasks, members]);
+
+  const statusColorMap = useMemo(() =>
+    Object.fromEntries(TASK_STATUSES.map(s => [s.value, s.color])), []);
+
+  // Base filter (project + CC from global state)
+  const baseFiltered = useMemo(() => {
     let t = [...tasks];
     if (activeProject !== '__all__') t = t.filter(t => t.project === activeProject);
     if (costCenterFilter.length > 0) {
@@ -126,124 +221,224 @@ export default function ListView({ onOpenTask, onNewTask }) {
     return t;
   }, [tasks, activeProject, costCenterFilter, projects]);
 
+  // Local filters (assignee + status)
+  const filtered = useMemo(() => {
+    let t = baseFiltered;
+    if (assigneeFilter.size > 0) t = t.filter(t => assigneeFilter.has(t.assignee || ''));
+    if (statusFilter.size > 0)   t = t.filter(t => statusFilter.has(t.taskStatus || 'pendente'));
+    return t;
+  }, [baseFiltered, assigneeFilter, statusFilter]);
+
+  // Group by project or assignee
   const grouped = useMemo(() => {
     const map = {};
     filtered.forEach(t => {
-      const key = t.project || 'Sem projeto';
+      const key = groupBy === 'assignee'
+        ? (t.assignee || 'Sem responsável')
+        : (t.project  || 'Sem projeto');
       if (!map[key]) map[key] = [];
       map[key].push(t);
     });
-    return Object.entries(map);
-  }, [filtered]);
+    // Sort groups alphabetically
+    return Object.entries(map).sort((a, b) => a[0].localeCompare(b[0]));
+  }, [filtered, groupBy]);
 
-  if (grouped.length === 0) {
-    return (
-      <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', flexDirection: 'column', gap: 12 }}>
-        <div style={{ fontSize: '2rem' }}>📋</div>
-        <div>Nenhuma tarefa encontrada</div>
-        {can.create && <button className="btn btn-primary" onClick={() => onNewTask('backlog')}>+ Nova tarefa</button>}
-      </div>
-    );
+  const hasFilters = assigneeFilter.size > 0 || statusFilter.size > 0;
+
+  function toggleAssignee(v) {
+    setAssigneeFilter(prev => { const s = new Set(prev); s.has(v) ? s.delete(v) : s.add(v); return s; });
+  }
+  function toggleStatus(v) {
+    setStatusFilter(prev => { const s = new Set(prev); s.has(v) ? s.delete(v) : s.add(v); return s; });
   }
 
+  // Stats for summary bar
+  const stats = useMemo(() => {
+    const total = filtered.length;
+    const late  = filtered.filter(t => t.deadline && new Date(t.deadline + 'T00:00:00') < today && t.taskStatus !== 'concluido' && t.taskStatus !== 'cancelado').length;
+    const done  = filtered.filter(t => t.taskStatus === 'concluido').length;
+    return { total, late, done };
+  }, [filtered, today]);
+
+  const groupIcon = groupBy === 'assignee' ? '👤' : '📁';
+
   return (
-    <div style={{ flex: 1, overflowY: 'auto', padding: '16px 24px' }}>
+    <div style={{ flex: 1, overflowY: 'auto', padding: '12px 24px 24px' }}>
       <div style={{ maxWidth: 1200, margin: '0 auto' }}>
-        <HeaderRow />
 
-        {grouped.map(([projName, projTasks]) => {
-          const isCollapsed = collapsed[projName];
-          const doneCount = projTasks.filter(t => t.taskStatus === 'concluido').length;
+        {/* ── Filter bar ── */}
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap',
+          padding: '10px 0 14px', borderBottom: '1px solid var(--border)',
+          marginBottom: 12,
+        }}>
+          <MultiDropdown
+            label="Responsável"
+            icon="👤"
+            options={allAssignees}
+            selected={assigneeFilter}
+            onToggle={toggleAssignee}
+            onClear={() => setAssigneeFilter(new Set())}
+          />
+          <MultiDropdown
+            label="Status"
+            icon="🏷"
+            options={TASK_STATUSES}
+            selected={statusFilter}
+            onToggle={toggleStatus}
+            onClear={() => setStatusFilter(new Set())}
+            colorMap={statusColorMap}
+          />
 
-          return (
-            <div key={projName} style={{ marginBottom: 12 }}>
-              <div
-                onClick={() => setCollapsed(p => ({ ...p, [projName]: !p[projName] }))}
+          {/* Group by toggle */}
+          <div style={{ display: 'flex', background: 'var(--surface2)', borderRadius: 8, border: '1px solid var(--border)', overflow: 'hidden' }}>
+            {[['project', '📁 Projeto'], ['assignee', '👤 Responsável']].map(([val, lbl]) => (
+              <button
+                key={val}
+                onClick={() => setGroupBy(val)}
                 style={{
-                  display: 'flex', alignItems: 'center', gap: 10,
-                  padding: '8px 14px', cursor: 'pointer', userSelect: 'none',
-                  background: 'var(--surface2)',
-                  borderRadius: isCollapsed ? 10 : '10px 10px 0 0',
-                  borderBottom: isCollapsed ? 'none' : '1px solid var(--border)',
+                  padding: '6px 12px', border: 'none', cursor: 'pointer',
+                  fontSize: '.80rem', fontWeight: groupBy === val ? 700 : 400,
+                  background: groupBy === val ? 'var(--accent)' : 'transparent',
+                  color: groupBy === val ? '#fff' : 'var(--text-muted)',
+                  transition: 'all .15s',
                 }}
-              >
-                <span style={{ fontSize: '.7rem', color: 'var(--text-muted)', transition: 'transform .15s', display: 'inline-block', transform: isCollapsed ? 'rotate(-90deg)' : 'rotate(0)' }}>▼</span>
-                <span style={{ fontWeight: 700, fontSize: '.9rem' }}>📁 {projName}</span>
-                <span style={{ fontSize: '.75rem', color: 'var(--text-muted)' }}>{projTasks.length} tarefa{projTasks.length !== 1 ? 's' : ''}</span>
-                {doneCount > 0 && <span style={{ fontSize: '.72rem', color: 'var(--success)' }}>✅ {doneCount} concluída{doneCount !== 1 ? 's' : ''}</span>}
-              </div>
+              >{lbl}</button>
+            ))}
+          </div>
 
-              {!isCollapsed && (
-                <div style={{ border: '1px solid var(--border)', borderTop: 'none', borderRadius: '0 0 10px 10px', overflow: 'hidden' }}>
-                  {projTasks.map((task, idx) => {
-                    const dl = task.deadline ? new Date(task.deadline + 'T00:00:00') : null;
-                    const late = dl && dl < today && task.taskStatus !== 'concluido' && task.taskStatus !== 'cancelado';
-                    return (
-                      <TaskRow
-                        key={task.id}
-                        task={task}
-                        idx={idx}
-                        isLast={idx === projTasks.length - 1}
-                        dl={dl}
-                        late={late}
-                        today={today}
-                        onOpen={() => onOpenTask(task.id)}
-                        onChangeTaskStatus={can.edit ? s => updateTask({ ...task, taskStatus: s }) : null}
-                        onChangeSubStatus={can.edit ? (subIdx, s) => {
-                          const newCl = task.checklist.map((item, i) => i !== subIdx ? item : { ...item, status: s, done: s === 'concluido' || s === 'cancelado' });
-                          updateTask({ ...task, checklist: newCl });
-                        } : null}
-                      />
-                    );
-                  })}
+          {/* Clear all */}
+          {hasFilters && (
+            <button
+              onClick={() => { setAssigneeFilter(new Set()); setStatusFilter(new Set()); }}
+              style={{ background: 'none', border: '1px solid var(--border)', borderRadius: 8, padding: '6px 12px', fontSize: '.80rem', color: 'var(--text-muted)', cursor: 'pointer' }}
+            >
+              × Limpar filtros
+            </button>
+          )}
 
-                  {can.create && (
-                    <div
-                      onClick={() => onNewTask('backlog')}
-                      style={{ padding: '8px 14px', cursor: 'pointer', color: 'var(--text-muted)', fontSize: '.82rem', borderTop: '1px solid var(--border)', background: 'var(--surface2)', transition: 'color .15s' }}
-                      onMouseEnter={e => e.currentTarget.style.color = 'var(--accent)'}
-                      onMouseLeave={e => e.currentTarget.style.color = 'var(--text-muted)'}
-                    >
-                      + Adicionar tarefa
+          {/* Stats */}
+          <div style={{ marginLeft: 'auto', display: 'flex', gap: 14, fontSize: '.78rem', color: 'var(--text-muted)', alignItems: 'center' }}>
+            <span>{stats.total} tarefa{stats.total !== 1 ? 's' : ''}</span>
+            {stats.done > 0  && <span style={{ color: 'var(--success)' }}>✅ {stats.done} concluída{stats.done !== 1 ? 's' : ''}</span>}
+            {stats.late > 0  && <span style={{ color: 'var(--danger)'  }}>⚠ {stats.late} atrasada{stats.late !== 1 ? 's' : ''}</span>}
+          </div>
+        </div>
+
+        {/* ── Empty state ── */}
+        {grouped.length === 0 && (
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', flexDirection: 'column', gap: 12, padding: '60px 0' }}>
+            <div style={{ fontSize: '2rem' }}>{hasFilters ? '🔍' : '📋'}</div>
+            <div>{hasFilters ? 'Nenhuma tarefa com os filtros selecionados' : 'Nenhuma tarefa encontrada'}</div>
+            {hasFilters && (
+              <button className="btn btn-ghost" onClick={() => { setAssigneeFilter(new Set()); setStatusFilter(new Set()); }}>
+                Limpar filtros
+              </button>
+            )}
+            {!hasFilters && can.create && (
+              <button className="btn btn-primary" onClick={() => onNewTask('backlog')}>+ Nova tarefa</button>
+            )}
+          </div>
+        )}
+
+        {/* ── Groups ── */}
+        {grouped.length > 0 && (
+          <>
+            <HeaderRow />
+            {grouped.map(([groupName, groupTasks]) => {
+              const isCollapsed = collapsed[groupName];
+              const doneCount = groupTasks.filter(t => t.taskStatus === 'concluido').length;
+              const lateCount = groupTasks.filter(t => t.deadline && new Date(t.deadline + 'T00:00:00') < today && t.taskStatus !== 'concluido' && t.taskStatus !== 'cancelado').length;
+
+              return (
+                <div key={groupName} style={{ marginBottom: 12 }}>
+                  <div
+                    onClick={() => setCollapsed(p => ({ ...p, [groupName]: !p[groupName] }))}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: 10,
+                      padding: '8px 14px', cursor: 'pointer', userSelect: 'none',
+                      background: 'var(--surface2)',
+                      borderRadius: isCollapsed ? 10 : '10px 10px 0 0',
+                      borderBottom: isCollapsed ? 'none' : '1px solid var(--border)',
+                    }}
+                  >
+                    <span style={{ fontSize: '.7rem', color: 'var(--text-muted)', transition: 'transform .15s', display: 'inline-block', transform: isCollapsed ? 'rotate(-90deg)' : 'rotate(0)' }}>▼</span>
+                    <span style={{ fontWeight: 700, fontSize: '.9rem' }}>{groupIcon} {groupName}</span>
+                    <span style={{ fontSize: '.75rem', color: 'var(--text-muted)' }}>{groupTasks.length} tarefa{groupTasks.length !== 1 ? 's' : ''}</span>
+                    {doneCount > 0 && <span style={{ fontSize: '.72rem', color: 'var(--success)' }}>✅ {doneCount} concluída{doneCount !== 1 ? 's' : ''}</span>}
+                    {lateCount > 0 && <span style={{ fontSize: '.72rem', color: 'var(--danger)' }}>⚠ {lateCount} atrasada{lateCount !== 1 ? 's' : ''}</span>}
+                  </div>
+
+                  {!isCollapsed && (
+                    <div style={{ border: '1px solid var(--border)', borderTop: 'none', borderRadius: '0 0 10px 10px', overflow: 'hidden' }}>
+                      {groupTasks.map((task, idx) => {
+                        const dl = task.deadline ? new Date(task.deadline + 'T00:00:00') : null;
+                        const late = dl && dl < today && task.taskStatus !== 'concluido' && task.taskStatus !== 'cancelado';
+                        return (
+                          <TaskRow
+                            key={task.id}
+                            task={task}
+                            idx={idx}
+                            isLast={idx === groupTasks.length - 1}
+                            dl={dl}
+                            late={late}
+                            today={today}
+                            onOpen={() => onOpenTask(task.id)}
+                            onChangeTaskStatus={can.edit ? s => updateTask({ ...task, taskStatus: s }) : null}
+                            onChangeSubStatus={can.edit ? (subIdx, s) => {
+                              const newCl = task.checklist.map((item, i) => i !== subIdx ? item : { ...item, status: s, done: s === 'concluido' || s === 'cancelado' });
+                              updateTask({ ...task, checklist: newCl });
+                            } : null}
+                          />
+                        );
+                      })}
+                      {can.create && (
+                        <div
+                          onClick={() => onNewTask('backlog')}
+                          style={{ padding: '8px 14px', cursor: 'pointer', color: 'var(--text-muted)', fontSize: '.82rem', borderTop: '1px solid var(--border)', background: 'var(--surface2)', transition: 'color .15s' }}
+                          onMouseEnter={e => e.currentTarget.style.color = 'var(--accent)'}
+                          onMouseLeave={e => e.currentTarget.style.color = 'var(--text-muted)'}
+                        >
+                          + Adicionar tarefa
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
-              )}
-            </div>
-          );
-        })}
+              );
+            })}
+          </>
+        )}
       </div>
     </div>
   );
 }
 
+// ── Task row ───────────────────────────────────────────────────────────────────
 function TaskRow({ task, idx, isLast, dl, late, today, onOpen, onChangeTaskStatus, onChangeSubStatus }) {
-  const [hovered, setHovered] = useState(false);
+  const [hovered, setHovered]   = useState(false);
   const [showSubs, setShowSubs] = useState(true);
 
-  const pending = task.checklist?.filter(c => !subDone(c)) || [];
-  const done = task.checklist?.filter(c => subDone(c)) || [];
+  const pending    = task.checklist?.filter(c => !subDone(c)) || [];
+  const done       = task.checklist?.filter(c =>  subDone(c)) || [];
   const hasChecklist = (task.checklist?.length || 0) > 0;
 
   const bg = hovered ? 'var(--surface3)' : idx % 2 === 0 ? 'var(--surface)' : 'var(--surface2)';
 
   return (
     <div
-      style={{ background: bg, borderBottom: isLast && !showSubs ? 'none' : '1px solid var(--border)', transition: 'background .1s' }}
+      style={{ background: bg, borderBottom: isLast && !(showSubs && hasChecklist) ? 'none' : '1px solid var(--border)', transition: 'background .1s' }}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >
-      {/* Main task row */}
       <div style={{ display: 'grid', gridTemplateColumns: COL, alignItems: 'stretch', minHeight: 42, cursor: 'pointer' }} onClick={onOpen}>
 
-        {/* Status — Monday.com style full-height colored cell */}
         <StatusCell
           value={task.taskStatus || 'pendente'}
           onChange={onChangeTaskStatus || (() => {})}
           disabled={!onChangeTaskStatus}
         />
 
-        {/* Title */}
         <div style={{ padding: '0 14px', display: 'flex', alignItems: 'center', gap: 6, overflow: 'hidden' }}>
           {hasChecklist && (
             <button
@@ -258,39 +453,31 @@ function TaskRow({ task, idx, isLast, dl, late, today, onOpen, onChangeTaskStatu
                 : task.title}
             </span>
             {hasChecklist && (
-              <span style={{ fontSize: '.68rem', color: 'var(--text-muted)' }}>
-                ☑ {done.length}/{task.checklist.length}
-              </span>
+              <span style={{ fontSize: '.68rem', color: 'var(--text-muted)' }}>☑ {done.length}/{task.checklist.length}</span>
             )}
           </div>
         </div>
 
-        {/* Responsável */}
         <div style={{ padding: '0 14px', display: 'flex', alignItems: 'center', fontSize: '.82rem', overflow: 'hidden', color: task.assignee ? 'var(--text)' : 'var(--text-muted)' }}>
           <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{task.assignee || '—'}</span>
         </div>
 
-        {/* Prazo */}
         <div style={{ padding: '0 14px', display: 'flex', alignItems: 'center', fontSize: '.82rem', fontWeight: late ? 700 : 400, color: late ? 'var(--danger)' : dl ? 'var(--text)' : 'var(--text-muted)' }}>
           {dl ? dl.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }) : '—'}
           {late && ' ⚠'}
         </div>
 
-        {/* Urgência */}
         <div style={{ padding: '0 14px', display: 'flex', alignItems: 'center' }}>
           {task.urgency ? (
-            <span style={{ fontSize: '.7rem', fontWeight: 700, color: URGENCY_COLORS[task.urgency] || 'var(--text-muted)', background: (URGENCY_COLORS[task.urgency] || '#666') + '22', padding: '2px 8px', borderRadius: 10 }}>
-              {URGENCY_LABELS[task.urgency] || task.urgency}
+            <span style={{ fontSize: '.7rem', fontWeight: 700, color: URGENCY_COLORS[task.urgency], background: URGENCY_COLORS[task.urgency] + '22', padding: '2px 8px', borderRadius: 10 }}>
+              {URGENCY_LABELS[task.urgency]}
             </span>
           ) : <span style={{ color: 'var(--text-muted)', fontSize: '.82rem' }}>—</span>}
         </div>
       </div>
 
-      {/* Subtasks — collapsed by default */}
       {showSubs && hasChecklist && (
         <div style={{ background: 'var(--surface)', borderTop: '1px solid var(--border)' }}>
-
-          {/* Em aberto */}
           {pending.length > 0 && (
             <>
               <div style={{ padding: '4px 14px 4px 42px', fontSize: '.68rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '.06em', borderBottom: '1px solid var(--border)', background: 'var(--surface2)' }}>
@@ -298,7 +485,7 @@ function TaskRow({ task, idx, isLast, dl, late, today, onOpen, onChangeTaskStatu
               </div>
               {pending.map(item => {
                 const realIdx = task.checklist.findIndex(c => c === item);
-                const subDl = item.deadline ? new Date(item.deadline + 'T00:00:00') : null;
+                const subDl   = item.deadline ? new Date(item.deadline + 'T00:00:00') : null;
                 const subLate = subDl && subDl < today && !subDone(item);
                 return (
                   <div
@@ -306,12 +493,7 @@ function TaskRow({ task, idx, isLast, dl, late, today, onOpen, onChangeTaskStatu
                     style={{ display: 'grid', gridTemplateColumns: COL, alignItems: 'stretch', minHeight: 36, borderBottom: '1px solid var(--border)' }}
                     onClick={e => e.stopPropagation()}
                   >
-                    <StatusCell
-                      value={item.status || 'pendente'}
-                      onChange={s => onChangeSubStatus?.(realIdx, s)}
-                      disabled={!onChangeSubStatus}
-                      small
-                    />
+                    <StatusCell value={item.status || 'pendente'} onChange={s => onChangeSubStatus?.(realIdx, s)} disabled={!onChangeSubStatus} small />
                     <div style={{ padding: '0 14px 0 28px', display: 'flex', alignItems: 'center', fontSize: '.84rem', fontWeight: 500, overflow: 'hidden' }}>
                       <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.text || item.label || <em style={{ color: 'var(--text-muted)', fontWeight: 400 }}>sem título</em>}</span>
                     </div>
@@ -330,8 +512,6 @@ function TaskRow({ task, idx, isLast, dl, late, today, onOpen, onChangeTaskStatu
               })}
             </>
           )}
-
-          {/* Concluídas / Canceladas */}
           {done.length > 0 && (
             <SubDoneSection items={done} task={task} today={today} onChangeSubStatus={onChangeSubStatus} />
           )}
@@ -341,6 +521,7 @@ function TaskRow({ task, idx, isLast, dl, late, today, onOpen, onChangeTaskStatu
   );
 }
 
+// ── Subtasks — done/cancelled section ─────────────────────────────────────────
 function SubDoneSection({ items, task, today, onChangeSubStatus }) {
   const [open, setOpen] = useState(false);
   return (
@@ -360,24 +541,15 @@ function SubDoneSection({ items, task, today, onChangeSubStatus }) {
             style={{ display: 'grid', gridTemplateColumns: COL, alignItems: 'stretch', minHeight: 36, borderBottom: '1px solid var(--border)', opacity: 0.65 }}
             onClick={e => e.stopPropagation()}
           >
-            <StatusCell
-              value={item.status || 'concluido'}
-              onChange={s => onChangeSubStatus?.(realIdx, s)}
-              disabled={!onChangeSubStatus}
-              small
-            />
+            <StatusCell value={item.status || 'concluido'} onChange={s => onChangeSubStatus?.(realIdx, s)} disabled={!onChangeSubStatus} small />
             <div style={{ padding: '0 14px 0 28px', display: 'flex', alignItems: 'center', fontSize: '.82rem', overflow: 'hidden' }}>
               <s style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--text-muted)' }}>{item.text || item.label || '(sem título)'}</s>
             </div>
-            <div style={{ padding: '0 14px', display: 'flex', alignItems: 'center', fontSize: '.78rem', color: 'var(--text-muted)' }}>
-              {item.assignee || '—'}
-            </div>
+            <div style={{ padding: '0 14px', display: 'flex', alignItems: 'center', fontSize: '.78rem', color: 'var(--text-muted)' }}>{item.assignee || '—'}</div>
             <div style={{ padding: '0 14px', display: 'flex', alignItems: 'center', fontSize: '.78rem', color: 'var(--text-muted)' }}>
               {item.deadline ? new Date(item.deadline + 'T00:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }) : '—'}
             </div>
-            <div style={{ padding: '0 14px', display: 'flex', alignItems: 'center', fontSize: '.78rem', color: 'var(--text-muted)' }}>
-              {item.time || '—'}
-            </div>
+            <div style={{ padding: '0 14px', display: 'flex', alignItems: 'center', fontSize: '.78rem', color: 'var(--text-muted)' }}>{item.time || '—'}</div>
           </div>
         );
       })}
