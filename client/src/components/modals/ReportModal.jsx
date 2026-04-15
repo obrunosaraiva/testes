@@ -174,8 +174,10 @@ export default function ReportModal({ onClose }) {
           } else {
             lines.push(t.title);
           }
-          // Itens do checklist
+          // Itens do checklist — respeita o mesmo filtro de taskStatus
           checklist.forEach(c => {
+            const cStatus = c.status || 'pendente';
+            if (!activeTaskStatuses.includes(cStatus)) return; // oculta se status filtrado
             const cDl = fmtDate(c.deadline);
             const cAssignee = c.assignee ? ` · 👤 ${c.assignee}` : '';
             const cDlPart = cDl ? ` · 📅 ${cDl}` : '';
@@ -184,7 +186,7 @@ export default function ReportModal({ onClose }) {
             if (emoji) {
               lines.push(`      ${emoji}${cDlPart} · ${text}${cAssignee}`);
             } else {
-              lines.push(`      ☐ ${text}${cAssignee}${cDlPart} ${sEmoji(c.status || 'pendente')}`);
+              lines.push(`      ☐ ${text}${cAssignee}${cDlPart} ${sEmoji(cStatus)}`);
             }
             // Subtask pending dependencies
             const clBlocking = pendingCLDeps(c, checklist);
