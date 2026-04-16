@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
 import { useKanban } from '../../context/KanbanContext';
-import { useAuth } from '../../hooks/useAuth';
+import { useRole } from '../../context/RoleContext';
 
 const STATUS_LABEL = { backlog: 'Backlog', todo: 'To Do', doing: 'Fazendo', done: 'Concluído' };
 
@@ -55,7 +55,7 @@ const DEFAULT_TASK_STATUSES = {
 
 export default function ReportModal({ onClose }) {
   const { tasks, projects, members } = useKanban();
-  const { token } = useAuth();
+  const { token } = useRole();
   const [tab, setTab] = useState('tasks');
   const [filterProj, setFilterProj] = useState('__all__');
   const [filterAssignee, setFilterAssignee] = useState('__all__');

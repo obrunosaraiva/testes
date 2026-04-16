@@ -18,10 +18,18 @@ export function RoleProvider({ children }) {
   const [role, setRole] = useState(null);
   const [userId, setUserId] = useState(null);
   const [userEmail, setUserEmail] = useState(null);
+  const [token, setToken] = useState(null);
   const [loading, setLoading] = useState(true);
   const [allProfiles, setAllProfiles] = useState([]);
 
-  useEffect(() => { init(); }, []);
+  useEffect(() => {
+    init();
+    // Mantém token sempre atualizado sem competir com o lock
+    const { data: { subscription } } = sb.auth.onAuthStateChange((_event, session) => {
+      setToken(session?.access_token ?? null);
+    });
+    return () => subscription.unsubscribe();
+  }, []);
 
   async function init() {
     try {
@@ -118,7 +126,7 @@ export function RoleProvider({ children }) {
   };
 
   return (
-    <RoleContext.Provider value={{ role, userId, userEmail, loading, can, allProfiles, loadAllProfiles, updateUserRole, addUserProfile }}>
+    <RoleContext.Provider value={{ role, userId, userEmail, token, loading, can, allProfiles, loadAllProfiles, updateUserRole, addUserProfile }}>
       {children}
     </RoleContext.Provider>
   );
