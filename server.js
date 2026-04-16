@@ -299,19 +299,27 @@ ensureChatBucket();
 
 // ── JWT verification ───────────────────────────────────────────────────────────
 async function verifyJWT(req) {
-  if (!SUPABASE_URL || !ANON_KEY) return null;
+  if (!SUPABASE_URL) return null;
   const token = req.headers.authorization?.replace('Bearer ', '').trim();
   if (!token) return null;
-  try {
-    const r = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
-      headers: { Authorization: `Bearer ${token}`, apikey: ANON_KEY },
-    });
-    if (!r.ok) return null;
-    const u = await r.json();
-    return u?.id || null;
-  } catch (_) {
-    return null;
+  // Try ANON_KEY first, then SERVICE_KEY as fallback
+  const keysToTry = [ANON_KEY, SERVICE_KEY].filter(Boolean);
+  if (!keysToTry.length) return null;
+  for (const apikey of keysToTry) {
+    try {
+      const r = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
+        headers: { Authorization: `Bearer ${token}`, apikey },
+      });
+      if (r.ok) {
+        const u = await r.json();
+        return u?.id || null;
+      }
+      console.warn(`[verifyJWT] /auth/v1/user status=${r.status} with key=${apikey === SERVICE_KEY ? 'SERVICE' : 'ANON'}`);
+    } catch (e) {
+      console.warn('[verifyJWT] fetch error:', e.message);
+    }
   }
+  return null;
 }
 
 async function verifyAdmin(req, res) {
