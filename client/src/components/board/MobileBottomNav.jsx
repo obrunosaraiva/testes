@@ -4,8 +4,6 @@ const STATUSES = [
   { key: 'backlog', label: 'Backlog', color: 'var(--backlog)' },
   { key: 'todo',    label: 'To Do',   color: 'var(--todo)'    },
   { key: 'doing',   label: 'Doing',   color: 'var(--doing)'   },
-  { key: 'paused',  label: 'Pausado', color: 'var(--paused)'  },
-  { key: 'review',  label: 'Review',  color: 'var(--review)'  },
   { key: 'done',    label: 'Done',    color: 'var(--done)'    },
 ];
 

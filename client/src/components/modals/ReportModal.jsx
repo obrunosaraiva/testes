@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react';
 import { useKanban } from '../../context/KanbanContext';
 
-const STATUS_LABEL = { backlog: 'Backlog', todo: 'To Do', doing: 'Fazendo', paused: 'Pausado', review: 'Em Revisão', done: 'Concluído' };
+const STATUS_LABEL = { backlog: 'Backlog', todo: 'To Do', doing: 'Fazendo', done: 'Concluído' };
 
 const TASK_STATUSES = [
   { value: 'pendente',            label: '⚪ Pendente' },
@@ -57,7 +57,7 @@ export default function ReportModal({ onClose }) {
   const [tab, setTab] = useState('tasks');
   const [filterProj, setFilterProj] = useState('__all__');
   const [filterAssignee, setFilterAssignee] = useState('__all__');
-  const [colStatuses, setColStatuses] = useState({ backlog: true, todo: true, doing: true, paused: true, review: true, done: false });
+  const [colStatuses, setColStatuses] = useState({ backlog: true, todo: true, doing: true, done: false });
   const [taskStatuses, setTaskStatuses] = useState(DEFAULT_TASK_STATUSES);
   const [onlyLate, setOnlyLate] = useState(false);
   const [preview, setPreview] = useState('');
@@ -400,7 +400,7 @@ export default function ReportModal({ onClose }) {
               <div>
                 <label className="field-label">Coluna do Kanban</label>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
-                  {[['backlog','📥 Backlog'],['todo','📌 To Do'],['doing','🔄 Doing'],['paused','⏸ Pausado'],['review','👀 Review'],['done','✅ Done']].map(([s, label]) => (
+                  {[['backlog','📥 Backlog'],['todo','📌 To Do'],['doing','🔄 Doing'],['done','✅ Done']].map(([s, label]) => (
                     <label key={s} style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: '.85rem', cursor: 'pointer' }}>
                       <input type="checkbox" checked={colStatuses[s]} onChange={() => { toggleCol(s); setPreview(''); }} />
                       {label}

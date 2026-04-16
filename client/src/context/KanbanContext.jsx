@@ -36,7 +36,7 @@ function normalizeTask(t) {
     title: t.title || '',
     description: t.description || '',
     project: t.project || '',
-    status: t.status || 'backlog',
+    status: (['paused','review'].includes(t.status)) ? 'backlog' : (t.status || 'backlog'),
     assignee: t.assignee || '',
     urgency: t.urgency || '',
     startDate: t.startDate || t.start_date || '',

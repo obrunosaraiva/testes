@@ -1,7 +1,7 @@
 import Column from './Column';
 import { useMobile } from '../../hooks/useMobile';
 
-const STATUSES = ['backlog', 'todo', 'doing', 'paused', 'review', 'done'];
+const STATUSES = ['backlog', 'todo', 'doing', 'done'];
 
 export default function BoardView({ onOpenTask, onNewTask, mobileStatus }) {
   const isMobile = useMobile();
