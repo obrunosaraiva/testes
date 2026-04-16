@@ -1,5 +1,6 @@
 import { useState, useMemo } from 'react';
 import { useKanban } from '../../context/KanbanContext';
+import { sb } from '../../lib/supabase';
 
 const STATUS_LABEL = { backlog: 'Backlog', todo: 'To Do', doing: 'Fazendo', done: 'Concluído' };
 
@@ -62,6 +63,14 @@ export default function ReportModal({ onClose }) {
   const [onlyLate, setOnlyLate] = useState(false);
   const [preview, setPreview] = useState('');
   const [copied, setCopied] = useState(false);
+
+  // WhatsApp send state
+  const [waOpen, setWaOpen]       = useState(false);
+  const [waGroups, setWaGroups]   = useState([]);
+  const [waLoading, setWaLoading] = useState(false);
+  const [waGroupId, setWaGroupId] = useState('');
+  const [waSending, setWaSending] = useState(false);
+  const [waMsg, setWaMsg]         = useState('');
 
   const allAssignees = useMemo(() => {
     const fromTasks = tasks.map(t => t.assignee).filter(Boolean);
@@ -316,6 +325,48 @@ export default function ReportModal({ onClose }) {
     setCopied(false);
   }
 
+  async function handleOpenWa() {
+    setWaOpen(true);
+    setWaMsg('');
+    if (waGroups.length) return; // já carregados
+    setWaLoading(true);
+    try {
+      const { data: { session } } = await sb.auth.getSession();
+      const token = session?.access_token;
+      const r = await fetch('/api/whatsapp/groups', { headers: { Authorization: `Bearer ${token}` } });
+      const data = await r.json();
+      if (!r.ok) throw new Error(data.error || 'Erro ao buscar grupos');
+      setWaGroups(data.groups || []);
+      if (data.groups?.length) setWaGroupId(data.groups[0].id);
+    } catch (e) {
+      setWaMsg('⚠ ' + e.message);
+    }
+    setWaLoading(false);
+  }
+
+  async function handleSendWa() {
+    if (!waGroupId) return;
+    setWaSending(true);
+    setWaMsg('');
+    try {
+      const text = tab === 'tasks' ? buildReport() : tab === 'events' ? buildEventsReport() : buildResumo();
+      const { data: { session } } = await sb.auth.getSession();
+      const token = session?.access_token;
+      const r = await fetch('/api/whatsapp/send-report', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ groupId: waGroupId, reportText: text, members }),
+      });
+      const data = await r.json();
+      if (!r.ok) throw new Error(data.error || 'Erro ao enviar');
+      setWaMsg('✓ Relatório enviado!');
+      setTimeout(() => { setWaOpen(false); setWaMsg(''); }, 2000);
+    } catch (e) {
+      setWaMsg('⚠ ' + e.message);
+    }
+    setWaSending(false);
+  }
+
   async function handleCopy() {
     const text = tab === 'tasks' ? buildReport() : tab === 'events' ? buildEventsReport() : buildResumo();
     try {
@@ -449,7 +500,59 @@ export default function ReportModal({ onClose }) {
             <button className="btn btn-primary" style={{ flex: 1 }} onClick={handleCopy} disabled={!preview}>
               📋 Copiar
             </button>
+            <button className="btn btn-ghost" style={{ flex: 1 }} onClick={handleOpenWa}>
+              📲 WhatsApp
+            </button>
           </div>
+
+          {/* WhatsApp send panel */}
+          {waOpen && (
+            <div style={{
+              background: 'var(--surface2)', border: '1px solid var(--border)',
+              borderRadius: 12, padding: 14, display: 'flex', flexDirection: 'column', gap: 10,
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <span style={{ fontSize: '.85rem', fontWeight: 700 }}>📲 Enviar no WhatsApp</span>
+                <button onClick={() => setWaOpen(false)}
+                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: '1rem' }}>✕</button>
+              </div>
+
+              {waLoading ? (
+                <div style={{ fontSize: '.82rem', color: 'var(--text-muted)' }}>Carregando grupos...</div>
+              ) : waGroups.length === 0 && !waMsg ? (
+                <div style={{ fontSize: '.82rem', color: 'var(--text-muted)' }}>Nenhum grupo encontrado.</div>
+              ) : (
+                <>
+                  <div>
+                    <label className="field-label">Grupo de destino</label>
+                    <select value={waGroupId} onChange={e => setWaGroupId(e.target.value)} style={{ width: '100%' }}>
+                      {waGroups.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
+                    </select>
+                  </div>
+                  <div style={{ fontSize: '.75rem', color: 'var(--text-muted)', lineHeight: 1.5 }}>
+                    Responsáveis com WhatsApp cadastrado serão mencionados automaticamente.
+                    Para cadastrar, vá em <strong>Admin → Responsáveis</strong>.
+                  </div>
+                  <button
+                    className="btn btn-primary"
+                    onClick={handleSendWa}
+                    disabled={waSending || !waGroupId}
+                  >
+                    {waSending ? 'Enviando...' : '📤 Enviar relatório'}
+                  </button>
+                </>
+              )}
+
+              {waMsg && (
+                <div style={{
+                  fontSize: '.82rem', textAlign: 'center',
+                  color: waMsg.startsWith('✓') ? 'var(--success)' : 'var(--danger)',
+                }}>
+                  {waMsg}
+                </div>
+              )}
+            </div>
+          )}
 
           {copied && (
             <div style={{ textAlign: 'center', fontSize: '.8rem', color: 'var(--success)' }}>

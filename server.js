@@ -687,6 +687,87 @@ app.delete('/api/admin/users/:id', limiterAdmin, async (req, res) => {
   }
 });
 
+// ── WhatsApp (Evolution API) ───────────────────────────────────────────────────
+const EVO_URL      = (process.env.EVOLUTION_API_URL || '').replace(/\/$/, '');
+const EVO_KEY      = process.env.EVOLUTION_API_KEY || '';
+const EVO_INSTANCE = process.env.EVOLUTION_INSTANCE || 'ActiveSales';
+
+// GET /api/whatsapp/groups — lista grupos da instância (auth obrigatória)
+app.get('/api/whatsapp/groups', limiterGeneral, async (req, res) => {
+  const callerId = await verifyJWT(req);
+  if (!callerId) return res.status(401).json({ error: 'Token inválido.' });
+  if (!EVO_URL || !EVO_KEY) return res.status(503).json({ error: 'WhatsApp não configurado.' });
+
+  try {
+    const r = await fetch(`${EVO_URL}/group/fetchAllGroups/${EVO_INSTANCE}?getParticipants=false`, {
+      headers: { apikey: EVO_KEY },
+    });
+    if (!r.ok) return res.status(r.status).json({ error: 'Erro ao buscar grupos.' });
+    const groups = await r.json();
+    const list = (Array.isArray(groups) ? groups : [])
+      .filter(g => g.id && g.subject)
+      .map(g => ({ id: g.id, name: g.subject }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+    res.json({ groups: list });
+  } catch (e) {
+    internalErr(res, e);
+  }
+});
+
+// POST /api/whatsapp/send-report — envia relatório para um grupo com @menções
+app.post('/api/whatsapp/send-report', limiterGeneral, async (req, res) => {
+  const callerId = await verifyJWT(req);
+  if (!callerId) return res.status(401).json({ error: 'Token inválido.' });
+  if (!EVO_URL || !EVO_KEY) return res.status(503).json({ error: 'WhatsApp não configurado.' });
+
+  const { groupId, reportText, members } = req.body;
+  if (!groupId || typeof groupId !== 'string') return res.status(400).json({ error: 'groupId obrigatório.' });
+  if (!reportText || typeof reportText !== 'string') return res.status(400).json({ error: 'reportText obrigatório.' });
+  if (!/^\d+@g\.us$/.test(groupId)) return res.status(400).json({ error: 'groupId inválido.' });
+
+  // Normaliza número: remove tudo que não é dígito
+  function cleanNumber(n) { return String(n || '').replace(/\D/g, ''); }
+
+  // Monta mapa nome → número
+  const memberMap = {};
+  if (Array.isArray(members)) {
+    members.forEach(m => {
+      const num = cleanNumber(m.whatsapp);
+      if (m.name && num.length >= 10) memberMap[m.name] = num;
+    });
+  }
+
+  // Substitui "👤 Nome" por "@numero" e coleta menções
+  const mentioned = [];
+  let text = safeStr(reportText, 8000);
+  Object.entries(memberMap).forEach(([name, num]) => {
+    const safeName = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const re = new RegExp(`👤 ${safeName}`, 'g');
+    if (re.test(text)) {
+      text = text.replace(new RegExp(`👤 ${safeName}`, 'g'), `@${num}`);
+      mentioned.push(`${num}@s.whatsapp.net`);
+    }
+  });
+
+  try {
+    const payload = { number: groupId, text };
+    if (mentioned.length) payload.mentioned = [...new Set(mentioned)];
+
+    const r = await fetch(`${EVO_URL}/message/sendText/${EVO_INSTANCE}`, {
+      method: 'POST',
+      headers: { apikey: EVO_KEY, 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (!r.ok) {
+      const errBody = await r.json().catch(() => ({}));
+      return res.status(r.status).json({ error: errBody?.message || 'Erro ao enviar mensagem.' });
+    }
+    res.json({ ok: true });
+  } catch (e) {
+    internalErr(res, e);
+  }
+});
+
 // ── Serve React build ──────────────────────────────────────────────────────────
 const distPath = path.join(__dirname, 'client', 'dist');
 app.use(express.static(distPath));

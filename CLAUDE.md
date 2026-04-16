@@ -124,6 +124,18 @@ Backlog · To Do · Doing · Done
 
 ---
 
+## 5.1 INTEGRAÇÃO WHATSAPP (Evolution API)
+
+- Instância: `ActiveSales` (número: 5511952136776)
+- URL: `https://whatsapp.activesales.com.br`
+- Endpoint envio: `POST /message/sendText/ActiveSales`
+- Endpoint grupos: `GET /group/fetchAllGroups/ActiveSales`
+- Botão "📲 WhatsApp" no ReportModal → seleciona grupo → envia com @menções
+- Responsáveis com WhatsApp cadastrado são mencionados automaticamente
+- Env vars necessárias: `EVOLUTION_API_URL`, `EVOLUTION_API_KEY`, `EVOLUTION_INSTANCE`
+
+---
+
 ## 6. REGRAS CRÍTICAS DE DESENVOLVIMENTO
 
 ### Dados
