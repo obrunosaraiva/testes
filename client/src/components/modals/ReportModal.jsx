@@ -325,14 +325,24 @@ export default function ReportModal({ onClose }) {
     setCopied(false);
   }
 
+  async function getToken() {
+    let { data: { session } } = await sb.auth.getSession();
+    if (!session) {
+      // Tenta refresh forçado
+      const { data } = await sb.auth.refreshSession();
+      session = data?.session;
+    }
+    if (!session?.access_token) throw new Error('Sessão expirada. Recarregue a página.');
+    return session.access_token;
+  }
+
   async function handleOpenWa() {
     setWaOpen(true);
     setWaMsg('');
     if (waGroups.length) return; // já carregados
     setWaLoading(true);
     try {
-      const { data: { session } } = await sb.auth.getSession();
-      const token = session?.access_token;
+      const token = await getToken();
       const r = await fetch('/api/whatsapp/groups', { headers: { Authorization: `Bearer ${token}` } });
       const data = await r.json();
       if (!r.ok) throw new Error(data.error || 'Erro ao buscar grupos');
@@ -350,8 +360,7 @@ export default function ReportModal({ onClose }) {
     setWaMsg('');
     try {
       const text = tab === 'tasks' ? buildReport() : tab === 'events' ? buildEventsReport() : buildResumo();
-      const { data: { session } } = await sb.auth.getSession();
-      const token = session?.access_token;
+      const token = await getToken();
       const r = await fetch('/api/whatsapp/send-report', {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
