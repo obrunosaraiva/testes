@@ -2,12 +2,14 @@ import { useState, useEffect } from 'react';
 import { sb } from '../lib/supabase';
 
 export function useAuth() {
-  const [user, setUser] = useState(null);
+  const [user, setUser]   = useState(null);
+  const [token, setToken] = useState(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     sb.auth.getSession().then(({ data: { session } }) => {
       setUser(session?.user ?? null);
+      setToken(session?.access_token ?? null);
       setLoading(false);
     });
 
@@ -16,6 +18,7 @@ export function useAuth() {
     // de getSession() manual no visibilitychange (causava conflito de lock).
     const { data: { subscription } } = sb.auth.onAuthStateChange((_event, session) => {
       setUser(session?.user ?? null);
+      setToken(session?.access_token ?? null);
     });
 
     return () => subscription.unsubscribe();
@@ -30,5 +33,5 @@ export function useAuth() {
     await sb.auth.signOut();
   }
 
-  return { user, loading, signIn, signOut };
+  return { user, token, loading, signIn, signOut };
 }

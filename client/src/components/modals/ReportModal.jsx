@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
 import { useKanban } from '../../context/KanbanContext';
-import { sb } from '../../lib/supabase';
+import { useAuth } from '../../hooks/useAuth';
 
 const STATUS_LABEL = { backlog: 'Backlog', todo: 'To Do', doing: 'Fazendo', done: 'Concluído' };
 
@@ -55,6 +55,7 @@ const DEFAULT_TASK_STATUSES = {
 
 export default function ReportModal({ onClose }) {
   const { tasks, projects, members } = useKanban();
+  const { token } = useAuth();
   const [tab, setTab] = useState('tasks');
   const [filterProj, setFilterProj] = useState('__all__');
   const [filterAssignee, setFilterAssignee] = useState('__all__');
@@ -325,24 +326,13 @@ export default function ReportModal({ onClose }) {
     setCopied(false);
   }
 
-  async function getToken() {
-    let { data: { session } } = await sb.auth.getSession();
-    if (!session) {
-      // Tenta refresh forçado
-      const { data } = await sb.auth.refreshSession();
-      session = data?.session;
-    }
-    if (!session?.access_token) throw new Error('Sessão expirada. Recarregue a página.');
-    return session.access_token;
-  }
-
   async function handleOpenWa() {
     setWaOpen(true);
     setWaMsg('');
     if (waGroups.length) return; // já carregados
+    if (!token) { setWaMsg('⚠ Sessão expirada. Recarregue a página.'); return; }
     setWaLoading(true);
     try {
-      const token = await getToken();
       const r = await fetch('/api/whatsapp/groups', { headers: { Authorization: `Bearer ${token}` } });
       const data = await r.json();
       if (!r.ok) throw new Error(data.error || 'Erro ao buscar grupos');
@@ -359,8 +349,8 @@ export default function ReportModal({ onClose }) {
     setWaSending(true);
     setWaMsg('');
     try {
+      if (!token) throw new Error('Sessão expirada. Recarregue a página.');
       const text = tab === 'tasks' ? buildReport() : tab === 'events' ? buildEventsReport() : buildResumo();
-      const token = await getToken();
       const r = await fetch('/api/whatsapp/send-report', {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
