@@ -288,6 +288,7 @@ export default function MindMapView({ onOpenTask }) {
   const wrapRef  = useRef(null);
   const svgRef   = useRef(null);
   const dragRef  = useRef({ active: false, sx: 0, sy: 0, px: 0, py: 0 });
+  const touchRef = useRef({ lastDist: null, lastMid: null });
 
   const [size, setSize]       = useState({ w: 800, h: 600 });
   const [scale, setScale]     = useState(1);
@@ -311,17 +312,26 @@ export default function MindMapView({ onOpenTask }) {
     return () => ro.disconnect();
   }, []);
 
-  // Wheel zoom
+  // Wheel zoom + touch events (passive:false required for preventDefault)
   useEffect(() => {
     const el = svgRef.current;
     if (!el) return;
-    const fn = e => {
+    const onWheel = e => {
       e.preventDefault();
       setScale(s => Math.min(3, Math.max(0.2, s * (e.deltaY > 0 ? 0.88 : 1.13))));
     };
-    el.addEventListener('wheel', fn, { passive: false });
-    return () => el.removeEventListener('wheel', fn);
-  }, []);
+    el.addEventListener('wheel', onWheel, { passive: false });
+    el.addEventListener('touchstart',  onTouchStart, { passive: false });
+    el.addEventListener('touchmove',   onTouchMove,  { passive: false });
+    el.addEventListener('touchend',    onTouchEnd,   { passive: false });
+    return () => {
+      el.removeEventListener('wheel',      onWheel);
+      el.removeEventListener('touchstart', onTouchStart);
+      el.removeEventListener('touchmove',  onTouchMove);
+      el.removeEventListener('touchend',   onTouchEnd);
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pan]);
 
   // Keyboard shortcut: Escape
   useEffect(() => {
@@ -375,9 +385,8 @@ export default function MindMapView({ onOpenTask }) {
     setPan(p);
   }, [filteredTasks, size]);
 
-  // Pan handlers
+  // ── Mouse pan handlers ─────────────────────────────────────────────────────
   function onMouseDown(e) {
-    // Only pan when clicking on SVG background (not on a node)
     const tag = e.target.tagName;
     if (tag !== 'svg' && tag !== 'g' && tag !== 'line') return;
     dragRef.current = { active: true, sx: e.clientX, sy: e.clientY, px: pan.x, py: pan.y };
@@ -393,6 +402,63 @@ export default function MindMapView({ onOpenTask }) {
   function onMouseUp() {
     dragRef.current.active = false;
     setDragging(false);
+  }
+
+  // ── Touch handlers (pan + pinch-to-zoom) ──────────────────────────────────
+  function onTouchStart(e) {
+    e.preventDefault();
+    if (e.touches.length === 1) {
+      const t = e.touches[0];
+      dragRef.current = { active: true, sx: t.clientX, sy: t.clientY, px: pan.x, py: pan.y };
+      touchRef.current = { lastDist: null, lastMid: null };
+      setDragging(true);
+    } else if (e.touches.length === 2) {
+      dragRef.current.active = false;
+      setDragging(false);
+      const [t1, t2] = [e.touches[0], e.touches[1]];
+      const dist = Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
+      touchRef.current = {
+        lastDist: dist,
+        lastMid: { x: (t1.clientX + t2.clientX) / 2, y: (t1.clientY + t2.clientY) / 2 },
+      };
+    }
+  }
+  function onTouchMove(e) {
+    e.preventDefault();
+    if (e.touches.length === 1 && dragRef.current.active) {
+      const t = e.touches[0];
+      setPan({
+        x: dragRef.current.px + t.clientX - dragRef.current.sx,
+        y: dragRef.current.py + t.clientY - dragRef.current.sy,
+      });
+    } else if (e.touches.length === 2) {
+      const [t1, t2] = [e.touches[0], e.touches[1]];
+      const dist = Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
+      const mid  = { x: (t1.clientX + t2.clientX) / 2, y: (t1.clientY + t2.clientY) / 2 };
+
+      if (touchRef.current.lastDist !== null) {
+        const ratio = dist / touchRef.current.lastDist;
+        setScale(s => Math.min(3, Math.max(0.2, s * ratio)));
+
+        // Pan to keep midpoint stable
+        const dx = mid.x - touchRef.current.lastMid.x;
+        const dy = mid.y - touchRef.current.lastMid.y;
+        setPan(p => ({ x: p.x + dx, y: p.y + dy }));
+      }
+      touchRef.current = { lastDist: dist, lastMid: mid };
+    }
+  }
+  function onTouchEnd(e) {
+    if (e.touches.length === 0) {
+      dragRef.current.active = false;
+      touchRef.current = { lastDist: null, lastMid: null };
+      setDragging(false);
+    } else if (e.touches.length === 1) {
+      // Went from 2 fingers to 1 — resume pan from current position
+      const t = e.touches[0];
+      dragRef.current = { active: true, sx: t.clientX, sy: t.clientY, px: pan.x, py: pan.y };
+      touchRef.current = { lastDist: null, lastMid: null };
+    }
   }
 
   function toggleExpand(id) {
@@ -585,7 +651,7 @@ export default function MindMapView({ onOpenTask }) {
         <svg
           ref={svgRef}
           width="100%" height="100%"
-          style={{ display: 'block', cursor: dragging ? 'grabbing' : 'grab', touchAction: 'none' }}
+          style={{ display: 'block', cursor: dragging ? 'grabbing' : 'grab', touchAction: 'none', userSelect: 'none' }}
           onMouseDown={onMouseDown}
           onMouseMove={onMouseMove}
           onMouseUp={onMouseUp}
