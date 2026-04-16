@@ -151,29 +151,17 @@ export default function ReportModal({ onClose }) {
       lines.push(`📁 ${pName}`);
       lines.push('');
 
-      let num = 1;
       projTasks.forEach(t => {
         const dl = fmtDate(t.deadline);
         const checklist = t.checklist || [];
         const hasChecklist = checklist.length > 0;
-        const isNotable = t.taskStatus && t.taskStatus !== 'pendente';
-        const hasUndone = checklist.some(c => !subDone(c));
-
         const dlPart = dl ? ` · 📅 ${dl}` : '';
         const assignee = t.assignee ? ` · 👤 ${t.assignee}` : '';
 
-        if (!hasChecklist) {
-          // Sem checklist: linha única com emoji de status
-          lines.push(`${sEmoji(t.taskStatus)}${dlPart} · ${t.title}${assignee}`);
-        } else {
-          // Com checklist: cabeçalho da tarefa
-          if (isNotable) {
-            lines.push(`${sEmoji(t.taskStatus)}${dlPart} · ${t.title}${assignee}`);
-          } else if (hasUndone) {
-            lines.push(`${num++}. ${t.title}`);
-          } else {
-            lines.push(t.title);
-          }
+        // Cabeçalho da tarefa — formato único independente do status
+        lines.push(`${sEmoji(t.taskStatus)}${dlPart} · ${t.title}${assignee}`);
+
+        if (hasChecklist) {
           // Itens do checklist — respeita o mesmo filtro de taskStatus
           checklist.forEach(c => {
             const cStatus = subDone(c) ? (c.status || 'concluido') : (c.status || 'pendente');
@@ -182,12 +170,8 @@ export default function ReportModal({ onClose }) {
             const cAssignee = c.assignee ? ` · 👤 ${c.assignee}` : '';
             const cDlPart = cDl ? ` · 📅 ${cDl}` : '';
             const text = c.text || c.label || '—';
-            const emoji = itemEmoji(c);
-            if (emoji) {
-              lines.push(`      ${emoji}${cDlPart} · ${text}${cAssignee}`);
-            } else {
-              lines.push(`      ☐ ${text}${cAssignee}${cDlPart} ${sEmoji(cStatus)}`);
-            }
+            const cEmoji = sEmoji(cStatus);
+            lines.push(`      ${cEmoji}${cDlPart} · ${text}${cAssignee}`);
             // Subtask pending dependencies
             const clBlocking = pendingCLDeps(c, checklist);
             if (clBlocking.length) {
