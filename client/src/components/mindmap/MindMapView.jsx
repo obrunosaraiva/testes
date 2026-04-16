@@ -450,6 +450,16 @@ export default function MindMapView({ onOpenTask }) {
   }
   function onTouchEnd(e) {
     if (e.touches.length === 0) {
+      const touch = e.changedTouches[0];
+      const moved = dragRef.current.active
+        ? Math.hypot(touch.clientX - dragRef.current.sx, touch.clientY - dragRef.current.sy)
+        : 999;
+
+      // Tap detectado (movimento < 8px): dispara click sintético no elemento tocado
+      if (moved < 8 && touch.target) {
+        touch.target.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+      }
+
       dragRef.current.active = false;
       touchRef.current = { lastDist: null, lastMid: null };
       setDragging(false);
