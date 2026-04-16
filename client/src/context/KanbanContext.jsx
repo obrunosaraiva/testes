@@ -415,6 +415,11 @@ export function KanbanProvider({ children }) {
 
     async function loadSupabase() {
       try {
+        // Aquece o cache do token uma única vez antes das queries paralelas.
+        // Sem isso, as 7 queries do Promise.all competem pelo mesmo lock de auth
+        // e causam "Lock not released within 5000ms" → AbortError.
+        await sb.auth.getSession();
+
         const [mapped, dbMapped, ccMapped, tplMapped, resMapped, trashMapped, membersMapped] = await Promise.all([
           fetchTasksFromDb(), fetchProjectsFromDb(), fetchCostCentersFromDb(),
           fetchTemplatesFromDb(), fetchResourcesFromDb(), fetchTrashFromDb(), fetchMembersFromDb(),
