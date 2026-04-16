@@ -176,7 +176,7 @@ export default function ReportModal({ onClose }) {
           }
           // Itens do checklist — respeita o mesmo filtro de taskStatus
           checklist.forEach(c => {
-            const cStatus = c.status || 'pendente';
+            const cStatus = subDone(c) ? (c.status || 'concluido') : (c.status || 'pendente');
             if (!activeTaskStatuses.includes(cStatus)) return; // oculta se status filtrado
             const cDl = fmtDate(c.deadline);
             const cAssignee = c.assignee ? ` · 👤 ${c.assignee}` : '';
