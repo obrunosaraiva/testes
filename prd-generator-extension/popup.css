@@ -63,8 +63,27 @@ body {
   color: var(--fg-dim); padding: 6px; border-radius: 8px;
   cursor: pointer; display: grid; place-items: center;
   transition: all 120ms ease;
+  position: relative;
 }
 .icon-btn:hover { color: var(--fg); border-color: var(--border); background: var(--bg-elev); }
+.icon-btn.with-badge { overflow: visible; }
+
+.badge {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--accent-strong);
+  box-shadow: 0 0 0 2px var(--bg-soft);
+  animation: pulseDot 1.4s ease-in-out infinite;
+}
+.badge.hidden { display: none; }
+@keyframes pulseDot {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(0.7); opacity: 0.6; }
+}
 
 .progress {
   height: 4px; background: var(--bg-elev); position: relative; flex-shrink: 0;
@@ -215,5 +234,26 @@ body {
 .history-item-title { font-size: 12px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .history-item-date { font-size: 11px; color: var(--fg-dim); }
 .history-empty { color: var(--fg-dim); text-align: center; padding: 30px 10px; font-size: 12px; }
+
+.history-item.running {
+  border-color: var(--accent);
+  background: linear-gradient(180deg, rgba(204,120,92,0.08), var(--bg-soft));
+}
+.history-item .status-pill {
+  display: inline-flex; align-items: center; gap: 4px;
+  font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em;
+  color: var(--accent-strong);
+  margin-top: 2px;
+}
+.history-item .status-pill.err { color: var(--danger); }
+.spinner {
+  width: 10px; height: 10px;
+  border: 2px solid rgba(204,120,92,0.25);
+  border-top-color: var(--accent-strong);
+  border-radius: 50%;
+  animation: spin 0.9s linear infinite;
+  display: inline-block;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
 
 a { color: var(--accent-strong); }

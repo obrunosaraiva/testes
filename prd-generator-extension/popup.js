@@ -1,14 +1,14 @@
-import { INTERVIEW_STEPS, buildInterviewContext } from "./lib/interview.js";
-import { generatePRD } from "./lib/api.js";
+import { INTERVIEW_STEPS } from "./lib/interview.js";
 import {
-  getSettings,
   getHistory,
-  addHistoryEntry,
   deleteHistoryEntry,
-  clearHistory
+  clearHistory,
+  getActiveSession,
+  setActiveSession,
+  clearActiveSession,
+  ACTIVE_SESSION_KEY,
+  EMPTY_SESSION
 } from "./lib/storage.js";
-
-const SESSION_KEY = "activeSession";
 
 const chatEl = document.getElementById("chat");
 const inputEl = document.getElementById("input");
@@ -22,23 +22,25 @@ const historyList = document.getElementById("history-list");
 const historyClear = document.getElementById("history-clear");
 const progressBar = document.getElementById("progress-bar");
 const progressLabel = document.getElementById("progress-label");
+const historyBadge = document.getElementById("history-badge");
 
-let state = {
-  stepIndex: 0,
-  answers: {},
-  status: "interview", // "interview" | "generating" | "done"
-  prd: ""
-};
+let state = { ...EMPTY_SESSION };
 
-function saveSession() {
-  sessionStorage.setItem(SESSION_KEY, JSON.stringify(state));
+async function boot() {
+  state = await getActiveSession();
+  render();
 }
-function loadSession() {
-  try {
-    const raw = sessionStorage.getItem(SESSION_KEY);
-    if (raw) state = JSON.parse(raw);
-  } catch {}
-}
+
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area !== "local") return;
+  if (changes[ACTIVE_SESSION_KEY]) {
+    const next = changes[ACTIVE_SESSION_KEY].newValue;
+    if (!next) return;
+    // Mesclar com EMPTY_SESSION para robustez a mudanças de schema.
+    state = { ...EMPTY_SESSION, ...next };
+    render();
+  }
+});
 
 function render() {
   chatEl.innerHTML = "";
@@ -47,25 +49,46 @@ function render() {
   );
 
   INTERVIEW_STEPS.forEach((step, i) => {
+    const hasAnswer = state.answers[step.id];
     if (i < state.stepIndex) {
       addBotQuestion(step);
-      addUser(state.answers[step.id] ?? "");
+      addUser(hasAnswer ?? "");
     } else if (i === state.stepIndex && state.status === "interview") {
       addBotQuestion(step);
     }
   });
 
   if (state.status === "generating") {
-    addTyping();
+    if (state.prd && state.prd.length > 0) {
+      renderStreamingPRD(state.prd);
+    } else {
+      addTyping();
+    }
+    addCancelRow();
   }
 
   if (state.status === "done" && state.prd) {
     renderPRDCard(state.prd);
   }
 
+  if (state.status === "error") {
+    addError(state.error || "Erro desconhecido.");
+    addRetryRow();
+  }
+
   updateProgress();
   updateComposer();
+  updateHistoryBadge();
   scrollToBottom();
+}
+
+function updateHistoryBadge() {
+  const show = state.status === "generating";
+  historyBadge?.classList.toggle("hidden", !show);
+  // Se o painel de histórico está aberto, atualiza o topo em tempo real.
+  if (!historyPanel.classList.contains("hidden")) {
+    openHistory();
+  }
 }
 
 function updateProgress() {
@@ -76,7 +99,9 @@ function updateProgress() {
   if (state.status === "done") {
     progressLabel.textContent = "PRD pronto ✓";
   } else if (state.status === "generating") {
-    progressLabel.textContent = "Gerando PRD...";
+    progressLabel.textContent = "Gerando em background...";
+  } else if (state.status === "error") {
+    progressLabel.textContent = "Erro";
   } else {
     progressLabel.textContent = `${Math.min(state.stepIndex + 1, total)}/${total}`;
   }
@@ -91,7 +116,9 @@ function updateComposer() {
     inputEl.placeholder = step?.placeholder || "";
     inputEl.focus();
   } else if (state.status === "generating") {
-    inputEl.placeholder = "Gerando PRD, aguarde...";
+    inputEl.placeholder = "Gerando em background. Pode fechar o popup — ele continua rodando.";
+  } else if (state.status === "error") {
+    inputEl.placeholder = "Houve um erro. Use 'Tentar novamente' ou 'Reiniciar'.";
   } else {
     inputEl.placeholder = "Entrevista concluída. Clique em Reiniciar para começar de novo.";
   }
@@ -139,8 +166,57 @@ function addTyping() {
   el.innerHTML = "<span></span><span></span><span></span>";
   chatEl.appendChild(el);
 }
-function removeTyping() {
-  document.getElementById("typing-indicator")?.remove();
+
+function addCancelRow() {
+  const row = document.createElement("div");
+  row.className = "prd-actions";
+  const cancel = document.createElement("button");
+  cancel.className = "btn-ghost btn-sm";
+  cancel.textContent = "Cancelar geração";
+  cancel.onclick = () => {
+    chrome.runtime.sendMessage({ type: "ABORT_GENERATION" });
+  };
+  row.appendChild(cancel);
+  chatEl.appendChild(row);
+}
+
+function addRetryRow() {
+  const row = document.createElement("div");
+  row.className = "prd-actions";
+  const retry = document.createElement("button");
+  retry.className = "btn-primary btn-sm";
+  retry.textContent = "Tentar novamente";
+  retry.onclick = () => startGeneration();
+  row.appendChild(retry);
+
+  const back = document.createElement("button");
+  back.className = "btn-ghost btn-sm";
+  back.textContent = "Voltar à entrevista";
+  back.onclick = async () => {
+    await setActiveSession({
+      ...state,
+      status: "interview",
+      error: "",
+      prd: ""
+    });
+  };
+  row.appendChild(back);
+
+  chatEl.appendChild(row);
+}
+
+function renderStreamingPRD(partial) {
+  const card = document.createElement("div");
+  card.className = "prd-card";
+  const title = document.createElement("h4");
+  title.textContent = "Gerando PRD em tempo real...";
+  const preview = document.createElement("pre");
+  preview.className = "prd-preview";
+  const tail = partial.length > 2400 ? partial.slice(-2400) : partial;
+  preview.textContent =
+    (partial.length > 2400 ? "... (mostrando o final do stream)\n\n" : "") + tail;
+  card.append(title, preview);
+  chatEl.appendChild(card);
 }
 
 function renderPRDCard(prd) {
@@ -150,7 +226,8 @@ function renderPRDCard(prd) {
   title.textContent = "PRD gerado";
   const preview = document.createElement("pre");
   preview.className = "prd-preview";
-  preview.textContent = prd.slice(0, 2000) + (prd.length > 2000 ? "\n\n... (truncado no preview)" : "");
+  preview.textContent =
+    prd.slice(0, 2000) + (prd.length > 2000 ? "\n\n... (truncado no preview)" : "");
   const actions = document.createElement("div");
   actions.className = "prd-actions";
 
@@ -162,7 +239,7 @@ function renderPRDCard(prd) {
       await navigator.clipboard.writeText(prd);
       copyBtn.textContent = "Copiado ✓";
       setTimeout(() => (copyBtn.textContent = "Copiar PRD"), 1600);
-    } catch (e) {
+    } catch {
       copyBtn.textContent = "Falhou";
     }
   };
@@ -210,109 +287,56 @@ async function handleSend() {
   if (!value) return;
   if (value.length < (step.minLength ?? 1)) {
     inputEl.focus();
-    inputEl.classList.add("shake");
     addSystem(`Dê um pouco mais de detalhe (mín. ${step.minLength} caracteres).`);
     return;
   }
 
-  state.answers[step.id] = value;
-  state.stepIndex += 1;
+  const nextAnswers = { ...state.answers, [step.id]: value };
+  const nextIndex = state.stepIndex + 1;
   inputEl.value = "";
-  saveSession();
 
-  if (state.stepIndex >= INTERVIEW_STEPS.length) {
-    state.status = "generating";
-    saveSession();
-    render();
-    await runGeneration();
-  } else {
-    render();
-  }
-}
-
-async function runGeneration() {
-  const settings = await getSettings();
-  const hasKey =
-    (settings.provider === "anthropic" && settings.anthropicKey) ||
-    (settings.provider === "openai" && settings.openaiKey);
-
-  if (!hasKey) {
-    removeTyping();
-    addError(
-      "Nenhuma API key configurada. Abra as Opções (ícone de engrenagem) para configurar."
-    );
-    state.status = "done";
-    state.prd = "";
-    saveSession();
-    updateProgress();
-    updateComposer();
-    return;
-  }
-
-  const summary = buildInterviewContext(state.answers);
-  let streamed = "";
-  try {
-    streamed = await generatePRD({
-      settings,
-      interviewSummary: summary,
-      onToken: (tok) => {
-        streamed += tok;
-        // feedback visual simples no "typing"
-      }
+  if (nextIndex >= INTERVIEW_STEPS.length) {
+    // Encerrou entrevista: salva respostas e chuta a geração no background.
+    await setActiveSession({
+      ...state,
+      answers: nextAnswers,
+      stepIndex: nextIndex,
+      status: "interview" // background vai mudar para "generating"
     });
-  } catch (err) {
-    removeTyping();
-    addError(`Erro ao gerar PRD: ${err.message}`);
-    state.status = "done";
-    state.prd = "";
-    saveSession();
-    updateProgress();
-    updateComposer();
-    return;
+    startGeneration();
+  } else {
+    await setActiveSession({
+      ...state,
+      answers: nextAnswers,
+      stepIndex: nextIndex
+    });
   }
+}
 
-  removeTyping();
-  state.status = "done";
-  state.prd = streamed;
-  saveSession();
-
-  const title = extractTitle(streamed) || firstWords(state.answers.idea, 8);
-  await addHistoryEntry({
-    title,
-    answers: state.answers,
-    prd: streamed,
-    provider: settings.provider,
-    model:
-      settings.provider === "anthropic"
-        ? settings.anthropicModel
-        : settings.openaiModel
+function startGeneration() {
+  chrome.runtime.sendMessage({ type: "START_GENERATION" }, (resp) => {
+    if (chrome.runtime.lastError) {
+      addError("Não foi possível iniciar o background: " + chrome.runtime.lastError.message);
+    }
   });
-
-  renderPRDCard(streamed);
-  updateProgress();
-  updateComposer();
-  scrollToBottom();
 }
 
-function extractTitle(prd) {
-  const m = prd.match(/^#\s+(.+)$/m);
-  return m ? m[1].trim() : null;
-}
-function firstWords(s, n) {
-  return (s || "PRD").split(/\s+/).slice(0, n).join(" ");
+async function reset() {
+  chrome.runtime.sendMessage({ type: "ABORT_GENERATION" });
+  await clearActiveSession();
 }
 
-function reset() {
-  state = { stepIndex: 0, answers: {}, status: "interview", prd: "" };
-  saveSession();
-  render();
-}
-
-// Histórico
+// Histórico: inclui a sessão ativa no topo se estiver gerando/com erro.
 async function openHistory() {
   const list = await getHistory();
   historyList.innerHTML = "";
-  if (list.length === 0) {
+
+  const showRunning = state.status === "generating" || state.status === "error";
+  if (showRunning) {
+    historyList.appendChild(buildRunningItem(state));
+  }
+
+  if (list.length === 0 && !showRunning) {
     const empty = document.createElement("div");
     empty.className = "history-empty";
     empty.textContent = "Sem PRDs salvos ainda.";
@@ -355,16 +379,15 @@ async function openHistory() {
       actions.append(copy, del);
 
       item.append(info, actions);
-      item.onclick = () => {
-        state = {
+      item.onclick = async () => {
+        await setActiveSession({
           stepIndex: INTERVIEW_STEPS.length,
           answers: entry.answers || {},
           status: "done",
-          prd: entry.prd
-        };
-        saveSession();
+          prd: entry.prd,
+          error: ""
+        });
         closeHistory();
-        render();
       };
       historyList.appendChild(item);
     }
@@ -377,7 +400,47 @@ function closeHistory() {
   historyPanel.setAttribute("aria-hidden", "true");
 }
 
-// Eventos
+function buildRunningItem(session) {
+  const item = document.createElement("div");
+  const isError = session.status === "error";
+  item.className = "history-item" + (isError ? "" : " running");
+
+  const info = document.createElement("div");
+  info.className = "history-item-info";
+
+  const title = document.createElement("div");
+  title.className = "history-item-title";
+  title.textContent =
+    (session.answers?.idea && firstWords(session.answers.idea, 10)) ||
+    "Nova ideia";
+
+  const status = document.createElement("div");
+  status.className = "status-pill" + (isError ? " err" : "");
+  if (isError) {
+    status.textContent = "⚠ erro — clique para ver";
+  } else {
+    const spinner = document.createElement("span");
+    spinner.className = "spinner";
+    const label = document.createElement("span");
+    const bytes = session.prd ? ` · ${session.prd.length} chars` : "";
+    label.textContent = `gerando em background${bytes}`;
+    status.append(spinner, label);
+  }
+
+  info.append(title, status);
+  item.appendChild(info);
+
+  item.onclick = () => {
+    // Apenas fecha o painel — o popup principal já está renderizando essa sessão.
+    closeHistory();
+  };
+  return item;
+}
+
+function firstWords(s, n) {
+  return (s || "PRD").split(/\s+/).slice(0, n).join(" ");
+}
+
 sendBtn.addEventListener("click", handleSend);
 resetBtn.addEventListener("click", reset);
 settingsBtn.addEventListener("click", () => {
@@ -399,5 +462,4 @@ inputEl.addEventListener("keydown", (e) => {
   }
 });
 
-loadSession();
-render();
+boot();

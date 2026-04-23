@@ -2,7 +2,17 @@
 
 const KEYS = {
   settings: "settings",
-  history: "history"
+  history: "history",
+  activeSession: "activeSession"
+};
+
+export const EMPTY_SESSION = {
+  stepIndex: 0,
+  answers: {},
+  status: "interview", // "interview" | "generating" | "done" | "error"
+  prd: "",
+  error: "",
+  updatedAt: 0
 };
 
 export const DEFAULT_SETTINGS = {
@@ -48,3 +58,20 @@ export async function deleteHistoryEntry(id) {
 export async function clearHistory() {
   await chrome.storage.local.set({ [KEYS.history]: [] });
 }
+
+export async function getActiveSession() {
+  const { [KEYS.activeSession]: s } = await chrome.storage.local.get(KEYS.activeSession);
+  return { ...EMPTY_SESSION, ...(s || {}) };
+}
+
+export async function setActiveSession(session) {
+  const value = { ...session, updatedAt: Date.now() };
+  await chrome.storage.local.set({ [KEYS.activeSession]: value });
+  return value;
+}
+
+export async function clearActiveSession() {
+  await chrome.storage.local.set({ [KEYS.activeSession]: { ...EMPTY_SESSION, updatedAt: Date.now() } });
+}
+
+export const ACTIVE_SESSION_KEY = KEYS.activeSession;

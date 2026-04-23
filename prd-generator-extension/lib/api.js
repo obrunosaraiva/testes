@@ -5,7 +5,7 @@
 
 import { PRD_SYSTEM_PROMPT, buildUserPrompt } from "./prd-template.js";
 
-export async function generatePRD({ settings, interviewSummary, onToken }) {
+export async function generatePRD({ settings, interviewSummary, onToken, signal }) {
   const userPrompt = buildUserPrompt(interviewSummary);
   if (settings.provider === "anthropic") {
     return callAnthropic({
@@ -13,7 +13,8 @@ export async function generatePRD({ settings, interviewSummary, onToken }) {
       model: settings.anthropicModel,
       system: PRD_SYSTEM_PROMPT,
       user: userPrompt,
-      onToken
+      onToken,
+      signal
     });
   }
   if (settings.provider === "openai") {
@@ -22,16 +23,18 @@ export async function generatePRD({ settings, interviewSummary, onToken }) {
       model: settings.openaiModel,
       system: PRD_SYSTEM_PROMPT,
       user: userPrompt,
-      onToken
+      onToken,
+      signal
     });
   }
   throw new Error(`Provedor desconhecido: ${settings.provider}`);
 }
 
-async function callAnthropic({ apiKey, model, system, user, onToken }) {
+async function callAnthropic({ apiKey, model, system, user, onToken, signal }) {
   if (!apiKey) throw new Error("Faltando API key da Anthropic. Configure em Opções.");
   const res = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
+    signal,
     headers: {
       "content-type": "application/json",
       "x-api-key": apiKey,
@@ -59,10 +62,11 @@ async function callAnthropic({ apiKey, model, system, user, onToken }) {
   });
 }
 
-async function callOpenAI({ apiKey, model, system, user, onToken }) {
+async function callOpenAI({ apiKey, model, system, user, onToken, signal }) {
   if (!apiKey) throw new Error("Faltando API key da OpenAI. Configure em Opções.");
   const res = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
+    signal,
     headers: {
       "content-type": "application/json",
       authorization: `Bearer ${apiKey}`

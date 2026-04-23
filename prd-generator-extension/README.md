@@ -14,7 +14,12 @@ Claude Code e construir o sistema de ponta a ponta.
   **roadmap em fases executáveis pelo Claude Code** (cada fase já vem com um
   prompt pronto para colar), riscos, checklist de produção.
 - **Provedor configurável**: Anthropic (Claude) ou OpenAI, com streaming SSE.
-- **Histórico local** dos últimos 50 PRDs em `chrome.storage.local`.
+- **Geração em background**: a chamada à API roda num service worker. Você
+  pode fechar o popup que a extensão continua gerando — ao reabrir, o PRD
+  aparece pronto (ou o streaming retomando em tempo real).
+- **Histórico local** dos últimos 50 PRDs em `chrome.storage.local`, com
+  **item "gerando"** no topo da lista enquanto uma geração está em curso, e
+  um ponto pulsante no ícone do histórico.
 - **Dark theme** nativo, popup de 400×600, sem dependências externas.
 
 ## Instalação (modo desenvolvedor)
@@ -72,9 +77,15 @@ prd-generator-extension/
   Anthropic o cliente envia `anthropic-dangerous-direct-browser-access: true`.
 - **Streaming**: leitura manual de SSE com `ReadableStream` — sem SDK, zero
   dependências, popup ~15 KB.
-- **Persistência**: respostas da entrevista corrente ficam em
-  `sessionStorage` (somem ao fechar o popup) e PRDs finalizados vão para
-  `chrome.storage.local` (histórico).
+- **Persistência**: toda a sessão ativa (respostas, passo atual, streaming do
+  PRD) vive em `chrome.storage.local` sob a chave `activeSession`. O popup é
+  só uma _view_ que reage a `chrome.storage.onChanged`, então fechar e reabrir
+  a janela não perde nada. PRDs finalizados entram também no histórico.
+- **Service worker**: `background.js` é um módulo ES que recebe mensagens
+  (`START_GENERATION`, `ABORT_GENERATION`) e escreve o progresso no storage a
+  cada ~250ms. Se o worker for derrubado pelo Chrome no meio do caminho, na
+  próxima inicialização ele marca a sessão como `error` para o usuário tentar
+  novamente.
 
 ## Licença
 
