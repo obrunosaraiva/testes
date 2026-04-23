@@ -1,0 +1,8 @@
+{
+  "extName": {
+    "message": "PRD Generator para Claude Code"
+  },
+  "extDesc": {
+    "message": "Mini chat de IA que transforma uma ideia simples em um PRD completo, pronto para gerar um sistema de ponta a ponta no Claude Code."
+  }
+}
