@@ -1,0 +1,1513 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Kanban Pro</title>
+<style>
+:root {
+  --bg: #0f1117;
+  --surface: #1a1d27;
+  --surface2: #242836;
+  --surface3: #2e3345;
+  --border: #2e3345;
+  --text: #e4e6f0;
+  --text-muted: #8b8fa3;
+  --accent: #6c5ce7;
+  --accent-hover: #7c6ff7;
+  --danger: #e74c3c;
+  --success: #00b894;
+  --warning: #fdcb6e;
+  --info: #74b9ff;
+  --backlog: #636e72;
+  --todo: #6c5ce7;
+  --doing: #fdcb6e;
+  --review: #74b9ff;
+  --done: #00b894;
+}
+* { margin:0; padding:0; box-sizing:border-box; }
+body { font-family:'Segoe UI',system-ui,-apple-system,sans-serif; background:var(--bg); color:var(--text); min-height:100vh; }
+
+/* ===== HEADER ===== */
+.header { display:flex; align-items:center; justify-content:space-between; padding:14px 24px; background:var(--surface); border-bottom:1px solid var(--border); position:sticky; top:0; z-index:100; }
+.header h1 { font-size:1.3rem; font-weight:700; background:linear-gradient(135deg,var(--accent),var(--info)); -webkit-background-clip:text; -webkit-text-fill-color:transparent; }
+.header-actions { display:flex; gap:8px; align-items:center; }
+.view-btn { padding:7px 16px; border-radius:8px; background:var(--surface2); border:1px solid var(--border); color:var(--text-muted); cursor:pointer; font-size:.82rem; font-family:inherit; transition:all .2s; }
+.view-btn:hover { border-color:var(--accent); color:var(--text); }
+.view-btn.active { background:var(--accent); border-color:var(--accent); color:#fff; }
+
+/* ===== PROJECT BAR ===== */
+.project-bar { display:flex; align-items:center; gap:8px; padding:10px 24px; background:var(--surface); border-bottom:1px solid var(--border); overflow-x:auto; }
+.project-tab { padding:5px 14px; border-radius:20px; background:var(--surface2); border:1px solid var(--border); color:var(--text-muted); cursor:pointer; font-size:.82rem; white-space:nowrap; transition:all .2s; display:flex; align-items:center; gap:6px; }
+.project-tab:hover { border-color:var(--accent); color:var(--text); }
+.project-tab.active { background:var(--accent); border-color:var(--accent); color:#fff; }
+.project-tab .tc { background:rgba(255,255,255,.2); padding:1px 7px; border-radius:10px; font-size:.72rem; }
+.project-tab .dp { display:none; margin-left:4px; cursor:pointer; opacity:.6; font-size:.78rem; }
+.project-tab:hover .dp { display:inline; }
+.project-tab .dp:hover { opacity:1; }
+.add-proj-btn { padding:5px 14px; border-radius:20px; background:transparent; border:1px dashed var(--border); color:var(--text-muted); cursor:pointer; font-size:.82rem; transition:all .2s; }
+.add-proj-btn:hover { border-color:var(--accent); color:var(--accent); }
+
+/* ===== BOARD VIEW ===== */
+.board { display:flex; gap:14px; padding:18px 24px; min-height:calc(100vh - 110px); overflow-x:auto; }
+.board.hidden { display:none; }
+.column { min-width:272px; width:272px; flex-shrink:0; display:flex; flex-direction:column; background:var(--surface); border-radius:12px; border:1px solid var(--border); max-height:calc(100vh - 130px); }
+.col-header { padding:12px 14px; display:flex; align-items:center; justify-content:space-between; border-bottom:1px solid var(--border); flex-shrink:0; }
+.col-title { display:flex; align-items:center; gap:8px; font-weight:600; font-size:.88rem; }
+.col-dot { width:10px; height:10px; border-radius:50%; }
+.col-count { background:var(--surface2); padding:2px 8px; border-radius:10px; font-size:.72rem; color:var(--text-muted); }
+.col-body { padding:10px; flex:1; overflow-y:auto; display:flex; flex-direction:column; gap:8px; }
+.col-body::-webkit-scrollbar { width:4px; }
+.col-body::-webkit-scrollbar-thumb { background:var(--border); border-radius:4px; }
+.col-body.drag-over { background:rgba(108,92,231,.06); outline:2px dashed var(--accent); outline-offset:-4px; border-radius:8px; }
+.add-card-btn { padding:9px; background:none; border:1px dashed var(--border); border-radius:8px; color:var(--text-muted); cursor:pointer; font-size:.82rem; transition:all .2s; margin:0 10px 10px; }
+.add-card-btn:hover { border-color:var(--accent); color:var(--accent); }
+
+/* ===== CARDS ===== */
+.card { background:var(--surface2); border:1px solid var(--border); border-radius:10px; padding:12px; cursor:grab; transition:all .15s; position:relative; }
+.card:hover { border-color:var(--accent); transform:translateY(-1px); box-shadow:0 4px 12px rgba(0,0,0,.3); }
+.card.dragging { opacity:.35; transform:rotate(2deg); }
+.card-color-bar { position:absolute; top:0; left:0; right:0; height:3px; border-radius:10px 10px 0 0; }
+.card-top { display:flex; align-items:center; gap:6px; margin-bottom:6px; flex-wrap:wrap; }
+.card-proj-tag { font-size:.68rem; padding:2px 7px; border-radius:5px; font-weight:600; text-transform:uppercase; letter-spacing:.4px; }
+.urgency-badge { font-size:.65rem; padding:2px 7px; border-radius:5px; font-weight:700; text-transform:uppercase; letter-spacing:.3px; }
+.urgency-critical { background:#e74c3c; color:#fff; }
+.urgency-high { background:#e17055; color:#fff; }
+.urgency-medium { background:#fdcb6e; color:#333; }
+.urgency-low { background:#636e72; color:#fff; }
+.card-title { font-size:.88rem; font-weight:600; margin-bottom:4px; line-height:1.3; }
+.card-desc { font-size:.78rem; color:var(--text-muted); line-height:1.4; margin-bottom:8px; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
+.card-meta { display:flex; gap:10px; align-items:center; flex-wrap:wrap; font-size:.72rem; color:var(--text-muted); }
+.card-meta span { display:flex; align-items:center; gap:3px; }
+.card-meta .overdue { color:var(--danger); font-weight:600; }
+.card-checklist-bar { width:100%; height:4px; background:var(--surface3); border-radius:2px; margin-top:8px; overflow:hidden; }
+.card-checklist-fill { height:100%; background:var(--success); border-radius:2px; transition:width .3s; }
+.card-footer { display:flex; justify-content:space-between; align-items:center; margin-top:8px; }
+.card-date { font-size:.7rem; color:var(--text-muted); }
+.card-actions { display:flex; gap:3px; opacity:0; transition:opacity .15s; }
+.card:hover .card-actions { opacity:1; }
+.card-btn { background:none; border:none; color:var(--text-muted); cursor:pointer; padding:3px 5px; border-radius:4px; font-size:.78rem; transition:all .12s; }
+.card-btn:hover { background:var(--border); color:var(--text); }
+.card-btn.del:hover { color:var(--danger); }
+
+/* ===== DETAIL MODAL ===== */
+.modal-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,.65); z-index:200; align-items:flex-start; justify-content:center; backdrop-filter:blur(4px); overflow-y:auto; padding:40px 16px; }
+.modal-overlay.active { display:flex; }
+.modal { background:var(--surface); border:1px solid var(--border); border-radius:16px; width:560px; max-width:95vw; box-shadow:0 20px 60px rgba(0,0,0,.5); }
+.modal-head { display:flex; align-items:center; justify-content:space-between; padding:20px 24px 0; }
+.modal-head h2 { font-size:1.1rem; font-weight:700; }
+.modal-close { background:none; border:none; color:var(--text-muted); cursor:pointer; font-size:1.3rem; padding:4px 8px; border-radius:6px; }
+.modal-close:hover { background:var(--surface2); color:var(--text); }
+.modal-body { padding:16px 24px 24px; }
+.fg { margin-bottom:14px; }
+.fg label { display:block; font-size:.8rem; color:var(--text-muted); margin-bottom:5px; font-weight:500; }
+.fg input,.fg textarea,.fg select { width:100%; padding:9px 12px; background:var(--surface2); border:1px solid var(--border); border-radius:8px; color:var(--text); font-size:.88rem; font-family:inherit; outline:none; transition:border-color .2s; }
+.fg input:focus,.fg textarea:focus,.fg select:focus { border-color:var(--accent); }
+.fg textarea { resize:vertical; min-height:60px; }
+.fg-row { display:flex; gap:10px; }
+.fg-row .fg { flex:1; }
+
+/* Color picker row */
+.color-options { display:flex; gap:6px; flex-wrap:wrap; }
+.color-opt { width:28px; height:28px; border-radius:6px; cursor:pointer; border:2px solid transparent; transition:all .15s; }
+.color-opt:hover,.color-opt.active { border-color:#fff; transform:scale(1.15); }
+
+/* Checklist */
+.checklist-section { margin-top:16px; }
+.checklist-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:8px; }
+.checklist-header h3 { font-size:.9rem; font-weight:600; }
+.checklist-progress { font-size:.75rem; color:var(--text-muted); }
+.checklist-items { display:flex; flex-direction:column; gap:6px; }
+.checklist-item { background:var(--surface2); border-radius:8px; padding:8px 10px; border:1px solid transparent; transition:border-color .15s; }
+.checklist-item:hover { border-color:var(--border); }
+.checklist-item .cl-row1 { display:flex; align-items:center; gap:8px; }
+.checklist-item input[type=checkbox] { accent-color:var(--accent); width:16px; height:16px; cursor:pointer; flex-shrink:0; }
+.checklist-item .cl-text { flex:1; font-size:.85rem; border:none; background:none; color:var(--text); font-family:inherit; outline:none; }
+.checklist-item .cl-text.checked { text-decoration:line-through; color:var(--text-muted); }
+.checklist-item .cl-del { background:none; border:none; color:var(--text-muted); cursor:pointer; font-size:.8rem; opacity:0; transition:opacity .15s; padding:2px 4px; border-radius:4px; flex-shrink:0; }
+.checklist-item:hover .cl-del { opacity:1; }
+.checklist-item .cl-del:hover { color:var(--danger); }
+.checklist-item .cl-row2 { display:flex; gap:6px; margin-top:5px; margin-left:24px; }
+.checklist-item .cl-row2 input { padding:4px 8px; font-size:.75rem; background:var(--surface3); border:1px solid var(--border); border-radius:5px; color:var(--text); font-family:inherit; outline:none; transition:border-color .15s; }
+.checklist-item .cl-row2 input:focus { border-color:var(--accent); }
+.checklist-item .cl-row2 input[type=text] { flex:1; min-width:0; }
+.checklist-item .cl-row2 input[type=date] { width:130px; flex-shrink:0; }
+.checklist-item .cl-row2 input[type=time] { width:90px; flex-shrink:0; }
+.cl-overdue { color:var(--danger); font-size:.68rem; font-weight:600; margin-left:24px; margin-top:3px; }
+.add-cl-btn { padding:6px 10px; background:none; border:1px dashed var(--border); border-radius:6px; color:var(--text-muted); cursor:pointer; font-size:.8rem; width:100%; margin-top:6px; transition:all .15s; }
+.add-cl-btn:hover { border-color:var(--accent); color:var(--accent); }
+
+/* Attachments */
+.attach-section { margin-top:16px; }
+.attach-section h3 { font-size:.9rem; font-weight:600; margin-bottom:8px; }
+.attach-list { display:flex; flex-direction:column; gap:4px; }
+.attach-item { display:flex; align-items:center; gap:8px; padding:6px 10px; background:var(--surface2); border-radius:6px; font-size:.82rem; }
+.attach-item .att-icon { font-size:1rem; }
+.attach-item .att-name { flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.attach-item .att-del { background:none; border:none; color:var(--text-muted); cursor:pointer; font-size:.78rem; opacity:.5; }
+.attach-item .att-del:hover { color:var(--danger); opacity:1; }
+.add-attach-btn { padding:6px 10px; background:none; border:1px dashed var(--border); border-radius:6px; color:var(--text-muted); cursor:pointer; font-size:.8rem; width:100%; margin-top:6px; transition:all .15s; display:flex; align-items:center; justify-content:center; gap:6px; }
+.add-attach-btn:hover { border-color:var(--accent); color:var(--accent); }
+input[type=file].hidden-file { display:none; }
+
+.modal-actions { display:flex; gap:10px; justify-content:flex-end; margin-top:20px; padding-top:16px; border-top:1px solid var(--border); }
+.btn { padding:9px 18px; border-radius:8px; font-size:.86rem; cursor:pointer; font-weight:600; border:none; transition:all .2s; font-family:inherit; }
+.btn-primary { background:var(--accent); color:#fff; }
+.btn-primary:hover { background:var(--accent-hover); }
+.btn-ghost { background:transparent; border:1px solid var(--border); color:var(--text-muted); }
+.btn-ghost:hover { border-color:var(--text-muted); color:var(--text); }
+.btn-danger { background:var(--danger); color:#fff; }
+.btn-danger:hover { background:#c0392b; }
+
+/* ===== GANTT VIEW ===== */
+.gantt-view { padding:20px 24px; overflow-x:auto; }
+.gantt-view.hidden { display:none; }
+.gantt-controls { display:flex; gap:10px; align-items:center; margin-bottom:16px; flex-wrap:wrap; }
+.gantt-controls select,.gantt-controls input { padding:7px 12px; background:var(--surface2); border:1px solid var(--border); border-radius:8px; color:var(--text); font-size:.84rem; font-family:inherit; outline:none; }
+.gantt-container { position:relative; overflow-x:auto; }
+.gantt-inner { min-width:100%; }
+.gantt-header { display:flex; position:sticky; top:0; z-index:10; background:var(--surface); border-bottom:2px solid var(--border); }
+.gantt-label-col { min-width:240px; width:240px; padding:10px 12px; font-weight:600; font-size:.82rem; color:var(--text-muted); border-right:1px solid var(--border); flex-shrink:0; }
+.gantt-timeline-header { display:flex; flex:1; }
+.gantt-day-header { min-width:40px; width:40px; text-align:center; padding:8px 2px; font-size:.68rem; color:var(--text-muted); border-right:1px solid var(--border); flex-shrink:0; }
+.gantt-day-header.weekend { background:rgba(255,255,255,.02); }
+.gantt-day-header.today { background:rgba(108,92,231,.15); color:var(--accent); font-weight:700; }
+.gantt-row { display:flex; border-bottom:1px solid var(--border); min-height:38px; transition:background .1s; }
+.gantt-row:hover { background:rgba(255,255,255,.02); }
+.gantt-row-label { min-width:240px; width:240px; padding:8px 12px; font-size:.82rem; display:flex; align-items:center; gap:8px; border-right:1px solid var(--border); flex-shrink:0; overflow:hidden; }
+.gantt-row-label .gr-proj { font-size:.65rem; padding:1px 6px; border-radius:4px; font-weight:600; white-space:nowrap; }
+.gantt-row-label .gr-title { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.gantt-row-timeline { display:flex; flex:1; position:relative; }
+.gantt-cell { min-width:40px; width:40px; border-right:1px solid var(--border); flex-shrink:0; }
+.gantt-cell.weekend { background:rgba(255,255,255,.02); }
+.gantt-cell.today { background:rgba(108,92,231,.08); }
+.gantt-bar { position:absolute; height:22px; top:8px; border-radius:6px; min-width:12px; cursor:pointer; display:flex; align-items:center; justify-content:center; font-size:.68rem; font-weight:600; color:#fff; text-shadow:0 1px 2px rgba(0,0,0,.3); transition:opacity .15s; z-index:5; }
+.gantt-bar:hover { opacity:.85; }
+.gantt-bar-prep { opacity:.45; background-image:repeating-linear-gradient(45deg,transparent,transparent 4px,rgba(255,255,255,.2) 4px,rgba(255,255,255,.2) 8px) !important; border-radius:6px 0 0 6px; }
+.gantt-bar-event { background:linear-gradient(135deg,#fdcb6e 0%,#e17055 100%) !important; border:2px solid rgba(253,203,110,.7); box-shadow:0 2px 10px rgba(253,203,110,.45); border-radius:0 6px 6px 0; z-index:6; }
+.gantt-bar-event-only { background:linear-gradient(135deg,#fdcb6e 0%,#e17055 100%) !important; border:2px solid rgba(253,203,110,.7); box-shadow:0 2px 10px rgba(253,203,110,.45); }
+.gantt-today-line { position:absolute; top:0; bottom:0; width:2px; background:var(--accent); z-index:6; pointer-events:none; }
+.gantt-empty { text-align:center; padding:40px; color:var(--text-muted); font-size:.9rem; }
+.event-toggle-label { display:flex; align-items:center; gap:8px; cursor:pointer; font-size:.85rem; font-weight:500; color:var(--text); }
+.event-toggle-label input[type=checkbox] { width:16px; height:16px; cursor:pointer; accent-color:var(--accent); flex-shrink:0; }
+
+/* Project colors */
+.pc-0{background:#6c5ce7;color:#fff} .pc-1{background:#e17055;color:#fff} .pc-2{background:#00b894;color:#fff}
+.pc-3{background:#fdcb6e;color:#333} .pc-4{background:#74b9ff;color:#333} .pc-5{background:#fd79a8;color:#fff}
+.pc-6{background:#a29bfe;color:#fff} .pc-7{background:#55efc4;color:#333}
+
+.empty-state { text-align:center; padding:28px 14px; color:var(--text-muted); font-size:.82rem; }
+
+/* Card custom colors */
+.card-c-red .card-color-bar{background:#e74c3c} .card-c-orange .card-color-bar{background:#e17055}
+.card-c-yellow .card-color-bar{background:#fdcb6e} .card-c-green .card-color-bar{background:#00b894}
+.card-c-blue .card-color-bar{background:#74b9ff} .card-c-purple .card-color-bar{background:#6c5ce7}
+.card-c-pink .card-color-bar{background:#fd79a8} .card-c-none .card-color-bar{background:transparent}
+
+/* Sync badge */
+.sync-badge { font-size:.73rem; padding:4px 10px; border-radius:12px; background:var(--surface2); color:var(--text-muted); border:1px solid var(--border); white-space:nowrap; }
+.sync-badge.connected { border-color:var(--success); color:var(--success); }
+.sync-badge.syncing { border-color:var(--warning); color:var(--warning); }
+
+/* Templates */
+.tpl-grid { display:flex; flex-direction:column; gap:8px; max-height:400px; overflow-y:auto; }
+.tpl-card { background:var(--surface2); border:1px solid var(--border); border-radius:10px; padding:14px; cursor:pointer; transition:all .15s; display:flex; align-items:flex-start; justify-content:space-between; gap:10px; }
+.tpl-card:hover { border-color:var(--accent); transform:translateY(-1px); }
+.tpl-card-info { flex:1; min-width:0; }
+.tpl-card-name { font-weight:700; font-size:.9rem; margin-bottom:3px; }
+.tpl-card-detail { font-size:.78rem; color:var(--text-muted); line-height:1.4; }
+.tpl-card-actions { display:flex; gap:4px; flex-shrink:0; }
+.tpl-card-actions button { background:none; border:none; color:var(--text-muted); cursor:pointer; padding:4px 6px; border-radius:4px; font-size:.82rem; }
+.tpl-card-actions button:hover { background:var(--border); color:var(--text); }
+.tpl-card-actions button.del:hover { color:var(--danger); }
+.tpl-empty { text-align:center; padding:30px; color:var(--text-muted); font-size:.85rem; }
+.save-tpl-btn { background:none; border:1px solid var(--border); color:var(--text-muted); padding:7px 14px; border-radius:8px; cursor:pointer; font-size:.82rem; font-family:inherit; transition:all .15s; width:100%; margin-top:8px; }
+.save-tpl-btn:hover { border-color:var(--accent); color:var(--accent); }
+
+/* Responsive */
+@media(max-width:768px){
+  .board{padding:12px;}
+  .column{min-width:260px;width:260px;}
+  .gantt-view{padding:12px;}
+}
+</style>
+</head>
+<body>
+
+<!-- LOGIN SCREEN -->
+<div id="loginScreen" style="display:flex;align-items:center;justify-content:center;min-height:100vh;background:var(--bg);">
+  <div style="background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:40px;width:360px;max-width:90vw;text-align:center;">
+    <h1 style="font-size:1.5rem;font-weight:700;background:linear-gradient(135deg,var(--accent),var(--info));-webkit-background-clip:text;-webkit-text-fill-color:transparent;margin-bottom:8px;">Kanban Pro</h1>
+    <p style="color:var(--text-muted);font-size:.85rem;margin-bottom:24px;">Digite a senha para acessar</p>
+    <input type="password" id="loginPass" placeholder="Senha" onkeydown="if(event.key==='Enter')doLogin()" style="width:100%;padding:12px 16px;background:var(--surface2);border:1px solid var(--border);border-radius:10px;color:var(--text);font-size:1rem;font-family:inherit;outline:none;text-align:center;margin-bottom:12px;">
+    <div id="loginError" style="color:var(--danger);font-size:.82rem;margin-bottom:12px;display:none;">Senha incorreta</div>
+    <button onclick="doLogin()" style="width:100%;padding:12px;background:var(--accent);border:none;border-radius:10px;color:#fff;font-size:.95rem;font-weight:600;cursor:pointer;font-family:inherit;transition:background .2s;">Entrar</button>
+  </div>
+</div>
+
+<!-- APP (hidden until login) -->
+<div id="appContainer" style="display:none;">
+<div class="header">
+  <h1>Kanban Pro</h1>
+  <div class="header-actions">
+    <span class="sync-badge" id="syncBadge">Conectando...</span>
+    <button class="view-btn" onclick="openTemplatesModal()">Templates</button>
+    <button class="view-btn" onclick="openReportModal()">&#128203; Relatório</button>
+    <button class="view-btn active" id="btnBoard" onclick="switchView('board')">Board</button>
+    <button class="view-btn" id="btnGantt" onclick="switchView('gantt')">Gantt</button>
+  </div>
+</div>
+
+<div class="project-bar" id="projectBar">
+  <div class="project-tab active" data-project="__all__" onclick="filterProject('__all__')">Todos <span class="tc" id="cAll">0</span></div>
+  <button class="add-proj-btn" onclick="promptNewProject()">+ Projeto</button>
+</div>
+
+<!-- BOARD VIEW -->
+<div class="board" id="boardView">
+  <div class="column" data-status="backlog">
+    <div class="col-header"><div class="col-title"><div class="col-dot" style="background:var(--backlog)"></div>Backlog</div><span class="col-count" data-count="backlog">0</span></div>
+    <div class="col-body" id="col-backlog"></div>
+    <button class="add-card-btn" onclick="openNew('backlog')">+ Tarefa</button>
+  </div>
+  <div class="column" data-status="todo">
+    <div class="col-header"><div class="col-title"><div class="col-dot" style="background:var(--todo)"></div>To Do</div><span class="col-count" data-count="todo">0</span></div>
+    <div class="col-body" id="col-todo"></div>
+    <button class="add-card-btn" onclick="openNew('todo')">+ Tarefa</button>
+  </div>
+  <div class="column" data-status="doing">
+    <div class="col-header"><div class="col-title"><div class="col-dot" style="background:var(--doing)"></div>Doing</div><span class="col-count" data-count="doing">0</span></div>
+    <div class="col-body" id="col-doing"></div>
+    <button class="add-card-btn" onclick="openNew('doing')">+ Tarefa</button>
+  </div>
+  <div class="column" data-status="review">
+    <div class="col-header"><div class="col-title"><div class="col-dot" style="background:var(--review)"></div>Review</div><span class="col-count" data-count="review">0</span></div>
+    <div class="col-body" id="col-review"></div>
+    <button class="add-card-btn" onclick="openNew('review')">+ Tarefa</button>
+  </div>
+  <div class="column" data-status="done">
+    <div class="col-header"><div class="col-title"><div class="col-dot" style="background:var(--done)"></div>Done</div><span class="col-count" data-count="done">0</span></div>
+    <div class="col-body" id="col-done"></div>
+    <button class="add-card-btn" onclick="openNew('done')">+ Tarefa</button>
+  </div>
+</div>
+
+<!-- GANTT VIEW -->
+<div class="gantt-view hidden" id="ganttView">
+  <div class="gantt-controls">
+    <label style="font-size:.82rem;color:var(--text-muted)">Periodo:</label>
+    <input type="date" id="ganttStart" onchange="renderGantt()">
+    <span style="color:var(--text-muted)">ate</span>
+    <input type="date" id="ganttEnd" onchange="renderGantt()">
+    <select id="ganttFilter" onchange="renderGantt()">
+      <option value="__all__">Todos os projetos</option>
+    </select>
+  </div>
+  <div id="ganttContainer"></div>
+</div>
+
+<!-- DETAIL MODAL -->
+<div class="modal-overlay" id="detailModal">
+  <div class="modal">
+    <div class="modal-head">
+      <h2 id="dmTitle">Tarefa</h2>
+      <button class="modal-close" onclick="closeDetail()">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div class="fg">
+        <label>Titulo</label>
+        <input type="text" id="dmTaskTitle" placeholder="Nome da tarefa">
+      </div>
+      <div class="fg">
+        <label>Descricao</label>
+        <textarea id="dmTaskDesc" placeholder="Detalhes..."></textarea>
+      </div>
+      <div class="fg-row">
+        <div class="fg">
+          <label>Projeto</label>
+          <select id="dmProject"></select>
+        </div>
+        <div class="fg">
+          <label>Coluna</label>
+          <select id="dmStatus">
+            <option value="backlog">Backlog</option>
+            <option value="todo">To Do</option>
+            <option value="doing">Doing</option>
+            <option value="review">Review</option>
+            <option value="done">Done</option>
+          </select>
+        </div>
+      </div>
+      <div class="fg-row">
+        <div class="fg">
+          <label>Responsavel</label>
+          <input type="text" id="dmAssignee" placeholder="Nome do responsavel">
+        </div>
+        <div class="fg">
+          <label>Urgencia</label>
+          <select id="dmUrgency">
+            <option value="">Nenhuma</option>
+            <option value="low">Baixa</option>
+            <option value="medium">Media</option>
+            <option value="high">Alta</option>
+            <option value="critical">Critica</option>
+          </select>
+        </div>
+      </div>
+      <div class="fg-row">
+        <div class="fg">
+          <label>Data inicio</label>
+          <input type="date" id="dmStartDate">
+        </div>
+        <div class="fg">
+          <label>Deadline</label>
+          <input type="date" id="dmDeadline">
+        </div>
+      </div>
+      <div class="fg">
+        <label>Hora da entrega</label>
+        <input type="time" id="dmDeadlineTime" style="max-width:160px">
+      </div>
+      <div class="fg" style="margin-top:4px">
+        <label class="event-toggle-label">
+          <input type="checkbox" id="dmIsEvent" onchange="toggleEventFields()">
+          <span>É um evento?</span>
+        </label>
+      </div>
+      <div class="fg-row" id="eventDatesGroup" style="display:none">
+        <div class="fg">
+          <label>Início do evento</label>
+          <input type="date" id="dmEventStart">
+        </div>
+        <div class="fg">
+          <label>Fim do evento</label>
+          <input type="date" id="dmEventEnd">
+        </div>
+      </div>
+      <div class="fg">
+        <label>Cor do card</label>
+        <div class="color-options" id="dmColors">
+          <div class="color-opt active" data-color="none" style="background:var(--surface3)" onclick="pickColor(this)"></div>
+          <div class="color-opt" data-color="red" style="background:#e74c3c" onclick="pickColor(this)"></div>
+          <div class="color-opt" data-color="orange" style="background:#e17055" onclick="pickColor(this)"></div>
+          <div class="color-opt" data-color="yellow" style="background:#fdcb6e" onclick="pickColor(this)"></div>
+          <div class="color-opt" data-color="green" style="background:#00b894" onclick="pickColor(this)"></div>
+          <div class="color-opt" data-color="blue" style="background:#74b9ff" onclick="pickColor(this)"></div>
+          <div class="color-opt" data-color="purple" style="background:#6c5ce7" onclick="pickColor(this)"></div>
+          <div class="color-opt" data-color="pink" style="background:#fd79a8" onclick="pickColor(this)"></div>
+        </div>
+      </div>
+
+      <!-- CHECKLIST -->
+      <div class="checklist-section">
+        <div class="checklist-header">
+          <h3>Checklist</h3>
+          <span class="checklist-progress" id="clProgress">0/0</span>
+        </div>
+        <div class="checklist-items" id="clItems"></div>
+        <button class="add-cl-btn" onclick="addChecklistItem()">+ Item</button>
+      </div>
+
+      <!-- ATTACHMENTS -->
+      <div class="attach-section">
+        <h3>Anexos</h3>
+        <div class="attach-list" id="attList"></div>
+        <button class="add-attach-btn" onclick="document.getElementById('attFileInput').click()">
+          <span>&#128206;</span> Adicionar anexo
+        </button>
+        <input type="file" class="hidden-file" id="attFileInput" multiple onchange="handleAttach(this)">
+      </div>
+
+      <button class="save-tpl-btn" onclick="saveAsTemplate()">&#128190; Salvar como Template</button>
+
+      <div class="modal-actions">
+        <button class="btn btn-danger" id="dmDeleteBtn" onclick="deleteFromDetail()" style="margin-right:auto">Excluir</button>
+        <span id="autosaveStatus" style="font-size:.75rem;color:var(--text-muted);margin-right:auto;display:none"></span>
+        <button class="btn btn-ghost" onclick="closeDetail(true)">Cancelar</button>
+        <button class="btn btn-primary" onclick="saveDetail()">Salvar</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+</div><!-- /appContainer -->
+
+<!-- TEMPLATES MODAL -->
+<div class="modal-overlay" id="tplModal">
+  <div class="modal">
+    <div class="modal-head">
+      <h2>Templates de Tarefa</h2>
+      <button class="modal-close" onclick="closeTemplatesModal()">&times;</button>
+    </div>
+    <div class="modal-body">
+      <p style="font-size:.82rem;color:var(--text-muted);margin-bottom:14px;">Clique num template para criar uma nova tarefa a partir dele.</p>
+      <div class="tpl-grid" id="tplGrid"></div>
+    </div>
+  </div>
+</div>
+
+<!-- REPORT MODAL -->
+<div class="modal-overlay" id="reportModal">
+  <div class="modal" style="max-width:500px">
+    <div class="modal-head">
+      <h2>&#128203; Gerar Relatório</h2>
+      <button class="modal-close" onclick="closeReportModal()">&times;</button>
+    </div>
+    <div class="modal-body">
+      <p style="font-size:.82rem;color:var(--text-muted);margin-bottom:18px;">Configure os filtros e copie o relatório para a área de transferência.</p>
+
+      <div style="display:flex;flex-direction:column;gap:14px;">
+        <div>
+          <label style="font-size:.8rem;color:var(--text-muted);display:block;margin-bottom:6px;">Projeto</label>
+          <select id="rptProject" style="width:100%;padding:8px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:inherit;font-size:.9rem;">
+            <option value="__all__">Todos os projetos</option>
+          </select>
+        </div>
+
+        <div>
+          <label style="font-size:.8rem;color:var(--text-muted);display:block;margin-bottom:6px;">Status</label>
+          <div style="display:flex;flex-wrap:wrap;gap:8px;" id="rptStatusFilters">
+            <label style="display:flex;align-items:center;gap:5px;font-size:.85rem;cursor:pointer;"><input type="checkbox" value="backlog" checked> 📥 Backlog</label>
+            <label style="display:flex;align-items:center;gap:5px;font-size:.85rem;cursor:pointer;"><input type="checkbox" value="todo" checked> 📌 To Do</label>
+            <label style="display:flex;align-items:center;gap:5px;font-size:.85rem;cursor:pointer;"><input type="checkbox" value="doing" checked> 🔄 Doing</label>
+            <label style="display:flex;align-items:center;gap:5px;font-size:.85rem;cursor:pointer;"><input type="checkbox" value="review" checked> 👀 Review</label>
+          </div>
+        </div>
+
+        <div>
+          <label style="display:flex;align-items:center;gap:8px;font-size:.85rem;cursor:pointer;">
+            <input type="checkbox" id="rptIncludeDone">
+            ✅ Incluir tarefas concluídas?
+          </label>
+        </div>
+
+        <div>
+          <label style="display:flex;align-items:center;gap:8px;font-size:.85rem;cursor:pointer;">
+            <input type="checkbox" id="rptOnlyLate">
+            ⚠️ Apenas tarefas atrasadas
+          </label>
+        </div>
+      </div>
+
+      <div id="rptPreview" style="margin-top:20px;background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:14px;font-size:.78rem;line-height:1.7;white-space:pre-wrap;max-height:320px;overflow-y:auto;color:var(--text);font-family:monospace;display:none;"></div>
+
+      <div style="display:flex;gap:10px;margin-top:18px;">
+        <button class="btn btn-ghost" style="flex:1" onclick="previewReport()">&#128065; Visualizar</button>
+        <button class="btn btn-primary" style="flex:1" id="rptCopyBtn" onclick="copyReport()" disabled>&#128203; Copiar</button>
+      </div>
+      <div id="rptCopyFeedback" style="text-align:center;font-size:.8rem;color:var(--success);margin-top:8px;display:none;">✓ Copiado para a área de transferência!</div>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+// ===== LOGIN =====
+const PASS_HASH = '5994471abb01112afcc18159f6cc74b4f511b99806da59b3caf5a9c173cacfc5';
+
+async function hashSHA256(str){
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(str));
+  return Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,'0')).join('');
+}
+
+async function doLogin(){
+  const pass = document.getElementById('loginPass').value;
+  const hash = await hashSHA256(pass);
+  if(hash === PASS_HASH){
+    document.getElementById('loginScreen').style.display='none';
+    document.getElementById('appContainer').style.display='';
+    sessionStorage.setItem('kb_auth','1');
+  } else {
+    document.getElementById('loginError').style.display='block';
+    document.getElementById('loginPass').value='';
+    document.getElementById('loginPass').focus();
+  }
+}
+
+// Auto-login if already authenticated this session
+if(sessionStorage.getItem('kb_auth')==='1'){
+  document.addEventListener('DOMContentLoaded',()=>{
+    document.getElementById('loginScreen').style.display='none';
+    document.getElementById('appContainer').style.display='';
+  });
+}
+
+// ===== SUPABASE CONFIG =====
+const SUPABASE_URL = 'https://imsqnoxztoxlmiumdalu.supabase.co';
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imltc3Fub3h6dG94bG1pdW1kYWx1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ4OTk5NTEsImV4cCI6MjA5MDQ3NTk1MX0.CaFrcNJokpvdRD9v9AIp3rlDd8wXIrW6k1urepMDnqw';
+let sb = null;
+let dbReady = false;
+
+// ===== STATE =====
+const SK = 'kanban_pro_v2';
+const PROJ_COLORS = ['pc-0','pc-1','pc-2','pc-3','pc-4','pc-5','pc-6','pc-7'];
+const GANTT_BAR_COLORS = ['#6c5ce7','#e17055','#00b894','#fdcb6e','#74b9ff','#fd79a8','#a29bfe','#55efc4'];
+
+let S = { projects:['Projeto 1'], tasks:[], templates:[], activeProject:'__all__', view:'board' };
+let editId = null;
+let tempChecklist = [];
+let tempAttachments = [];
+
+// ===== SYNC BADGE =====
+function setSyncStatus(status, text) {
+  const badge = document.getElementById('syncBadge');
+  badge.textContent = text;
+  badge.className = 'sync-badge' + (status === 'ok' ? ' connected' : status === 'syncing' ? ' syncing' : '');
+}
+
+// ===== SUPABASE INIT =====
+async function initSupabase() {
+  try {
+    sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+    // Test connection
+    const { data, error } = await sb.from('kanban_projects').select('name');
+    if (error) throw error;
+    dbReady = true;
+    setSyncStatus('ok', 'Supabase ✓');
+    await loadFromSupabase();
+    console.log('[Kanban] Supabase connected!');
+  } catch (e) {
+    console.warn('[Kanban] Supabase failed, using localStorage:', e.message);
+    dbReady = false;
+    setSyncStatus('off', 'localStorage');
+    loadFromLocal();
+  }
+  render();
+  if (S.view === 'gantt') switchView('gantt');
+}
+
+// ===== LOAD FROM SUPABASE =====
+async function loadFromSupabase() {
+  // Load projects
+  const { data: projects } = await sb.from('kanban_projects').select('name').order('created_at');
+  if (projects && projects.length) {
+    S.projects = projects.map(p => p.name);
+  }
+  // Load tasks
+  const { data: tasks } = await sb.from('kanban_tasks').select('*').order('created_at');
+  if (tasks) {
+    const supabaseTasks = tasks.map(t => ({
+      id: t.id,
+      title: t.title,
+      description: t.description || '',
+      project: t.project,
+      status: t.status,
+      assignee: t.assignee || '',
+      urgency: t.urgency || '',
+      startDate: t.start_date || '',
+      deadline: t.deadline || '',
+      deadlineTime: t.deadline_time || '',
+      isEvent: t.is_event || false,
+      eventStartDate: t.event_start_date || '',
+      eventEndDate: t.event_end_date || '',
+      cardColor: t.card_color || 'none',
+      checklist: t.checklist || [],
+      attachments: t.attachments || [],
+      created_at: t.created_at
+    }));
+    // Merge: keep local-only tasks (not yet synced) + supabase tasks
+    const supabaseIds = new Set(supabaseTasks.map(t => t.id));
+    const localOnlyTasks = S.tasks.filter(t => !supabaseIds.has(t.id));
+    S.tasks = [...supabaseTasks, ...localOnlyTasks];
+    // Sync any local-only tasks up to Supabase
+    localOnlyTasks.forEach(t => saveTask(t));
+  }
+  // Load templates
+  const { data: templates } = await sb.from('kanban_templates').select('*').order('created_at');
+  if (templates) {
+    S.templates = templates.map(t => ({
+      id: t.id, name: t.name, title: t.title, description: t.description || '',
+      project: t.project || '', assignee: t.assignee || '', urgency: t.urgency || '',
+      cardColor: t.card_color || 'none', checklist: t.checklist || [], created_at: t.created_at
+    }));
+  }
+  // Save merged state locally as cache
+  localStorage.setItem(SK, JSON.stringify(S));
+}
+
+// ===== SAVE =====
+async function save() {
+  localStorage.setItem(SK, JSON.stringify(S));
+  if (!dbReady) return;
+  setSyncStatus('syncing', 'Salvando...');
+  try {
+    // Sync projects
+    const { data: existing } = await sb.from('kanban_projects').select('name');
+    const existingNames = (existing || []).map(p => p.name);
+    // Insert new projects
+    const toInsert = S.projects.filter(p => !existingNames.includes(p));
+    if (toInsert.length) {
+      await sb.from('kanban_projects').insert(toInsert.map(name => ({ name })));
+    }
+    // Delete removed projects
+    const toDelete = existingNames.filter(p => !S.projects.includes(p));
+    for (const name of toDelete) {
+      await sb.from('kanban_projects').delete().eq('name', name);
+    }
+    setSyncStatus('ok', 'Supabase ✓');
+  } catch (e) {
+    console.warn('[Kanban] Sync projects error:', e.message);
+    setSyncStatus('off', 'Erro sync');
+  }
+}
+
+// ===== SAVE SINGLE TASK =====
+async function saveTask(task) {
+  localStorage.setItem(SK, JSON.stringify(S));
+  if (!dbReady) return;
+  setSyncStatus('syncing', 'Salvando...');
+  try {
+    const row = {
+      id: task.id,
+      title: task.title,
+      description: task.description || '',
+      project: task.project,
+      status: task.status,
+      assignee: task.assignee || '',
+      urgency: task.urgency || '',
+      start_date: task.startDate || '',
+      deadline: task.deadline || '',
+      deadline_time: task.deadlineTime || '',
+      is_event: task.isEvent || false,
+      event_start_date: task.eventStartDate || '',
+      event_end_date: task.eventEndDate || '',
+      card_color: task.cardColor || 'none',
+      checklist: task.checklist || [],
+      attachments: (task.attachments || []).map(a => ({ name: a.name, size: a.size, type: a.type })),
+      created_at: task.created_at
+    };
+    const { error } = await sb.from('kanban_tasks').upsert(row, { onConflict: 'id' });
+    if (error) {
+      // Se falhou por colunas inexistentes, tenta sem os novos campos
+      const { deadline_time, is_event, event_start_date, event_end_date, ...rowBasic } = row;
+      const { error: error2 } = await sb.from('kanban_tasks').upsert(rowBasic, { onConflict: 'id' });
+      if (error2) throw error2;
+    }
+    setSyncStatus('ok', 'Supabase ✓');
+  } catch (e) {
+    console.warn('[Kanban] Sync task error:', e.message);
+    setSyncStatus('off', 'Erro sync');
+  }
+}
+
+// ===== DELETE TASK FROM DB =====
+async function deleteTaskFromDB(id) {
+  localStorage.setItem(SK, JSON.stringify(S));
+  if (!dbReady) return;
+  try {
+    await sb.from('kanban_tasks').delete().eq('id', id);
+    setSyncStatus('ok', 'Supabase ✓');
+  } catch (e) {
+    console.warn('[Kanban] Delete task error:', e.message);
+  }
+}
+
+// ===== LOCAL FALLBACK =====
+function loadFromLocal(){
+  try{ const r=JSON.parse(localStorage.getItem(SK)); if(r){S.projects=r.projects||['Projeto 1'];S.tasks=r.tasks||[];S.templates=r.templates||[];S.activeProject=r.activeProject||'__all__';S.view=r.view||'board';}}catch(e){}
+}
+
+// ===== RENDER =====
+function render(){ renderTabs(); renderCards(); updateCounts(); }
+
+function renderTabs(){
+  const bar=document.getElementById('projectBar');
+  const btn=bar.querySelector('.add-proj-btn');
+  bar.querySelectorAll('.project-tab:not([data-project="__all__"])').forEach(e=>e.remove());
+  S.projects.forEach((name,i)=>{
+    const t=document.createElement('div');
+    t.className='project-tab'+(S.activeProject===name?' active':'');
+    t.dataset.project=name;
+    const cnt=S.tasks.filter(x=>x.project===name).length;
+    t.innerHTML=`<span>${esc(name)}</span><span class="tc">${cnt}</span><span class="dp">&times;</span>`;
+    const dp=t.querySelector('.dp');
+    dp.addEventListener('click',e=>{e.stopPropagation();delProject(name);});
+    t.onclick=e=>{if(!e.target.classList.contains('dp'))filterProject(name);};
+    bar.insertBefore(t,btn);
+  });
+  bar.querySelector('[data-project="__all__"]').className='project-tab'+(S.activeProject==='__all__'?' active':'');
+  // Gantt filter
+  const gf=document.getElementById('ganttFilter');
+  const gv=gf.value;
+  gf.innerHTML='<option value="__all__">Todos os projetos</option>';
+  S.projects.forEach(p=>{const o=document.createElement('option');o.value=p;o.textContent=p;gf.appendChild(o);});
+  gf.value=gv||'__all__';
+}
+
+function renderCards(){
+  ['backlog','todo','doing','review','done'].forEach(status=>{
+    const col=document.getElementById('col-'+status);
+    col.innerHTML='';
+    const items=S.tasks.filter(t=>{
+      if(t.status!==status)return false;
+      if(S.activeProject!=='__all__'&&t.project!==S.activeProject)return false;
+      return true;
+    });
+    if(!items.length){col.innerHTML='<div class="empty-state">Nenhuma tarefa</div>';return;}
+    items.forEach(t=>{
+      const c=document.createElement('div');
+      c.className='card card-c-'+(t.cardColor||'none');
+      c.draggable=true;
+      c.dataset.id=t.id;
+
+      const pi=S.projects.indexOf(t.project);
+      const pc=PROJ_COLORS[pi%PROJ_COLORS.length];
+      const cl=t.checklist||[];
+      const done=cl.filter(x=>x.done).length;
+      const urg=t.urgency?`<span class="urgency-badge urgency-${t.urgency}">${{low:'Baixa',medium:'Media',high:'Alta',critical:'Critica'}[t.urgency]}</span>`:'';
+      const deadlineStr=t.deadline?formatDateShort(t.deadline):'';
+      const isOverdue=t.deadline&&new Date(t.deadline+'T23:59:59')<new Date()&&t.status!=='done';
+      const assigneeStr=t.assignee?`<span>&#128100; ${esc(t.assignee)}</span>`:'';
+      const attCount=(t.attachments||[]).length;
+      const attStr=attCount?`<span>&#128206; ${attCount}</span>`:'';
+
+      c.innerHTML=`
+        <div class="card-color-bar"></div>
+        <div class="card-top">
+          <span class="card-proj-tag ${pc}">${esc(t.project)}</span>
+          ${urg}
+        </div>
+        <div class="card-title">${esc(t.title)}</div>
+        ${t.description?`<div class="card-desc">${esc(t.description)}</div>`:''}
+        ${cl.length?`<div class="card-checklist-bar"><div class="card-checklist-fill" style="width:${cl.length?done/cl.length*100:0}%"></div></div>`:''}
+        ${cl.filter(c=>c.deadline&&!c.done&&new Date(c.deadline+'T23:59:59')<new Date()).length?`<span style="font-size:.7rem;color:var(--danger);font-weight:600">&#128308; ${cl.filter(c=>c.deadline&&!c.done&&new Date(c.deadline+'T23:59:59')<new Date()).length} item(s) atrasado(s)</span>`:''}
+        <div class="card-meta">
+          ${deadlineStr?`<span class="${isOverdue?'overdue':''}">&#128197; ${deadlineStr}${t.deadlineTime?' '+t.deadlineTime:''}${isOverdue?' (atrasada)':''}</span>`:''}
+          ${assigneeStr}
+          ${attStr}
+          ${cl.length?`<span>&#9745; ${done}/${cl.length}</span>`:''}
+        </div>
+        <div class="card-footer">
+          <span class="card-date">${formatDateShort(t.created_at)}</span>
+          <div class="card-actions">
+            <button class="card-btn del" onclick="event.stopPropagation();quickDelete('${t.id}')" title="Excluir">&#10005;</button>
+          </div>
+        </div>
+      `;
+
+      c.onclick=(e)=>{if(!e.target.closest('.card-btn'))openDetail(t.id);};
+      c.addEventListener('dragstart',e=>{c.classList.add('dragging');e.dataTransfer.setData('text/plain',t.id);e.dataTransfer.effectAllowed='move';});
+      c.addEventListener('dragend',()=>c.classList.remove('dragging'));
+      col.appendChild(c);
+    });
+  });
+}
+
+function updateCounts(){
+  let total=0;
+  ['backlog','todo','doing','review','done'].forEach(s=>{
+    const n=S.tasks.filter(t=>{if(t.status!==s)return false;if(S.activeProject!=='__all__'&&t.project!==S.activeProject)return false;return true;}).length;
+    document.querySelector(`[data-count="${s}"]`).textContent=n;
+    total+=n;
+  });
+  document.getElementById('cAll').textContent=S.tasks.length;
+}
+
+// ===== DRAG & DROP =====
+document.addEventListener('DOMContentLoaded',()=>{
+  document.querySelectorAll('.col-body').forEach(col=>{
+    col.addEventListener('dragover',e=>{e.preventDefault();e.dataTransfer.dropEffect='move';col.classList.add('drag-over');});
+    col.addEventListener('dragleave',()=>col.classList.remove('drag-over'));
+    col.addEventListener('drop',e=>{
+      e.preventDefault();col.classList.remove('drag-over');
+      const id=e.dataTransfer.getData('text/plain');
+      const ns=col.id.replace('col-','');
+      const t=S.tasks.find(x=>x.id===id);
+      if(t){t.status=ns;saveTask(t);render();}
+    });
+  });
+});
+
+// ===== PROJECTS =====
+function filterProject(p){S.activeProject=p;save();render();if(S.view==='gantt')renderGantt();}
+function promptNewProject(){const n=prompt('Nome do novo projeto:');if(n&&n.trim()&&!S.projects.includes(n.trim())){S.projects.push(n.trim());save();render();}}
+async function delProject(name){
+  if(!confirm(`Excluir "${name}" e todas as suas tarefas?`))return;
+  const taskIds=S.tasks.filter(t=>t.project===name).map(t=>t.id);
+  S.projects=S.projects.filter(p=>p!==name);
+  S.tasks=S.tasks.filter(t=>t.project!==name);
+  if(S.activeProject===name)S.activeProject='__all__';
+  save();render();
+  if(dbReady){
+    for(const id of taskIds) await sb.from('kanban_tasks').delete().eq('id',id);
+  }
+}
+
+// ===== VIEWS =====
+function switchView(v){
+  S.view=v;save();
+  document.getElementById('boardView').classList.toggle('hidden',v!=='board');
+  document.getElementById('ganttView').classList.toggle('hidden',v!=='gantt');
+  document.getElementById('btnBoard').classList.toggle('active',v==='board');
+  document.getElementById('btnGantt').classList.toggle('active',v==='gantt');
+  if(v==='gantt'){
+    // Reset inputs so range recalculates from tasks
+    document.getElementById('ganttStart').value='';
+    document.getElementById('ganttEnd').value='';
+    renderGantt();
+  }
+}
+
+// ===== DETAIL MODAL =====
+function openNew(status){
+  editId=null;
+  tempAttachments=[];
+  document.getElementById('dmTitle').textContent='Nova Tarefa';
+  document.getElementById('dmDeleteBtn').style.display='none';
+  pickColorByValue('none');
+  populateProjects();
+
+  // Restore draft if exists
+  const draft=loadDraft();
+  if(draft){
+    document.getElementById('dmTaskTitle').value=draft.title||'';
+    document.getElementById('dmTaskDesc').value=draft.description||'';
+    document.getElementById('dmStatus').value=draft.status||status||'backlog';
+    document.getElementById('dmAssignee').value=draft.assignee||'';
+    document.getElementById('dmUrgency').value=draft.urgency||'';
+    document.getElementById('dmStartDate').value=draft.startDate||'';
+    document.getElementById('dmDeadline').value=draft.deadline||'';
+    document.getElementById('dmDeadlineTime').value=draft.deadlineTime||'';
+    document.getElementById('dmIsEvent').checked=!!draft.isEvent;
+    document.getElementById('dmEventStart').value=draft.eventStartDate||'';
+    document.getElementById('dmEventEnd').value=draft.eventEndDate||'';
+    document.getElementById('eventDatesGroup').style.display=draft.isEvent?'':'none';
+    tempChecklist=draft.checklist||[];
+  }else{
+    document.getElementById('dmTaskTitle').value='';
+    document.getElementById('dmTaskDesc').value='';
+    document.getElementById('dmStatus').value=status||'backlog';
+    document.getElementById('dmAssignee').value='';
+    document.getElementById('dmUrgency').value='';
+    document.getElementById('dmStartDate').value='';
+    document.getElementById('dmDeadline').value='';
+    document.getElementById('dmDeadlineTime').value='';
+    document.getElementById('dmIsEvent').checked=false;
+    document.getElementById('dmEventStart').value='';
+    document.getElementById('dmEventEnd').value='';
+    document.getElementById('eventDatesGroup').style.display='none';
+    tempChecklist=[];
+  }
+
+  // Auto-save draft on any input change
+  document.getElementById('detailModal').querySelectorAll('input,textarea,select').forEach(el=>{
+    el.addEventListener('input',saveDraft,{once:false});
+    el.addEventListener('change',saveDraft,{once:false});
+  });
+
+  renderChecklist();renderAttachments();
+  document.getElementById('detailModal').classList.add('active');
+  setTimeout(()=>document.getElementById('dmTaskTitle').focus(),100);
+}
+
+function openDetail(id){
+  const t=S.tasks.find(x=>x.id===id);if(!t)return;
+  editId=id;
+  tempChecklist=JSON.parse(JSON.stringify(t.checklist||[]));
+  tempAttachments=JSON.parse(JSON.stringify(t.attachments||[]));
+  document.getElementById('dmTitle').textContent='Editar Tarefa';
+  document.getElementById('dmTaskTitle').value=t.title;
+  document.getElementById('dmTaskDesc').value=t.description||'';
+  document.getElementById('dmStatus').value=t.status;
+  document.getElementById('dmAssignee').value=t.assignee||'';
+  document.getElementById('dmUrgency').value=t.urgency||'';
+  document.getElementById('dmStartDate').value=t.startDate||'';
+  document.getElementById('dmDeadline').value=t.deadline||'';
+  document.getElementById('dmDeadlineTime').value=t.deadlineTime||'';
+  document.getElementById('dmIsEvent').checked=!!t.isEvent;
+  document.getElementById('dmEventStart').value=t.eventStartDate||'';
+  document.getElementById('dmEventEnd').value=t.eventEndDate||'';
+  document.getElementById('eventDatesGroup').style.display=t.isEvent?'':'none';
+  document.getElementById('dmDeleteBtn').style.display='';
+  pickColorByValue(t.cardColor||'none');
+  populateProjects(t.project);
+  renderChecklist();renderAttachments();
+  setAutosaveStatus('');
+  // Attach autosave listeners to all modal inputs
+  document.getElementById('detailModal').querySelectorAll('input,textarea,select').forEach(el=>{
+    el.removeEventListener('input',triggerAutosave);
+    el.removeEventListener('change',triggerAutosave);
+    el.addEventListener('input',triggerAutosave);
+    el.addEventListener('change',triggerAutosave);
+  });
+  document.getElementById('detailModal').classList.add('active');
+}
+
+function closeDetail(discardDraft){
+  clearTimeout(autosaveTimer);
+  document.getElementById('detailModal').classList.remove('active');
+  if(discardDraft||editId)clearDraft();
+  editId=null;
+}
+
+// ===== AUTOSAVE =====
+let autosaveTimer=null;
+function setAutosaveStatus(msg,color){
+  const el=document.getElementById('autosaveStatus');
+  if(!el)return;
+  el.textContent=msg;
+  el.style.color=color||'var(--text-muted)';
+  el.style.display=msg?'':'none';
+}
+function triggerAutosave(){
+  if(!editId)return; // autosave só em edição — novas tarefas usam rascunho
+  clearTimeout(autosaveTimer);
+  setAutosaveStatus('Modificado...','var(--text-muted)');
+  autosaveTimer=setTimeout(()=>{
+    const t=S.tasks.find(x=>x.id===editId);
+    if(!t)return;
+    // Coleta estado atual do modal
+    const updated={
+      title:document.getElementById('dmTaskTitle').value.trim()||t.title,
+      description:document.getElementById('dmTaskDesc').value.trim(),
+      project:document.getElementById('dmProject').value,
+      status:document.getElementById('dmStatus').value,
+      assignee:document.getElementById('dmAssignee').value.trim(),
+      urgency:document.getElementById('dmUrgency').value,
+      startDate:document.getElementById('dmStartDate').value,
+      deadline:document.getElementById('dmDeadline').value,
+      deadlineTime:document.getElementById('dmDeadlineTime').value,
+      isEvent:document.getElementById('dmIsEvent').checked,
+      eventStartDate:document.getElementById('dmEventStart').value,
+      eventEndDate:document.getElementById('dmEventEnd').value,
+      cardColor:document.querySelector('.color-opt.active')?.dataset.color||t.cardColor||'none',
+      checklist:tempChecklist,
+      attachments:tempAttachments
+    };
+    Object.assign(t,updated);
+    setAutosaveStatus('Salvando...','var(--accent)');
+    saveTask(t).then(()=>{
+      setAutosaveStatus('Salvo ✓','var(--success)');
+      setTimeout(()=>setAutosaveStatus(''),2000);
+      render();
+    });
+  },1500);
+}
+
+const DRAFT_KEY='kanban_task_draft';
+function saveDraft(){
+  if(editId)return; // só salva rascunho em novas tarefas
+  const draft={
+    title:document.getElementById('dmTaskTitle').value,
+    description:document.getElementById('dmTaskDesc').value,
+    project:document.getElementById('dmProject').value,
+    status:document.getElementById('dmStatus').value,
+    assignee:document.getElementById('dmAssignee').value,
+    urgency:document.getElementById('dmUrgency').value,
+    startDate:document.getElementById('dmStartDate').value,
+    deadline:document.getElementById('dmDeadline').value,
+    deadlineTime:document.getElementById('dmDeadlineTime').value,
+    isEvent:document.getElementById('dmIsEvent').checked,
+    eventStartDate:document.getElementById('dmEventStart').value,
+    eventEndDate:document.getElementById('dmEventEnd').value,
+    checklist:tempChecklist,
+  };
+  localStorage.setItem(DRAFT_KEY,JSON.stringify(draft));
+}
+function loadDraft(){
+  try{return JSON.parse(localStorage.getItem(DRAFT_KEY));}catch(e){return null;}
+}
+function clearDraft(){localStorage.removeItem(DRAFT_KEY);}
+function toggleEventFields(){const on=document.getElementById('dmIsEvent').checked;document.getElementById('eventDatesGroup').style.display=on?'':'none';}
+
+function saveDetail(){
+  const title=document.getElementById('dmTaskTitle').value.trim();
+  if(!title)return alert('Digite um titulo!');
+  const data={
+    title,
+    description:document.getElementById('dmTaskDesc').value.trim(),
+    project:document.getElementById('dmProject').value,
+    status:document.getElementById('dmStatus').value,
+    assignee:document.getElementById('dmAssignee').value.trim(),
+    urgency:document.getElementById('dmUrgency').value,
+    startDate:document.getElementById('dmStartDate').value,
+    deadline:document.getElementById('dmDeadline').value,
+    deadlineTime:document.getElementById('dmDeadlineTime').value,
+    isEvent:document.getElementById('dmIsEvent').checked,
+    eventStartDate:document.getElementById('dmEventStart').value,
+    eventEndDate:document.getElementById('dmEventEnd').value,
+    cardColor:document.querySelector('.color-opt.active')?.dataset.color||'none',
+    checklist:tempChecklist,
+    attachments:tempAttachments
+  };
+  if(editId){
+    const t=S.tasks.find(x=>x.id===editId);
+    if(t){ Object.assign(t,data); saveTask(t); }
+  }else{
+    const newTask={id:'t_'+Date.now()+'_'+Math.random().toString(36).slice(2,5),created_at:new Date().toISOString(),...data};
+    S.tasks.push(newTask);
+    saveTask(newTask);
+    clearDraft(); // rascunho salvo com sucesso
+  }
+  closeDetail();render();
+  if(S.view==='gantt'){
+    document.getElementById('ganttStart').value='';
+    document.getElementById('ganttEnd').value='';
+    renderGantt();
+  }
+}
+
+function deleteFromDetail(){
+  if(!editId)return;
+  if(!confirm('Excluir esta tarefa?'))return;
+  const delId=editId;
+  S.tasks=S.tasks.filter(t=>t.id!==delId);
+  deleteTaskFromDB(delId);
+  closeDetail();render();
+  if(S.view==='gantt')renderGantt();
+}
+
+function quickDelete(id){
+  if(!confirm('Excluir esta tarefa?'))return;
+  S.tasks=S.tasks.filter(t=>t.id!==id);
+  deleteTaskFromDB(id);
+  render();
+}
+
+// ===== COLOR PICKER =====
+function pickColor(el){document.querySelectorAll('.color-opt').forEach(e=>e.classList.remove('active'));el.classList.add('active');}
+function pickColorByValue(v){document.querySelectorAll('.color-opt').forEach(e=>{e.classList.toggle('active',e.dataset.color===v);});}
+
+// ===== CHECKLIST =====
+function renderChecklist(){
+  const cont=document.getElementById('clItems');
+  cont.innerHTML='';
+  const done=tempChecklist.filter(x=>x.done).length;
+  document.getElementById('clProgress').textContent=`${done}/${tempChecklist.length}`;
+  tempChecklist.forEach((item,i)=>{
+    const d=document.createElement('div');d.className='checklist-item';
+    const isOverdue=item.deadline&&!item.done&&new Date(item.deadline+'T23:59:59')<new Date();
+    d.innerHTML=`
+      <div class="cl-row1">
+        <input type="checkbox" ${item.done?'checked':''} onchange="toggleCL(${i})">
+        <input class="cl-text${item.done?' checked':''}" value="${esc(item.text)}" onchange="updateCLText(${i},this.value)" placeholder="Nome do item...">
+        <button class="cl-del" onclick="removeCL(${i})">&times;</button>
+      </div>
+      <div class="cl-row2">
+        <input type="text" value="${esc(item.assignee||'')}" onchange="updateCLAssignee(${i},this.value)" placeholder="Responsavel...">
+        <input type="date" value="${item.deadline||''}" onchange="updateCLDeadline(${i},this.value)">
+        <input type="time" value="${item.time||''}" onchange="updateCLTime(${i},this.value)" title="Hora da entrega">
+      </div>
+      ${isOverdue?'<div class="cl-overdue">&#128308; Atrasado!</div>':''}
+    `;
+    cont.appendChild(d);
+  });
+}
+function addChecklistItem(){tempChecklist.push({text:'',done:false,assignee:'',deadline:'',time:''});renderChecklist();saveDraft();triggerAutosave();const inputs=document.querySelectorAll('.cl-text');if(inputs.length)inputs[inputs.length-1].focus();}
+function toggleCL(i){tempChecklist[i].done=!tempChecklist[i].done;renderChecklist();saveDraft();triggerAutosave();}
+function updateCLText(i,v){tempChecklist[i].text=v;saveDraft();triggerAutosave();}
+function updateCLAssignee(i,v){tempChecklist[i].assignee=v;saveDraft();triggerAutosave();}
+function updateCLDeadline(i,v){tempChecklist[i].deadline=v;saveDraft();triggerAutosave();}
+function updateCLTime(i,v){tempChecklist[i].time=v;saveDraft();triggerAutosave();}
+function removeCL(i){tempChecklist.splice(i,1);renderChecklist();saveDraft();triggerAutosave();}
+
+// ===== ATTACHMENTS =====
+function renderAttachments(){
+  const cont=document.getElementById('attList');
+  cont.innerHTML='';
+  tempAttachments.forEach((att,i)=>{
+    const d=document.createElement('div');d.className='attach-item';
+    const icon=att.type?.startsWith('image')?'&#128247;':att.type?.includes('pdf')?'&#128196;':'&#128196;';
+    d.innerHTML=`<span class="att-icon">${icon}</span><span class="att-name">${esc(att.name)}</span><span style="font-size:.7rem;color:var(--text-muted)">${formatSize(att.size)}</span><button class="att-del" onclick="removeAtt(${i})">&times;</button>`;
+    cont.appendChild(d);
+  });
+}
+function handleAttach(input){
+  Array.from(input.files).forEach(f=>{
+    const reader=new FileReader();
+    reader.onload=()=>{
+      tempAttachments.push({name:f.name,size:f.size,type:f.type,data:reader.result});
+      renderAttachments();
+    };
+    reader.readAsDataURL(f);
+  });
+  input.value='';
+}
+function removeAtt(i){tempAttachments.splice(i,1);renderAttachments();}
+function formatSize(b){if(!b)return'';if(b<1024)return b+'B';if(b<1048576)return(b/1024).toFixed(1)+'KB';return(b/1048576).toFixed(1)+'MB';}
+
+// ===== GANTT CHART =====
+function renderGantt(){
+  const container=document.getElementById('ganttContainer');
+  const filterProj=document.getElementById('ganttFilter').value;
+
+  // Get tasks with dates
+  let tasks=S.tasks.filter(t=>(t.startDate||t.deadline));
+  if(filterProj!=='__all__')tasks=tasks.filter(t=>t.project===filterProj);
+  if(S.activeProject!=='__all__'&&filterProj==='__all__')tasks=tasks.filter(t=>t.project===S.activeProject);
+
+  if(!tasks.length){container.innerHTML='<div class="gantt-empty">Nenhuma tarefa com datas definidas.<br>Adicione datas de inicio e deadline nas tarefas para visualizar o Gantt.</div>';return;}
+
+  // Determine date range — always auto from tasks, inputs are optional filters
+  let inputStart=document.getElementById('ganttStart').value;
+  let inputEnd=document.getElementById('ganttEnd').value;
+
+  let allDates=[];
+  tasks.forEach(t=>{
+    if(t.startDate)allDates.push(new Date(t.startDate+'T00:00:00'));
+    if(t.deadline)allDates.push(new Date(t.deadline+'T00:00:00'));
+    if(t.isEvent&&t.eventStartDate)allDates.push(new Date(t.eventStartDate+'T00:00:00'));
+    if(t.isEvent&&t.eventEndDate)allDates.push(new Date(t.eventEndDate+'T00:00:00'));
+  });
+  const minDate=new Date(Math.min(...allDates));
+  const maxDate=new Date(Math.max(...allDates));
+
+  // Default: from earliest task date to latest date (no padding)
+  const autoStart=new Date(minDate); autoStart.setHours(0,0,0,0);
+  const autoEnd=new Date(maxDate); autoEnd.setHours(0,0,0,0);
+
+  const rangeStart=inputStart?new Date(inputStart+'T00:00:00'):autoStart;
+  const rangeEnd=inputEnd?new Date(inputEnd+'T00:00:00'):autoEnd;
+
+  // Show auto-calculated dates in inputs as placeholder
+  document.getElementById('ganttStart').placeholder=fmtISO(autoStart);
+  document.getElementById('ganttEnd').placeholder=fmtISO(autoEnd);
+
+  const days=[];
+  const d=new Date(rangeStart);
+  while(d<=rangeEnd){days.push(new Date(d));d.setDate(d.getDate()+1);}
+  if(!days.length){days.push(new Date(rangeStart));}
+
+  const today=fmtISO(new Date());
+  const totalWidth=240+days.length*40;
+
+  let html=`<div class="gantt-inner" style="width:${totalWidth}px"><div class="gantt-header"><div class="gantt-label-col">Tarefa</div><div class="gantt-timeline-header">`;
+  days.forEach(day=>{
+    const iso=fmtISO(day);
+    const wd=day.getDay();
+    const cls=(wd===0||wd===6)?'weekend':'';
+    const isToday=iso===today?'today':'';
+    html+=`<div class="gantt-day-header ${cls} ${isToday}">${day.getDate()}<br><span style="font-size:.6rem">${['Dom','Seg','Ter','Qua','Qui','Sex','Sab'][wd]}</span></div>`;
+  });
+  html+='</div></div>';
+
+  // Rows
+  tasks.forEach(t=>{
+    const pi=S.projects.indexOf(t.project);
+    const pc=PROJ_COLORS[pi%PROJ_COLORS.length];
+    const barColor=GANTT_BAR_COLORS[pi%GANTT_BAR_COLORS.length];
+
+    html+=`<div class="gantt-row">`;
+    html+=`<div class="gantt-row-label"><span class="gr-proj ${pc}">${esc(t.project)}</span><span class="gr-title" title="${esc(t.title)}">${esc(t.title)}</span></div>`;
+    html+=`<div class="gantt-row-timeline" style="width:${days.length*40}px;flex-shrink:0">`;
+
+    // Background cells
+    days.forEach(day=>{
+      const iso=fmtISO(day);
+      const wd=day.getDay();
+      let cls='gantt-cell';
+      if(wd===0||wd===6)cls+=' weekend';
+      if(iso===today)cls+=' today';
+      html+=`<div class="${cls}"></div>`;
+    });
+
+    // Bar
+    const start=t.startDate?new Date(t.startDate+'T00:00:00'):t.deadline?new Date(t.deadline+'T00:00:00'):null;
+    const end=t.deadline?new Date(t.deadline+'T00:00:00'):t.startDate?new Date(t.startDate+'T00:00:00'):null;
+    if(start&&end){
+      const urgOpacity=t.urgency==='critical'?'1':t.urgency==='high'?'.9':'.75';
+      if(t.isEvent&&t.eventStartDate){
+        const evStart=new Date(t.eventStartDate+'T00:00:00');
+        const evEnd=t.eventEndDate?new Date(t.eventEndDate+'T00:00:00'):evStart;
+        // Prep bar: from task start to day before event
+        const prepEnd=new Date(evStart.getTime()-86400000);
+        if(start<evStart){
+          const prepStartIdx=Math.max(0,daysBetween(rangeStart,start));
+          const prepEndIdx=Math.min(days.length-1,daysBetween(rangeStart,prepEnd));
+          if(prepEndIdx>=prepStartIdx){
+            const left=prepStartIdx*40;const width=Math.max(12,(prepEndIdx-prepStartIdx+1)*40);
+            html+=`<div class="gantt-bar gantt-bar-prep" style="left:${left}px;width:${width}px;background:${barColor}" onclick="openDetail('${t.id}')" title="${esc(t.title)} — preparação"></div>`;
+          }
+        }
+        // Event bar
+        const evStartIdx=Math.max(0,daysBetween(rangeStart,evStart));
+        const evEndIdx=Math.min(days.length-1,daysBetween(rangeStart,evEnd));
+        if(evEndIdx>=evStartIdx){
+          const left=evStartIdx*40;const width=Math.max(12,(evEndIdx-evStartIdx+1)*40);
+          const cls=start<evStart?'gantt-bar gantt-bar-event':'gantt-bar gantt-bar-event-only';
+          html+=`<div class="${cls}" style="left:${left}px;width:${width}px" onclick="openDetail('${t.id}')" title="${esc(t.title)} — EVENTO">${evEndIdx-evStartIdx<2?'':esc(t.title)}</div>`;
+        }
+      }else{
+        const startIdx=Math.max(0,daysBetween(rangeStart,start));
+        const endIdx=Math.min(days.length-1,daysBetween(rangeStart,end));
+        const left=startIdx*40;
+        const width=Math.max(40,(endIdx-startIdx+1)*40);
+        html+=`<div class="gantt-bar" style="left:${left}px;width:${width}px;background:${barColor};opacity:${urgOpacity}" onclick="openDetail('${t.id}')" title="${esc(t.title)}">${endIdx-startIdx<3?'':esc(t.title)}</div>`;
+      }
+    }
+
+    // Today line
+    const todayIdx=daysBetween(rangeStart,new Date(today+'T00:00:00'));
+    if(todayIdx>=0&&todayIdx<days.length){
+      html+=`<div class="gantt-today-line" style="left:${todayIdx*40+20}px"></div>`;
+    }
+
+    html+=`</div></div>`;
+  });
+
+  html+=`</div>`; // close gantt-inner
+  container.innerHTML=html;
+}
+
+function daysBetween(a,b){return Math.round((b-a)/86400000);}
+function fmtISO(d){const y=d.getFullYear();const m=String(d.getMonth()+1).padStart(2,'0');const day=String(d.getDate()).padStart(2,'0');return`${y}-${m}-${day}`;}
+
+// ===== HELPERS =====
+function populateProjects(sel){
+  const s=document.getElementById('dmProject');s.innerHTML='';
+  S.projects.forEach(p=>{const o=document.createElement('option');o.value=p;o.textContent=p;if(p===sel||((!sel)&&S.activeProject!=='__all__'&&p===S.activeProject))o.selected=true;s.appendChild(o);});
+}
+function esc(s){if(!s)return'';const d=document.createElement('div');d.textContent=s;return d.innerHTML;}
+function formatDateShort(iso){if(!iso)return'';const d=iso.includes('T')?new Date(iso):new Date(iso+'T00:00:00');return d.toLocaleDateString('pt-BR',{day:'2-digit',month:'short'});}
+
+// Click outside does NOT close modal — Escape fecha mas mantém rascunho
+document.addEventListener('keydown',e=>{
+  if(e.key==='Escape'){
+    const modal=document.getElementById('detailModal');
+    if(modal.classList.contains('active'))closeDetail(); // fecha mas NÃO descarta rascunho
+    closeTemplatesModal();
+  }
+  if(e.key==='n'&&!e.ctrlKey&&!e.metaKey&&!['INPUT','TEXTAREA','SELECT'].includes(document.activeElement.tagName)){e.preventDefault();openNew('backlog');}
+});
+
+// ===== REPORT =====
+function openReportModal(){
+  const sel=document.getElementById('rptProject');
+  sel.innerHTML='<option value="__all__">Todos os projetos</option>';
+  S.projects.forEach(p=>{const o=document.createElement('option');o.value=p;o.textContent=p;sel.appendChild(o);});
+  document.getElementById('rptPreview').style.display='none';
+  document.getElementById('rptCopyBtn').disabled=true;
+  document.getElementById('rptCopyFeedback').style.display='none';
+  document.getElementById('reportModal').classList.add('active');
+}
+function closeReportModal(){document.getElementById('reportModal').classList.remove('active');}
+
+function buildReportText(){
+  const proj=document.getElementById('rptProject').value;
+  const onlyLate=document.getElementById('rptOnlyLate').checked;
+  const includeDone=document.getElementById('rptIncludeDone').checked;
+  const statuses=[...document.querySelectorAll('#rptStatusFilters input:checked')].map(i=>i.value);
+  const statusLabel={backlog:'Backlog',todo:'To Do',doing:'Fazendo',review:'Em Revisão'};
+  const today=new Date(); today.setHours(0,0,0,0);
+
+  const activeTasks=S.tasks.filter(t=>{
+    if(proj!=='__all__'&&t.project!==proj)return false;
+    if(!statuses.includes(t.status))return false;
+    if(onlyLate){
+      if(!t.deadline)return false;
+      const dl=new Date(t.deadline+'T00:00:00');
+      if(dl>=today)return false;
+    }
+    return true;
+  });
+
+  const doneTasks=includeDone?S.tasks.filter(t=>{
+    if(t.status!=='done')return false;
+    if(proj!=='__all__'&&t.project!==proj)return false;
+    return true;
+  }):[];
+
+  const allTasks=[...activeTasks,...doneTasks];
+  if(!allTasks.length)return'Nenhuma tarefa encontrada com os filtros selecionados.';
+
+  const now=new Date();
+  const dateStr=now.toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit',year:'numeric'});
+  const timeStr=now.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
+
+  let lines=[];
+  lines.push('📋 *Relatório Kanban Pro*');
+  lines.push(`${dateStr} - ${timeStr}`);
+
+  const allProjs=proj==='__all__'
+    ?[...new Set(allTasks.map(t=>t.project||'Sem Projeto'))]
+    :[proj==='__all__'?'Sem Projeto':proj];
+
+  allProjs.forEach(pName=>{
+    const active=activeTasks.filter(t=>(t.project||'Sem Projeto')===pName);
+    const done=doneTasks.filter(t=>(t.project||'Sem Projeto')===pName);
+    if(!active.length&&!done.length)return;
+    lines.push('');
+    lines.push(`📁 *${pName}*`);
+    lines.push('');
+
+    let i=1;
+    active.forEach(t=>{
+      const dl=t.deadline?new Date(t.deadline+'T00:00:00'):null;
+      const late=dl&&dl<today;
+      const dlStr=dl?dl.toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit',year:'numeric'}):'Sem prazo';
+      const statusStr=statusLabel[t.status]||t.status;
+      const prazoStatus=late?'⚠️ Atrasado':'✅ Dentro do prazo';
+      lines.push(`${i++}. *${t.title}*`);
+      lines.push(`   👤 Responsável: ${t.assignee||'—'}`);
+      lines.push(`   🔄 Status: ${statusStr} — ${prazoStatus}`);
+      lines.push(`   📅 Prazo: ${dlStr}`);
+      if(t.checklist&&t.checklist.length){
+        t.checklist.forEach(c=>{
+          const ck=c.done?'☑':'☐';
+          const clDeadline=c.deadline?` · 📅 ${new Date(c.deadline+'T00:00:00').toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'})}`:'';
+          const clAssignee=c.assignee?` · 👤 ${c.assignee}`:'';
+          lines.push(`      ${ck} ${c.text||'—'}${clAssignee}${clDeadline}`);
+        });
+      }
+    });
+
+    done.forEach(t=>{
+      lines.push(`${i++}. ${t.title} — ${t.assignee||'—'} ✅`);
+      if(t.checklist&&t.checklist.length){
+        t.checklist.forEach(c=>{
+          const ck=c.done?'☑':'☐';
+          lines.push(`      ${ck} ${c.text||'—'}`);
+        });
+      }
+    });
+  });
+
+  // Summary
+  lines.push('');
+  lines.push('---');
+  lines.push(`📊 Total: ${allTasks.length} tarefa${allTasks.length!==1?'s':''}`);
+  if(includeDone&&doneTasks.length)lines.push(`✅ Concluídas: ${doneTasks.length}`);
+  const lateCount=activeTasks.filter(t=>{if(!t.deadline)return false;const dl=new Date(t.deadline+'T00:00:00');return dl<today;}).length;
+  if(lateCount)lines.push(`⚠️ Atrasadas: ${lateCount}`);
+
+  return lines.join('\n');
+}
+
+function previewReport(){
+  const text=buildReportText();
+  const el=document.getElementById('rptPreview');
+  el.textContent=text;
+  el.style.display='block';
+  document.getElementById('rptCopyBtn').disabled=false;
+  document.getElementById('rptCopyFeedback').style.display='none';
+}
+
+async function copyReport(){
+  const text=buildReportText();
+  try{
+    await navigator.clipboard.writeText(text);
+    const fb=document.getElementById('rptCopyFeedback');
+    fb.style.display='block';
+    setTimeout(()=>fb.style.display='none',3000);
+  }catch(e){
+    // fallback
+    const ta=document.createElement('textarea');
+    ta.value=text;ta.style.position='fixed';ta.style.opacity='0';
+    document.body.appendChild(ta);ta.select();document.execCommand('copy');
+    document.body.removeChild(ta);
+    const fb=document.getElementById('rptCopyFeedback');
+    fb.style.display='block';
+    setTimeout(()=>fb.style.display='none',3000);
+  }
+}
+
+// ===== TEMPLATES =====
+function openTemplatesModal(){
+  renderTemplatesList();
+  document.getElementById('tplModal').classList.add('active');
+}
+function closeTemplatesModal(){ document.getElementById('tplModal').classList.remove('active'); }
+
+function renderTemplatesList(){
+  const grid=document.getElementById('tplGrid');
+  if(!S.templates.length){ grid.innerHTML='<div class="tpl-empty">Nenhum template salvo ainda.<br>Abra uma tarefa e clique em "Salvar como Template".</div>'; return; }
+  grid.innerHTML='';
+  S.templates.forEach((tpl,i)=>{
+    const d=document.createElement('div');d.className='tpl-card';
+    const clCount=(tpl.checklist||[]).length;
+    d.innerHTML=`
+      <div class="tpl-card-info" onclick="createFromTemplate('${tpl.id}')">
+        <div class="tpl-card-name">${esc(tpl.name)}</div>
+        <div class="tpl-card-detail">
+          ${tpl.title?'<strong>'+esc(tpl.title)+'</strong><br>':''}
+          ${tpl.description?esc(tpl.description).substring(0,80)+'<br>':''}
+          ${tpl.project?'Projeto: '+esc(tpl.project)+' · ':''}${tpl.assignee?'Resp: '+esc(tpl.assignee)+' · ':''}${tpl.urgency?'Urgencia: '+tpl.urgency+' · ':''}${clCount?clCount+' itens checklist':''}
+        </div>
+      </div>
+      <div class="tpl-card-actions">
+        <button onclick="event.stopPropagation();deleteTemplate('${tpl.id}')" class="del" title="Excluir template">&times;</button>
+      </div>
+    `;
+    grid.appendChild(d);
+  });
+}
+
+function saveAsTemplate(){
+  const title=document.getElementById('dmTaskTitle').value.trim();
+  const tplName=prompt('Nome do template:',title||'Meu Template');
+  if(!tplName||!tplName.trim())return;
+
+  const tpl={
+    id:'tpl_'+Date.now()+'_'+Math.random().toString(36).slice(2,5),
+    name:tplName.trim(),
+    title:title,
+    description:document.getElementById('dmTaskDesc').value.trim(),
+    project:document.getElementById('dmProject').value,
+    assignee:document.getElementById('dmAssignee').value.trim(),
+    urgency:document.getElementById('dmUrgency').value,
+    cardColor:document.querySelector('.color-opt.active')?.dataset.color||'none',
+    checklist:tempChecklist.map(c=>({text:c.text,done:false,assignee:c.assignee||'',deadline:''})),
+    created_at:new Date().toISOString()
+  };
+  S.templates.push(tpl);
+  saveTemplateToDb(tpl);
+  localStorage.setItem(SK, JSON.stringify(S));
+  alert('Template "'+tplName.trim()+'" salvo!');
+}
+
+function createFromTemplate(tplId){
+  const tpl=S.templates.find(t=>t.id===tplId);if(!tpl)return;
+  closeTemplatesModal();
+  // Open the detail modal pre-filled with template data
+  editId=null;
+  tempChecklist=JSON.parse(JSON.stringify(tpl.checklist||[])).map(c=>({text:c.text,done:false,assignee:c.assignee||'',deadline:''}));
+  tempAttachments=[];
+  document.getElementById('dmTitle').textContent='Nova Tarefa (template: '+tpl.name+')';
+  document.getElementById('dmTaskTitle').value=tpl.title||'';
+  document.getElementById('dmTaskDesc').value=tpl.description||'';
+  document.getElementById('dmStatus').value='backlog';
+  document.getElementById('dmAssignee').value=tpl.assignee||'';
+  document.getElementById('dmUrgency').value=tpl.urgency||'';
+  document.getElementById('dmStartDate').value='';
+  document.getElementById('dmDeadline').value='';
+  document.getElementById('dmDeleteBtn').style.display='none';
+  pickColorByValue(tpl.cardColor||'none');
+  populateProjects(tpl.project);
+  renderChecklist();renderAttachments();
+  document.getElementById('detailModal').classList.add('active');
+  setTimeout(()=>document.getElementById('dmTaskTitle').focus(),100);
+}
+
+async function deleteTemplate(id){
+  if(!confirm('Excluir este template?'))return;
+  S.templates=S.templates.filter(t=>t.id!==id);
+  localStorage.setItem(SK, JSON.stringify(S));
+  if(dbReady){ try{await sb.from('kanban_templates').delete().eq('id',id);}catch(e){} }
+  renderTemplatesList();
+}
+
+async function saveTemplateToDb(tpl){
+  if(!dbReady)return;
+  try{
+    await sb.from('kanban_templates').upsert({
+      id:tpl.id, name:tpl.name, title:tpl.title, description:tpl.description||'',
+      project:tpl.project||'', assignee:tpl.assignee||'', urgency:tpl.urgency||'',
+      card_color:tpl.cardColor||'none', checklist:tpl.checklist||[], created_at:tpl.created_at
+    },{onConflict:'id'});
+  }catch(e){console.warn('[Kanban] Save template error:',e.message);}
+}
+
+// Close templates modal on overlay click / escape
+document.getElementById('tplModal').addEventListener('click',e=>{if(e.target===e.currentTarget)closeTemplatesModal();});
+
+// ===== INIT =====
+// Load local cache first for instant display, then try Supabase
+loadFromLocal();
+render();
+if(S.view==='gantt')switchView('gantt');
+// Then connect to Supabase (async, will re-render when done)
+initSupabase();
+</script>
+</body>
+</html>
+

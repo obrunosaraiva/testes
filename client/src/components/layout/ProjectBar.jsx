@@ -1,0 +1,587 @@
+import { useState, useEffect } from 'react';
+import { useKanban } from '../../context/KanbanContext';
+import { useRole } from '../../context/RoleContext';
+import { useConfirm } from '../../hooks/useConfirm';
+
+const PRESET_COLORS = [
+  '#eab308','#f59e0b','#ef4444','#ec4899','#a855f7',
+  '#6366f1','#3b82f6','#22c55e','#14b8a6','#64748b',
+];
+
+export default function ProjectBar() {
+  const {
+    projects, tasks, activeProject, combinedProjects, viewFilter, costCenterFilter, costCenters,
+    setActiveProject, toggleCombinedProject, clearCombinedProjects,
+    addProject, updateProject, softDeleteProject, setViewFilter,
+    toggleCostCenterFilter, clearCostCenterFilter,
+    addCostCenter, updateCostCenter, deleteCostCenter,
+  } = useKanban();
+  const { can, userId } = useRole();
+
+  // Only show CCs that are public OR were created by the current user OR shared with the current user
+  const visibleCCs = costCenters.filter(cc => !cc.isPrivate || cc.createdBy === userId || (cc.sharedWith || []).includes(userId));
+  // Only show projects whose CC is visible (or has no CC)
+  const visibleProjects = projects.filter(proj => {
+    if (!proj.costCenter) return true;
+    return visibleCCs.some(cc => cc.key === proj.costCenter);
+  });
+  // When CC filter is active, show only projects belonging to selected CCs
+  const filteredProjects = costCenterFilter.length > 0
+    ? visibleProjects.filter(proj => proj.costCenter && costCenterFilter.includes(proj.costCenter))
+    : visibleProjects;
+
+  const [showNewModal, setShowNewModal] = useState(false);
+  const [editingProject, setEditingProject] = useState(null);
+  const [combineMode, setCombineMode] = useState(false);
+  const [showNewCC, setShowNewCC] = useState(false);
+  const [editingCC, setEditingCC] = useState(null);
+  const [showFilters, setShowFilters] = useState(false);
+  const [ConfirmDialog, confirm] = useConfirm();
+
+  const allCount = costCenterFilter.length > 0
+    ? tasks.filter(t => filteredProjects.some(p => p.name === t.project)).length
+    : tasks.length;
+  const isCombining = combinedProjects.length > 0;
+
+  async function handleDeleteProject(proj) {
+    const ok = await confirm(`Mover "${proj.name}" para a lixeira?`, {
+      title: 'Mover projeto para lixeira',
+      confirmLabel: 'Mover',
+    });
+    if (!ok) return;
+    softDeleteProject(proj.id);
+  }
+
+  function exitCombineMode() {
+    clearCombinedProjects();
+    setCombineMode(false);
+  }
+
+  return (
+    <>
+      <div style={{
+        background: 'var(--surface)', borderBottom: '1px solid var(--border)',
+        flexShrink: 0,
+      }}>
+        {/* View filter tabs */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '6px 24px 0', borderBottom: '1px solid var(--border)' }}>
+          {[['all','Todos'],['tasks','Tarefas'],['events','Eventos']].map(([f, label]) => (
+            <button
+              key={f}
+              onClick={() => setViewFilter(f)}
+              style={{
+                padding: '4px 14px', borderRadius: '8px 8px 0 0', border: 'none', cursor: 'pointer',
+                fontSize: '.78rem', fontWeight: 600,
+                background: viewFilter === f ? 'var(--accent)' : 'transparent',
+                color: viewFilter === f ? '#fff' : 'var(--text-muted)',
+                borderBottom: viewFilter === f ? '2px solid var(--accent)' : '2px solid transparent',
+                transition: 'all .15s',
+              }}
+            >
+              {label}
+            </button>
+          ))}
+          <div style={{ flex: 1 }} />
+          {/* Combine mode toggle */}
+          <button
+            onClick={() => { setCombineMode(m => !m); if (combineMode) exitCombineMode(); }}
+            style={{
+              padding: '3px 12px', borderRadius: 20, fontSize: '.75rem', cursor: 'pointer',
+              background: (combineMode || isCombining) ? 'var(--accent)' : 'var(--surface2)',
+              border: `1px solid ${(combineMode || isCombining) ? 'var(--accent)' : 'var(--border)'}`,
+              color: (combineMode || isCombining) ? '#fff' : 'var(--text-muted)',
+              marginBottom: 4,
+            }}
+          >
+            {isCombining ? `⊕ ${combinedProjects.length} combinados` : '⊕ Combinar'}
+          </button>
+          {isCombining && (
+            <button onClick={exitCombineMode} style={{ padding: '3px 10px', borderRadius: 20, fontSize: '.73rem', background: 'none', border: '1px solid var(--border)', color: 'var(--text-muted)', cursor: 'pointer', marginBottom: 4 }}>
+              ✕ Limpar
+            </button>
+          )}
+        </div>
+
+        {/* Cost center filter */}
+        <div style={{ padding: '4px 24px 8px' }}>
+          {/* Mobile toggle */}
+          <button
+            className="mobile-only"
+            onClick={() => setShowFilters(f => !f)}
+            style={{
+              background: 'none', border: 'none', color: 'var(--text-muted)',
+              fontSize: '.75rem', padding: '4px 0', marginBottom: showFilters ? 6 : 0,
+              fontFamily: 'inherit', alignItems: 'center', gap: 4,
+            }}
+          >
+            Centros de custo {showFilters ? '▴' : '▾'}
+            {costCenterFilter.length > 0 && (
+              <span style={{ background: 'var(--accent)', color: '#fff', borderRadius: 10, padding: '1px 6px', fontSize: '.68rem', marginLeft: 4 }}>
+                {costCenterFilter.length}
+              </span>
+            )}
+          </button>
+
+        <div className={`cc-filter-row${showFilters ? ' cc-filter-open' : ''}`} style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+          <span className="desktop-only" style={{ fontSize: '.72rem', color: 'var(--text-muted)', marginRight: 2 }}>CC:</span>
+          {/* Add CC button — first */}
+          {can.admin && (
+            <button
+              onClick={() => setShowNewCC(true)}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 4,
+                padding: '2px 10px', borderRadius: 20, cursor: 'pointer', fontSize: '.75rem',
+                background: 'transparent', border: '1px dashed var(--border)',
+                color: 'var(--text-muted)', transition: 'all .15s',
+              }}
+              onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--accent)'; e.currentTarget.style.color = 'var(--accent)'; }}
+              onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.color = 'var(--text-muted)'; }}
+            >
+              + CC
+            </button>
+          )}
+          {visibleCCs.map(cc => {
+            const active = costCenterFilter.includes(cc.key);
+            return (
+              <button
+                key={cc.key}
+                onClick={() => toggleCostCenterFilter(cc.key)}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 5,
+                  padding: '2px 10px', borderRadius: 20, cursor: 'pointer', fontSize: '.75rem',
+                  background: active ? cc.color + '22' : 'var(--surface2)',
+                  border: `1px solid ${active ? cc.color : 'var(--border)'}`,
+                  color: active ? cc.color : 'var(--text-muted)',
+                  fontWeight: active ? 700 : 400,
+                  transition: 'all .15s',
+                }}
+              >
+                <span style={{ width: 7, height: 7, borderRadius: '50%', background: cc.color, flexShrink: 0 }} />
+                {cc.label}
+                {cc.isPrivate && <span title="Privado" style={{ fontSize: '.65rem' }}>🔒</span>}
+                {can.admin && (
+                  <span
+                    onClick={e => { e.stopPropagation(); setEditingCC(cc); }}
+                    title="Editar CC"
+                    style={{
+                      marginLeft: 2, fontSize: '.72rem', cursor: 'pointer',
+                      background: 'var(--surface3)', border: '1px solid var(--border)',
+                      borderRadius: 6, padding: '1px 5px', lineHeight: 1.4,
+                    }}
+                  >✎</span>
+                )}
+                {can.admin && (
+                  <span
+                    onClick={async e => { e.stopPropagation(); const ok = await confirm(`Remover "${cc.label}" dos centros de custo?`, { title: 'Remover CC', confirmLabel: 'Remover' }); if (ok) deleteCostCenter(cc.key); }}
+                    title="Remover CC"
+                    style={{
+                      marginLeft: 1, fontSize: '.8rem', cursor: 'pointer',
+                      background: 'var(--surface3)', border: '1px solid var(--border)',
+                      borderRadius: 6, padding: '0px 5px', lineHeight: 1.4,
+                    }}
+                  >×</span>
+                )}
+              </button>
+            );
+          })}
+
+          {costCenterFilter.length > 0 && (
+            <button
+              onClick={clearCostCenterFilter}
+              style={{ padding: '2px 10px', borderRadius: 20, fontSize: '.73rem', background: 'none', border: '1px solid var(--border)', color: 'var(--text-muted)', cursor: 'pointer' }}
+            >
+              ✕ Limpar
+            </button>
+          )}
+        </div>
+        </div>
+
+        {/* Project tabs */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 24px', overflowX: 'auto' }}>
+          {can.create && (
+            <button
+              onClick={() => setShowNewModal(true)}
+              style={{
+                padding: '5px 12px', borderRadius: 20, flexShrink: 0,
+                background: 'transparent', border: '1px dashed var(--border)',
+                color: 'var(--text-muted)', fontSize: '.8rem', whiteSpace: 'nowrap',
+                cursor: 'pointer', transition: 'all .2s',
+              }}
+              onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--accent)'}
+              onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--border)'}
+            >
+              + Projeto
+            </button>
+          )}
+          {!combineMode && !isCombining && (
+            <ProjectTab
+              label="Todos"
+              count={allCount}
+              active={activeProject === '__all__'}
+              onClick={() => setActiveProject('__all__')}
+              costCenters={costCenters}
+            />
+          )}
+
+          {filteredProjects.map(proj => (
+            <ProjectTab
+              key={proj.id}
+              label={proj.name}
+              count={tasks.filter(t => t.project === proj.name).length}
+              costCenter={proj.costCenter}
+              costCenters={visibleCCs}
+              active={combineMode || isCombining ? combinedProjects.includes(proj.name) : activeProject === proj.name}
+              onClick={() => {
+                if (combineMode || isCombining) {
+                  toggleCombinedProject(proj.name);
+                } else {
+                  setActiveProject(proj.name);
+                }
+              }}
+              onEdit={can.admin ? () => setEditingProject(proj) : null}
+              onDelete={can.admin ? () => handleDeleteProject(proj) : null}
+              combineMode={combineMode || isCombining}
+              combined={combinedProjects.includes(proj.name)}
+            />
+          ))}
+
+        </div>
+      </div>
+
+      {showNewModal && (
+        <NewProjectModal
+          costCenters={visibleCCs}
+          onClose={() => setShowNewModal(false)}
+          onCreate={(name, cc) => { addProject(name, cc); setShowNewModal(false); }}
+        />
+      )}
+
+      {editingProject && (
+        <EditProjectModal
+          project={editingProject}
+          costCenters={visibleCCs}
+          onClose={() => setEditingProject(null)}
+          onSave={(patch) => { updateProject(editingProject.id, patch); setEditingProject(null); }}
+        />
+      )}
+
+      {showNewCC && (
+        <NewCostCenterModal
+          onClose={() => setShowNewCC(false)}
+          onCreate={(label, color, isPrivate, sharedWith) => { addCostCenter(label, color, isPrivate, userId, sharedWith); setShowNewCC(false); }}
+        />
+      )}
+      {editingCC && (
+        <EditCostCenterModal
+          cc={editingCC}
+          onClose={() => setEditingCC(null)}
+          onSave={(patch) => { updateCostCenter(editingCC.key, patch); setEditingCC(null); }}
+        />
+      )}
+      {ConfirmDialog}
+    </>
+  );
+}
+
+function ProjectTab({ label, count, costCenter, costCenters = [], active, onClick, onEdit, onDelete, combineMode, combined }) {
+  const ccObj = costCenter && costCenters.find(c => c.key === costCenter);
+  return (
+    <div
+      onClick={onClick}
+      style={{
+        display: 'flex', alignItems: 'center', gap: 6,
+        padding: '5px 12px', borderRadius: 20, cursor: 'pointer',
+        background: active ? 'var(--accent)' : 'var(--surface2)',
+        border: `1px solid ${active ? 'var(--accent)' : combined ? 'var(--accent)' : 'var(--border)'}`,
+        color: active ? '#fff' : 'var(--text-muted)',
+        fontSize: '.82rem', whiteSpace: 'nowrap', transition: 'all .2s',
+        position: 'relative', flexShrink: 0,
+        outline: combined && !active ? '2px solid var(--accent)' : 'none',
+        outlineOffset: 1,
+      }}
+    >
+      {ccObj && (
+        <span style={{
+          width: 8, height: 8, borderRadius: '50%', flexShrink: 0,
+          background: ccObj.color,
+          border: active ? '1px solid rgba(255,255,255,.4)' : '1px solid transparent',
+        }} title={`Centro de custo: ${costCenter}`} />
+      )}
+      <span>{label}</span>
+      <span style={{
+        background: active ? 'rgba(255,255,255,.2)' : 'var(--surface3)',
+        padding: '1px 7px', borderRadius: 10, fontSize: '.72rem',
+      }}>
+        {count}
+      </span>
+      {!combineMode && onEdit && (
+        <span
+          onClick={e => { e.stopPropagation(); onEdit(); }}
+          title="Editar projeto"
+          style={{ opacity: 0.5, fontSize: '.72rem', cursor: 'pointer', transition: 'opacity .15s' }}
+          onMouseEnter={e => e.currentTarget.style.opacity = '1'}
+          onMouseLeave={e => e.currentTarget.style.opacity = '0.5'}
+        >
+          ✎
+        </span>
+      )}
+      {!combineMode && onDelete && (
+        <span
+          onClick={e => { e.stopPropagation(); onDelete(); }}
+          title="Mover para lixeira"
+          style={{ opacity: 0.5, fontSize: '.78rem', cursor: 'pointer', transition: 'opacity .15s' }}
+          onMouseEnter={e => e.currentTarget.style.opacity = '1'}
+          onMouseLeave={e => e.currentTarget.style.opacity = '0.5'}
+        >
+          ×
+        </span>
+      )}
+    </div>
+  );
+}
+
+function NewProjectModal({ costCenters, onClose, onCreate }) {
+  const [name, setName] = useState('');
+  const [cc, setCc] = useState('');
+
+  function handleSubmit(e) {
+    e.preventDefault();
+    if (!name.trim()) return;
+    onCreate(name.trim(), cc || null);
+  }
+
+  return (
+    <div className="modal-overlay active" onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
+      <div className="modal" style={{ maxWidth: 400 }} onClick={e => e.stopPropagation()}>
+        <div className="modal-head">
+          <h2>+ Novo Projeto</h2>
+          <button className="modal-close" onClick={onClose}>&times;</button>
+        </div>
+        <form onSubmit={handleSubmit}>
+          <div className="modal-body">
+            <div>
+              <label className="field-label">Nome do projeto</label>
+              <input value={name} onChange={e => setName(e.target.value)} placeholder="Ex: Lançamento Q3..." autoFocus />
+            </div>
+            <div>
+              <label className="field-label">Centro de custo</label>
+              <CostCenterPicker costCenters={costCenters} value={cc} onChange={setCc} />
+            </div>
+            <div style={{ display: 'flex', gap: 10, paddingTop: 4 }}>
+              <button type="button" className="btn btn-ghost" style={{ flex: 1 }} onClick={onClose}>Cancelar</button>
+              <button type="submit" className="btn btn-primary" style={{ flex: 1 }}>Criar Projeto</button>
+            </div>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+function EditProjectModal({ project, costCenters, onClose, onSave }) {
+  const [name, setName] = useState(project.name);
+  const [cc, setCc] = useState(project.costCenter || '');
+
+  function handleSubmit(e) {
+    e.preventDefault();
+    if (!name.trim()) return;
+    onSave({ name: name.trim(), costCenter: cc || null });
+  }
+
+  return (
+    <div className="modal-overlay active" onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
+      <div className="modal" style={{ maxWidth: 400 }} onClick={e => e.stopPropagation()}>
+        <div className="modal-head">
+          <h2>✎ Editar Projeto</h2>
+          <button className="modal-close" onClick={onClose}>&times;</button>
+        </div>
+        <form onSubmit={handleSubmit}>
+          <div className="modal-body">
+            <div>
+              <label className="field-label">Nome do projeto</label>
+              <input value={name} onChange={e => setName(e.target.value)} autoFocus />
+            </div>
+            <div>
+              <label className="field-label">Centro de custo</label>
+              <CostCenterPicker costCenters={costCenters} value={cc} onChange={setCc} />
+            </div>
+            <div style={{ display: 'flex', gap: 10, paddingTop: 4 }}>
+              <button type="button" className="btn btn-ghost" style={{ flex: 1 }} onClick={onClose}>Cancelar</button>
+              <button type="submit" className="btn btn-primary" style={{ flex: 1 }}>Salvar</button>
+            </div>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+function CostCenterPicker({ costCenters, value, onChange }) {
+  const options = [{ key: '', label: 'Nenhum', color: '#6b7280' }, ...costCenters];
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2,1fr)', gap: 8 }}>
+      {options.map(({ key, label, color }) => (
+        <label
+          key={key}
+          style={{
+            display: 'flex', alignItems: 'center', gap: 8,
+            padding: '8px 12px', borderRadius: 8, cursor: 'pointer',
+            background: value === key ? 'var(--surface3)' : 'var(--surface2)',
+            border: `1px solid ${value === key ? color : 'var(--border)'}`,
+            transition: 'all .15s',
+          }}
+        >
+          <input type="radio" name="cc" value={key} checked={value === key} onChange={() => onChange(key)} style={{ display: 'none' }} />
+          <span style={{ width: 10, height: 10, borderRadius: '50%', background: color, flexShrink: 0 }} />
+          <span style={{ fontSize: '.85rem', fontWeight: value === key ? 600 : 400 }}>{label}</span>
+        </label>
+      ))}
+    </div>
+  );
+}
+
+function UserPicker({ selectedIds, onChange, excludeId }) {
+  const { allProfiles, loadAllProfiles } = useRole();
+  useEffect(() => { loadAllProfiles(); }, []);
+  const users = allProfiles.filter(u => u.id !== excludeId);
+  if (users.length === 0) return (
+    <div style={{ fontSize: '.75rem', color: 'var(--text-muted)', padding: '8px 0' }}>Nenhum outro usuário cadastrado.</div>
+  );
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+      {users.map(u => {
+        const active = selectedIds.includes(u.id);
+        return (
+          <label key={u.id} style={{
+            display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer',
+            padding: '7px 12px', borderRadius: 8,
+            background: active ? 'var(--accent)18' : 'var(--surface2)',
+            border: `1px solid ${active ? 'var(--accent)' : 'var(--border)'}`,
+            transition: 'all .15s',
+          }}>
+            <input type="checkbox" checked={active} onChange={() => onChange(active ? selectedIds.filter(id => id !== u.id) : [...selectedIds, u.id])} />
+            <div style={{ width: 28, height: 28, borderRadius: '50%', background: 'var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '.75rem', fontWeight: 700, color: '#fff', flexShrink: 0 }}>
+              {(u.email || u.name || '?')[0].toUpperCase()}
+            </div>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontSize: '.83rem', fontWeight: active ? 600 : 400 }}>{u.name || u.email}</div>
+              {u.name && <div style={{ fontSize: '.72rem', color: 'var(--text-muted)' }}>{u.email}</div>}
+            </div>
+            <div style={{ marginLeft: 'auto', fontSize: '.72rem', color: 'var(--text-muted)', textTransform: 'capitalize' }}>{u.role}</div>
+          </label>
+        );
+      })}
+    </div>
+  );
+}
+
+function CCModalBody({ label, setLabel, color, setColor, isPrivate, setIsPrivate, sharedWith, setSharedWith, creatorId, isNew }) {
+  return (
+    <>
+      <div>
+        <label className="field-label">Nome</label>
+        <input value={label} onChange={e => setLabel(e.target.value)} placeholder={isNew ? 'Ex: Marketing...' : undefined} autoFocus />
+      </div>
+      <div>
+        <label className="field-label">Cor</label>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+          {PRESET_COLORS.map(c => (
+            <button key={c} type="button" onClick={() => setColor(c)} style={{ width: 28, height: 28, borderRadius: '50%', background: c, border: 'none', cursor: 'pointer', outline: color === c ? `3px solid ${c}` : '3px solid transparent', outlineOffset: 2, transition: 'outline .1s' }} />
+          ))}
+          <input type="color" value={color} onChange={e => setColor(e.target.value)} style={{ width: 28, height: 28, padding: 1, borderRadius: '50%', border: '1px solid var(--border)', cursor: 'pointer', background: 'none' }} title="Cor personalizada" />
+        </div>
+      </div>
+      {isNew && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <span style={{ width: 12, height: 12, borderRadius: '50%', background: color, flexShrink: 0 }} />
+          <span style={{ fontSize: '.85rem', color: 'var(--text-muted)' }}>{label || 'Prévia'}</span>
+        </div>
+      )}
+      {/* Privacy toggle */}
+      <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', padding: '8px 12px', borderRadius: 8, background: isPrivate ? 'var(--surface3)' : 'var(--surface2)', border: `1px solid ${isPrivate ? 'var(--accent)' : 'var(--border)'}`, transition: 'all .15s' }}>
+        <input type="checkbox" checked={isPrivate} onChange={e => setIsPrivate(e.target.checked)} />
+        <div>
+          <div style={{ fontSize: '.85rem', fontWeight: 600 }}>{isPrivate ? '🔒 Privado' : '🌐 Público'}</div>
+          <div style={{ fontSize: '.72rem', color: 'var(--text-muted)' }}>
+            {isPrivate ? 'Só você e quem você escolher veem este CC' : 'Todos os usuários visualizam este CC'}
+          </div>
+        </div>
+      </label>
+      {/* Shared with — only when private */}
+      {isPrivate && (
+        <div>
+          <label className="field-label">Compartilhar acesso com</label>
+          <UserPicker selectedIds={sharedWith} onChange={setSharedWith} excludeId={creatorId} />
+        </div>
+      )}
+    </>
+  );
+}
+
+function EditCostCenterModal({ cc, onClose, onSave }) {
+  const { userId } = useRole();
+  const [label, setLabel] = useState(cc.label);
+  const [color, setColor] = useState(cc.color);
+  const [isPrivate, setIsPrivate] = useState(cc.isPrivate || false);
+  const [sharedWith, setSharedWith] = useState(cc.sharedWith || []);
+
+  function handleSubmit(e) {
+    e.preventDefault();
+    if (!label.trim()) return;
+    onSave({ label: label.trim(), color, isPrivate, sharedWith: isPrivate ? sharedWith : [] });
+  }
+
+  return (
+    <div className="modal-overlay active" onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
+      <div className="modal" style={{ maxWidth: 400 }} onClick={e => e.stopPropagation()}>
+        <div className="modal-head">
+          <h2>✎ Editar Centro de Custo</h2>
+          <button className="modal-close" onClick={onClose}>&times;</button>
+        </div>
+        <form onSubmit={handleSubmit}>
+          <div className="modal-body">
+            <CCModalBody label={label} setLabel={setLabel} color={color} setColor={setColor} isPrivate={isPrivate} setIsPrivate={setIsPrivate} sharedWith={sharedWith} setSharedWith={setSharedWith} creatorId={userId} isNew={false} />
+            <div style={{ display: 'flex', gap: 10, paddingTop: 4 }}>
+              <button type="button" className="btn btn-ghost" style={{ flex: 1 }} onClick={onClose}>Cancelar</button>
+              <button type="submit" className="btn btn-primary" style={{ flex: 1 }}>Salvar</button>
+            </div>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+function NewCostCenterModal({ onClose, onCreate }) {
+  const { userId } = useRole();
+  const [label, setLabel] = useState('');
+  const [color, setColor] = useState(PRESET_COLORS[0]);
+  const [isPrivate, setIsPrivate] = useState(false);
+  const [sharedWith, setSharedWith] = useState([]);
+
+  function handleSubmit(e) {
+    e.preventDefault();
+    if (!label.trim()) return;
+    onCreate(label.trim(), color, isPrivate, isPrivate ? sharedWith : []);
+  }
+
+  return (
+    <div className="modal-overlay active" onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
+      <div className="modal" style={{ maxWidth: 400 }} onClick={e => e.stopPropagation()}>
+        <div className="modal-head">
+          <h2>+ Novo Centro de Custo</h2>
+          <button className="modal-close" onClick={onClose}>&times;</button>
+        </div>
+        <form onSubmit={handleSubmit}>
+          <div className="modal-body">
+            <CCModalBody label={label} setLabel={setLabel} color={color} setColor={setColor} isPrivate={isPrivate} setIsPrivate={setIsPrivate} sharedWith={sharedWith} setSharedWith={setSharedWith} creatorId={userId} isNew={true} />
+            <div style={{ display: 'flex', gap: 10, paddingTop: 4 }}>
+              <button type="button" className="btn btn-ghost" style={{ flex: 1 }} onClick={onClose}>Cancelar</button>
+              <button type="submit" className="btn btn-primary" style={{ flex: 1 }}>Criar CC</button>
+            </div>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
