@@ -33,7 +33,21 @@ Esta branch contém o setup base:
 - **Fase 2:** server actions (`lib/actions/quiz.ts`) + componentes do quiz +
   páginas (quiz funcional end-to-end com Supabase real)
 - **Fase 3:** painel admin, e-mails Resend, OG image, UTMs
-- **Fase 4:** deploy Vercel + Supabase production + DNS
+- **Fase 4:** validação em PROD + criação dos vídeos de micro-recompensa
+
+## Branches & deploy
+
+| Branch                              | Função                                                       |
+| ----------------------------------- | ------------------------------------------------------------ |
+| `claude/setup-quiz-pompower-ZyzLK`  | DEV — desenvolvimento ativo (CI roda em todo push)           |
+| `quiz-pompower-prod`                | PROD — push aqui → migrations + deploy Railway automáticos   |
+
+- Hospedagem PROD: **Railway** (Dockerfile multi-stage, output standalone do Next.js)
+- Banco PROD: **Supabase** (`okpdrtngfjfubqrffvtq.supabase.co`)
+- Banco DEV: segundo projeto Supabase cloud (você cria — ver `docs/DEPLOYMENT.md`)
+
+Setup completo (secrets, GitHub Actions, Railway variables, criação do admin):
+ver **[`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md)**.
 
 ## Setup local
 

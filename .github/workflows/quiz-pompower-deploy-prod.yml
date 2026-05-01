@@ -1,0 +1,76 @@
+name: quiz-pompower Deploy (PROD)
+
+on:
+  push:
+    branches:
+      - quiz-pompower-prod
+    paths:
+      - "quiz-pompower/**"
+      - ".github/workflows/quiz-pompower-deploy-prod.yml"
+  workflow_dispatch: {}
+
+concurrency:
+  group: quiz-pompower-prod
+  cancel-in-progress: false
+
+defaults:
+  run:
+    working-directory: quiz-pompower
+
+jobs:
+  verify:
+    name: Verify (typecheck + tests)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: quiz-pompower/package-lock.json
+      - run: npm ci --no-audit --no-fund
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm test
+
+  migrate-supabase:
+    name: Apply migrations to Supabase PROD
+    needs: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+      SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Link to Supabase PROD project
+        run: supabase link --project-ref "$SUPABASE_PROJECT_REF" --password "$SUPABASE_DB_PASSWORD"
+
+      - name: Push database migrations
+        run: supabase db push --password "$SUPABASE_DB_PASSWORD"
+
+  deploy-railway:
+    name: Deploy to Railway
+    needs: migrate-supabase
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Railway CLI
+        run: npm install -g @railway/cli
+
+      - name: Deploy
+        # `railway up` faz upload do contexto atual. O Dockerfile e
+        # railway.json (no quiz-pompower/) ditam o build.
+        run: railway up --service "${{ secrets.RAILWAY_SERVICE_NAME }}" --detach

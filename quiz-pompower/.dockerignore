@@ -1,0 +1,13 @@
+node_modules
+.next
+.git
+.github
+.env
+.env.local
+.env.*.local
+.vercel
+coverage
+*.log
+README.md
+docs
+.DS_Store

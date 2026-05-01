@@ -1,0 +1,42 @@
+# Supabase project config — usado pela Supabase CLI.
+# Esse arquivo NÃO contém secrets. A autenticação é via env var
+# SUPABASE_ACCESS_TOKEN (no GitHub Actions → Secrets) ou login local.
+
+# project_id = ref do projeto PROD (https://okpdrtngfjfubqrffvtq.supabase.co)
+project_id = "okpdrtngfjfubqrffvtq"
+
+[db]
+# Para desenvolvimento local usar `supabase start` (Docker) — mas estamos
+# no fluxo II (Supabase cloud separado pra DEV), então a CLI local linka
+# ao projeto DEV via `supabase link --project-ref <DEV_REF>` antes de
+# rodar migrations, e o CI usa o ref PROD acima.
+port = 54322
+shadow_port = 54320
+major_version = 15
+
+[db.pooler]
+enabled = false
+
+[api]
+port = 54321
+schemas = ["public"]
+extra_search_path = ["public"]
+max_rows = 1000
+
+[studio]
+port = 54323
+
+[inbucket]
+port = 54324
+
+[auth]
+enabled = true
+site_url = "http://localhost:3000"
+additional_redirect_urls = ["http://localhost:3000"]
+jwt_expiry = 3600
+enable_signup = false  # apenas a expert tem login; criação manual no Dashboard.
+
+[auth.email]
+enable_signup = false
+double_confirm_changes = true
+enable_confirmations = false
