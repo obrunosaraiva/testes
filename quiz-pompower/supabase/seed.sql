@@ -1,0 +1,22 @@
+-- ============================================================
+-- Seed: vincula a expert (admin) à tabela profiles.
+-- ============================================================
+-- IMPORTANTE: o usuário admin precisa ser criado MANUALMENTE no Supabase
+-- Auth (Dashboard → Authentication → Users → "Add user") porque a API
+-- de Auth não pode ser invocada via SQL puro. Depois de criar, copie o
+-- UUID do usuário e rode o INSERT abaixo.
+-- ============================================================
+
+-- Substitua os placeholders antes de rodar:
+--
+-- insert into public.profiles (id, email, full_name, role)
+-- values (
+--   '00000000-0000-0000-0000-000000000000', -- UUID do auth.users
+--   'expert@dominio-da-expert.com',
+--   'Nome da Expert',
+--   'admin'
+-- )
+-- on conflict (id) do update
+--   set email = excluded.email,
+--       full_name = excluded.full_name,
+--       role = excluded.role;

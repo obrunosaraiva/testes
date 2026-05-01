@@ -1,0 +1,57 @@
+@import "tailwindcss";
+
+@theme {
+  --color-background: #fbf7f4;
+  --color-foreground: #2a1f1f;
+  --color-primary: #b85c5c;
+  --color-primary-foreground: #ffffff;
+  --color-muted: #e8ddd3;
+  --color-muted-foreground: #6b5454;
+  --color-accent: #d4a574;
+  --color-accent-foreground: #2a1f1f;
+  --color-border: #dcc9ba;
+  --color-input: #dcc9ba;
+  --color-ring: #b85c5c;
+  --color-success: #7ca982;
+  --color-success-foreground: #ffffff;
+  --color-destructive: #c75d5d;
+  --color-destructive-foreground: #ffffff;
+  --color-card: #ffffff;
+  --color-card-foreground: #2a1f1f;
+
+  --color-archetype-renascimento-from: #e8b4bc;
+  --color-archetype-renascimento-to: #b85c8e;
+  --color-archetype-expansao-from: #f4a261;
+  --color-archetype-expansao-to: #c75d2e;
+  --color-archetype-equilibrio-from: #a8c9a6;
+  --color-archetype-equilibrio-to: #5a8a6d;
+  --color-archetype-dominio-from: #c9a876;
+  --color-archetype-dominio-to: #8b6f47;
+
+  --font-sans: var(--font-inter);
+  --font-serif: var(--font-fraunces);
+
+  --radius-sm: 0.375rem;
+  --radius-md: 0.5rem;
+  --radius-lg: 0.75rem;
+  --radius-xl: 1rem;
+}
+
+html {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  background-color: var(--color-background);
+  color: var(--color-foreground);
+  font-family: var(--font-sans), system-ui, sans-serif;
+}
+
+h1,
+h2,
+h3 {
+  font-family: var(--font-serif), Georgia, serif;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+}
