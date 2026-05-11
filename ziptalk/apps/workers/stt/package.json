@@ -1,0 +1,28 @@
+{
+  "name": "@ziptalk/worker-stt",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "main": "src/index.ts",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "spike": "tsx src/spike.ts",
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "lint": "tsc --noEmit",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@ziptalk/evolution-client": "workspace:*",
+    "@ziptalk/shared": "workspace:*",
+    "bullmq": "^5.34.5",
+    "groq-sdk": "^0.9.1",
+    "ioredis": "^5.4.2",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.5",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  }
+}
