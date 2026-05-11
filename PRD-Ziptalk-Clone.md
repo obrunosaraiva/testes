@@ -212,61 +212,197 @@ Um SaaS B2C/B2B que se conecta ao número de WhatsApp do usuário e **transcreve
 
 ---
 
-## 8. Arquitetura Técnica (proposta)
+## 8. Arquitetura Técnica (decidida)
 
-### 8.1 Stack sugerida
-- **Frontend web:** Next.js 15 + Tailwind + shadcn/ui (já alinhado com o tema dark/teal)
-- **Backend API:** Node.js (NestJS) ou Python (FastAPI)
-- **Banco:** PostgreSQL (Supabase ou RDS)
-- **Cache/Fila:** Redis + BullMQ
-- **WhatsApp:** Baileys (TypeScript) — mais leve que whatsapp-web.js
-- **STT:** OpenAI Whisper (API) como primário, Deepgram como fallback/idiomas
-- **LLM (resumo/tradução/assistente):** Claude Sonnet 4.6 via API Anthropic
-- **Auth:** Supabase Auth ou Clerk (Google + Email)
-- **Pagamentos:** Stripe + Pagar.me (Pix/Boleto BR)
-- **Infra:** Vercel (front) + Fly.io ou Railway (backend + workers)
-- **Observabilidade:** Sentry + PostHog
+### 8.1 Stack definitiva
 
-### 8.2 Componentes principais
+| Camada | Escolha | Observação |
+|---|---|---|
+| **Web (painel + landing)** | Next.js 15 (App Router) + TypeScript | Monorepo com Turborepo |
+| **UI** | Tailwind v4 + shadcn/ui + Lucide icons | Base: blocks `dashboard-01` + `sidebar-07` |
+| **Tipografia** | Plus Jakarta Sans (UI) + JetBrains Mono (IDs/códigos) | Google Fonts |
+| **Auth** | Supabase Auth (Google + Email/senha) | Magic links + RLS |
+| **Banco** | Supabase Postgres + Drizzle ORM | RLS para multi-tenant |
+| **Realtime** | Supabase Realtime | Atualizar consumo/transcrição ao vivo no painel |
+| **Storage** | Supabase Storage | Áudios temporários (TTL 24h) |
+| **Fila/Cache** | Upstash Redis + BullMQ | Jobs de STT, LLM, envio WhatsApp |
+| **WhatsApp** | **Evolution API v2** (Docker, self-hosted) | Multi-instância, webhooks |
+| **STT** | Groq Whisper Large v3 (primário) + OpenAI Whisper (fallback) | Groq é ~20x mais barato e p95 sub-segundo |
+| **LLM** | Claude Sonnet 4.6 via SDK Anthropic + prompt caching | Resumo, tradução, assistente, filtro ofensivas |
+| **Pagamento** | Stripe (cartão internacional) + Asaas (Pix/Boleto BR) | Asaas tem taxa menor que Pagar.me |
+| **Infra** | Vercel (Next.js) + Railway (Evolution + workers + Redis) | Evolution precisa de container persistente |
+| **Observabilidade** | Sentry (erros) + PostHog (analytics) + Axiom (logs) | |
+| **Email transacional** | Resend | Convites, recibos, alertas de consumo |
+| **CDN/Edge** | Vercel Edge + Cloudflare R2 (assets) | |
+
+### 8.2 Decisão: Evolution API (vs. Baileys puro / Cloud API oficial)
+
+**Escolhido: Evolution API v2**
+
+Motivos:
+- REST + Webhooks prontos (não precisamos escrever wrapper)
+- **Multi-instância nativa** (1 time → N dispositivos)
+- Suporte a RabbitMQ/SQS (encaixa no nosso BullMQ)
+- Docker oficial, deploy em ~10min
+- Comunidade BR ativa (essencial pro mercado-alvo)
+- Open source (Apache 2.0)
+
+Trade-offs aceitos:
+- Risco de ban do número (mitigamos com rate limiting + warm-up)
+- Atualizações dependentes da comunidade
+- Migração futura para WhatsApp Cloud API quando MRR > R$ 30k e selo verde for prioridade
+
+Alternativas descartadas:
+- **Baileys puro:** teríamos que reescrever toda a camada REST/webhook/multi-instância
+- **WhatsApp Cloud API oficial:** inviável para "transcrever meu próprio WhatsApp pessoal" — exige número Business novo, cobra por conversa, exige templates aprovados
+- **WPPConnect:** comunidade menor, menos manutenção
+
+### 8.3 Arquitetura de componentes
+
 ```
-┌─────────────┐     ┌──────────────┐     ┌──────────────┐
-│  Next.js    │────▶│   API REST   │────▶│  PostgreSQL  │
-│  (painel)   │     │  (NestJS)    │     │              │
-└─────────────┘     └──────┬───────┘     └──────────────┘
-                           │
-                    ┌──────▼───────┐
-                    │ Redis + Bull │
-                    └──────┬───────┘
-                           │
-        ┌──────────────────┼──────────────────┐
-        ▼                  ▼                  ▼
-┌──────────────┐   ┌──────────────┐   ┌──────────────┐
-│ WA Workers   │   │ STT Workers  │   │ LLM Workers  │
-│  (Baileys)   │   │ (Whisper)    │   │ (Claude)     │
-└──────────────┘   └──────────────┘   └──────────────┘
+┌──────────────┐         ┌─────────────────┐
+│   Next.js    │────────▶│  API Routes     │
+│ (painel+land)│         │  (Next.js)      │
+└──────────────┘         └────────┬────────┘
+        │                         │
+        │ Realtime                ▼
+        │              ┌─────────────────────┐
+        └──────────────│ Supabase            │
+                       │ (Postgres+Auth+RT)  │
+                       └────────┬────────────┘
+                                │
+                  ┌─────────────┼─────────────┐
+                  ▼             ▼             ▼
+            ┌──────────┐ ┌───────────┐ ┌──────────┐
+            │  Redis   │ │  Stripe   │ │  Resend  │
+            │ (BullMQ) │ │   Asaas   │ │  Email   │
+            └────┬─────┘ └───────────┘ └──────────┘
+                 │
+   ┌─────────────┼─────────────┬─────────────┐
+   ▼             ▼             ▼             ▼
+┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐
+│Evolution │ │   STT    │ │   LLM    │ │ Billing  │
+│   API    │ │  Worker  │ │  Worker  │ │  Worker  │
+│ (Docker) │ │  (Groq)  │ │ (Claude) │ │          │
+└────┬─────┘ └──────────┘ └──────────┘ └──────────┘
+     │ webhooks
+     ▼
+[WhatsApp - via celular do usuário]
 ```
 
-### 8.3 Modelo de dados (entidades-chave)
-- `users` (id, email, name, avatar_url, locale, theme)
-- `teams` (id, name, slug, timezone, owner_id, plan_id)
-- `team_members` (team_id, user_id, role)
-- `devices` (id, team_id, phone_number, status, session_data)
-- `transcriptions` (id, device_id, contact_id, audio_duration, text, language, created_at)
-- `word_corrections` (id, team_id, pattern, replacement)
-- `usage_records` (id, team_id, device_id, contact_id, type, duration_seconds, created_at)
-- `subscriptions` (id, team_id, plan, status, stripe_id, current_period_end)
-- `invoices` (id, subscription_id, amount, status, pdf_url)
+### 8.4 Fluxo end-to-end (transcrição)
+
+1. Áudio chega no WhatsApp do usuário
+2. Evolution API recebe via WebSocket persistente
+3. Evolution dispara webhook `messages.upsert` → `POST /api/webhook/evolution`
+4. API valida assinatura HMAC, identifica o `device_id` e enfileira job `stt-queue`
+5. **STT worker:**
+   - Baixa o áudio (.ogg/opus) da Evolution
+   - Faz upload pro Supabase Storage (TTL 24h)
+   - Chama Groq Whisper Large v3 → texto + idioma detectado
+   - Aplica `word_corrections` do time (regex)
+   - Persiste `transcriptions` + `usage_records`
+6. **Decisão de pipeline:**
+   - Se duração > 2min E plano >= Pro → enfileira `summarize-queue`
+   - Se idioma diferente do user setting E plano >= Pro → enfileira `translate-queue`
+   - Senão → vai direto pro `wa-send-queue`
+7. **WA send worker:**
+   - Monta o card formatado (texto + footer "⚡ Transcrição com IA por Ziptalk")
+   - Chama `POST /message/sendText/{instance}` da Evolution
+   - Marca `transcriptions.delivered_at`
+8. Supabase Realtime notifica o painel → atualiza minutos consumidos ao vivo
+
+### 8.5 Estrutura do monorepo
+
+```
+ziptalk/
+├── apps/
+│   ├── web/              # Next.js (landing + painel)
+│   └── workers/          # Node.js workers (BullMQ)
+│       ├── stt/
+│       ├── llm/
+│       ├── wa-send/
+│       └── billing/
+├── packages/
+│   ├── db/               # Drizzle schema + migrations
+│   ├── shared/           # Tipos, utils, constants
+│   ├── ui/               # shadcn/ui customizado
+│   └── evolution-client/ # Wrapper tipado da Evolution API
+├── docker/
+│   ├── evolution.yml     # Compose da Evolution API
+│   └── redis.yml
+├── turbo.json
+├── package.json
+└── pnpm-workspace.yaml
+```
+
+### 8.6 Modelo de dados (entidades-chave)
+
+```sql
+-- Auth (gerenciado pelo Supabase)
+users (id, email, name, avatar_url, locale, theme, created_at)
+
+-- Multi-tenancy
+teams (id, name, slug, timezone, owner_id, plan, plan_minutes, billing_email, created_at)
+team_members (team_id, user_id, role) -- role: owner|admin|member
+
+-- WhatsApp
+devices (id, team_id, evolution_instance_name, phone_number, status, qr_code, connected_at)
+contacts (id, device_id, wa_jid, name, avatar_url) -- cache de contatos
+
+-- Core
+transcriptions (
+  id, device_id, contact_id,
+  message_id, audio_url, audio_duration_seconds,
+  language, text, summary, translation,
+  is_private, delivered_at, created_at
+)
+word_corrections (id, team_id, pattern, replacement, created_at)
+
+-- Billing & Usage
+subscriptions (id, team_id, plan, status, stripe_id, asaas_id, current_period_end)
+invoices (id, subscription_id, amount, currency, status, pdf_url, paid_at)
+usage_records (
+  id, team_id, device_id, contact_id,
+  type, -- transcription|summary|translation
+  duration_seconds, tokens_used, created_at
+)
+
+-- Encaminhamento (v1.1)
+forwarding_rules (id, team_id, source_contact, target_contact, enabled)
+```
+
+### 8.7 Templates de referência
+
+- **Painel:** shadcn/ui `dashboard-01` + `sidebar-07` (sidebar com switcher de time idêntico ao print)
+- **Aesthetic:** Linear (densidade), Cal.com (settings/billing), Vercel (cards de uso), Resend (landing)
+- **Charts:** Tremor (gráficos de consumo) + shadcn-charts
+- **Tabelas:** TanStack Table + shadcn data-table
 
 ---
 
-## 9. Design / Identidade Visual
+## 9. Design / Identidade Visual (fechado)
 
-- **Tema:** dark predominante (#0A0A0A bg, #1A1A1A cards)
-- **Cor primária:** verde menta/teal (#00E5A8 aprox.)
-- **Tipografia:** sans-serif moderna (Inter ou Geist)
-- **Ícones:** Lucide
-- **Cards** com borda sutil, cantos arredondados (12-16px)
-- **Mockup hero:** iPhone mostrando integração WhatsApp + balão de transcrição com selo Ziptalk
+**Design system gerado:**
+
+- **Estilo:** Dark Mode (OLED) com toques de Glassmorphism em modais
+- **Pattern landing:** Hero + Bento Grid (features) + Pricing + CTA
+- **Cor primária:** `#0D9488` (teal-600)
+- **Cor secundária/accent:** `#14B8A6` (teal-500)
+- **Cor de CTA:** `#F97316` (orange-500) — para botões de upgrade/conversão
+- **Fundo:** `#0A0A0A` (app) / `#111111` (cards) / `#F0FDFA` (light mode)
+- **Texto:** `#F8FAFC` (dark) / `#134E4A` (light)
+- **Tipografia:** Plus Jakarta Sans (300–700) + JetBrains Mono
+- **Ícones:** Lucide (uniforme, 24px viewBox)
+- **Cards:** borda `border-white/5`, radius `rounded-xl` (12px), sombra sutil
+- **Efeitos:** glow mínimo nos CTAs (`text-shadow: 0 0 10px`), transições 200ms
+- **Mockup hero:** iPhone com card de transcrição idêntico ao print do WhatsApp
+
+**Anti-patterns a evitar:**
+- Light mode como padrão
+- Animações lentas (>300ms em micro-interactions)
+- Emojis como ícones
+- Hover com scale (causa layout shift)
 
 ---
 
@@ -331,20 +467,23 @@ Um SaaS B2C/B2B que se conecta ao número de WhatsApp do usuário e **transcreve
 
 ## 13. Perguntas em Aberto
 
-1. WhatsApp Business API oficial (Meta Cloud API) ou biblioteca não-oficial (Baileys)? Trade-off custo vs. risco.
-2. Áudios devem ser **armazenados** ou apenas processados e descartados?
-3. Modelo de "Transcrição privada" — texto vai pra onde? Bot privado? E-mail? Painel?
-4. Suporte a grupos é prioridade pós-MVP ou v2?
-5. Pix vs. Cartão — começar com qual?
+1. ~~WhatsApp oficial vs. não-oficial~~ → **Decidido: Evolution API**, migrar pra Cloud API quando MRR > R$ 30k
+2. Áudios: armazenar 24h em Supabase Storage e deletar, ou descartar imediatamente após STT?
+3. "Transcrição privada" → texto vai pra DM com bot dedicado, e-mail ou só painel?
+4. Suporte a grupos pós-MVP ou v2?
+5. Pix vs. cartão → ambos no MVP (Asaas + Stripe) ou só Stripe primeiro?
 6. Self-service vs. demo agendada para Enterprise?
+7. Onboarding: wizard inline ou tour guiado?
+8. Bot vai responder com o card **citando** o áudio original (reply) ou só mensagem solta abaixo?
 
 ---
 
 ## 14. Próximos Passos
 
-1. Validar este PRD com Bruno
-2. Wireframes de baixa fidelidade dos fluxos críticos
-3. Protótipo de alta fidelidade (Figma)
-4. Setup inicial do repo (monorepo: web + api + workers)
-5. Spike técnico: Baileys + Whisper end-to-end
-6. Landing page para captura de leads
+1. ✅ PRD inicial validado
+2. ✅ Decisões de stack fechadas (Evolution + Next.js + Supabase + Groq + Claude)
+3. ⏳ **Setup do monorepo** (Turborepo + Next.js + shadcn + Supabase + Drizzle)
+4. ⏳ **Spike técnico:** Evolution API → Groq Whisper → resposta no WhatsApp
+5. Wireframes de baixa fidelidade dos fluxos críticos (Excalidraw/Figma)
+6. Implementação MVP em fases (ver Roadmap)
+7. Landing page com captura de leads + waitlist
