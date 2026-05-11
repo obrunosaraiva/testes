@@ -7,6 +7,7 @@
   "scripts": {
     "dev": "tsx watch --env-file=../../../.env src/index.ts",
     "spike": "tsx --env-file=../../../.env src/spike.ts",
+    "smoke:groq": "tsx --env-file=../../../.env src/smoke-groq.ts",
     "build": "tsc",
     "start": "node --env-file=../../../.env dist/index.js",
     "lint": "tsc --noEmit",

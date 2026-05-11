@@ -13,6 +13,11 @@ services:
     restart: unless-stopped
     ports:
       - "8080:8080"
+    # Linux: docker não resolve host.docker.internal por padrão.
+    # Esta linha faz o nome apontar para o gateway da rede docker → host.
+    # No Mac/Windows funciona out-of-the-box mesmo sem isso.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     environment:
       - SERVER_TYPE=http
       - SERVER_PORT=8080

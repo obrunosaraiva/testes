@@ -112,6 +112,8 @@ async function boot() {
 
   console.log(`▶ Setting up Evolution instance "${INSTANCE_NAME}"…`);
 
+  let qrBase64: string | undefined;
+
   try {
     const created = await evolution.createInstance({
       instanceName: INSTANCE_NAME,
@@ -119,29 +121,37 @@ async function boot() {
       webhookEvents: ["MESSAGES_UPSERT", "CONNECTION_UPDATE"],
       qrcode: true,
     });
-
-    if (created.qrcode?.base64) {
-      console.log("\n📱 Scan this QR code with your WhatsApp:\n");
-      console.log(`   Base64 length: ${created.qrcode.base64.length} chars`);
-      console.log(`   Open in browser: data:image/png;base64,${created.qrcode.base64.slice(0, 80)}…`);
-      console.log(`   Or visit: ${EVOLUTION_API_URL}/instance/connect/${INSTANCE_NAME}\n`);
-    }
+    qrBase64 = created.qrcode?.base64;
   } catch (err: unknown) {
     if (err instanceof Error && err.message.includes("already exists")) {
       console.log("   (Instance already exists, reusing)");
-      const state = await evolution.getConnectionState(INSTANCE_NAME);
-      console.log(`   Current state: ${state.instance.state}`);
-      if (state.instance.state !== "open") {
-        const qr = await evolution.getQrCode(INSTANCE_NAME);
-        console.log(`   QR ready at: ${EVOLUTION_API_URL}/instance/connect/${INSTANCE_NAME}`);
-        console.log(`   Or: data:image/png;base64,${qr.base64.slice(0, 80)}…`);
-      }
     } else {
       throw err;
     }
   }
 
-  console.log("✓ Spike ready. Send an audio to the connected number.\n");
+  // Verifica estado atual; se ainda não está conectado, busca QR explicitamente.
+  const state = await evolution.getConnectionState(INSTANCE_NAME);
+  console.log(`   Current state: ${state.instance.state}`);
+
+  if (state.instance.state === "open") {
+    console.log("✅ Already paired with WhatsApp.");
+  } else {
+    if (!qrBase64) {
+      const qr = await evolution.getQrCode(INSTANCE_NAME);
+      qrBase64 = qr.base64;
+    }
+    console.log("\n📱 Scan this QR code with your WhatsApp:\n");
+    console.log(`   1. Open: ${EVOLUTION_API_URL}/instance/connect/${INSTANCE_NAME}`);
+    console.log(`      (returns JSON with the QR base64; render or use the manager UI)`);
+    console.log(`   2. Or open Evolution Manager: ${EVOLUTION_API_URL}/manager`);
+    console.log(`      → log in with your apikey, find the instance, scan the QR`);
+    if (qrBase64) {
+      console.log(`\n   QR base64 length: ${qrBase64.length} chars`);
+    }
+  }
+
+  console.log("\n✓ Spike ready. Send an audio to the connected number.\n");
 }
 
 boot().catch((err) => {

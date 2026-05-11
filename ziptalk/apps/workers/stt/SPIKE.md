@@ -16,8 +16,23 @@ painel**. Roda em ~5 minutos.
 
 - Docker + Docker Compose
 - Node 20+ e pnpm 10+
-- API key da Groq (gratuita em https://console.groq.com)
+- API key da Groq (gratuita em https://console.groq.com — free tier basta)
 - Celular com WhatsApp ativo (vamos usar **um número de teste**, não o pessoal — para evitar risco de ban)
+
+## ✅ Status atual da validação (smoke test)
+
+Já foi rodado um smoke test isolado contra a Groq Whisper Large v3:
+
+```
+✓ OK in 404ms
+  language: russian   (alucinação esperada para áudio sem fala)
+  duration: 1s
+  text: "..."
+✅ Groq integration works. Key is valid.
+```
+
+Ou seja: a integração com Groq está funcionando. Falta só você rodar
+**na sua máquina local** o spike completo (Evolution + WhatsApp pareado).
 
 ## Passo a passo
 
@@ -80,8 +95,13 @@ Saída esperada:
 
 ### 5. Parear o WhatsApp
 
-Abre a URL `http://localhost:8080/instance/connect/ziptalk_spike` no navegador —
-vai mostrar o QR code. Escaneia com o WhatsApp do número de teste.
+A forma mais fácil é usar o **Manager UI** que vem na Evolution:
+
+1. Abra `http://localhost:8080/manager` no navegador
+2. Cole sua `EVOLUTION_API_KEY` (a do `.env`) no campo de login
+3. Encontre a instância `ziptalk_spike` na lista
+4. Clique em "Connect" → vai mostrar o QR
+5. Escaneie com o celular (WhatsApp → Aparelhos conectados → Conectar aparelho)
 
 ### 6. Testar
 
