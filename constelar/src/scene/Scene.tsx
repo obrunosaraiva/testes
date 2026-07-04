@@ -53,6 +53,7 @@ export function Scene() {
   const startDrag = (e: ThreeEvent<PointerEvent>, id: string) => {
     e.stopPropagation()
     select(id)
+    if (!useStore.getState().canEdit()) return // cliente sem permissão só observa/seleciona
     draggingRef.current = id
     setDragging(id)
     document.body.style.cursor = 'grabbing'

@@ -65,12 +65,63 @@ body,
   color: var(--text-dim);
 }
 
-.session-badge {
-  font-size: 12px;
+/* ---------- barra de sessão ---------- */
+.session {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 13px;
   color: var(--text-dim);
+}
+
+.session-text {
+  white-space: nowrap;
+}
+
+.dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  flex: 0 0 auto;
+}
+.dot-on {
+  background: #6ec08a;
+  box-shadow: 0 0 8px #6ec08a;
+}
+.dot-mid {
+  background: var(--accent);
+}
+.dot-off {
+  background: #7a6a5a;
+}
+
+.btn-session {
   border: 1px solid var(--panel-border);
-  padding: 5px 12px;
+  background: rgba(255, 220, 180, 0.06);
+  color: var(--text);
+  padding: 7px 14px;
   border-radius: 999px;
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+.btn-session:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.toggle.mini {
+  font-size: 12px;
+}
+
+@media (max-width: 780px) {
+  .session-text {
+    display: none;
+  }
+  .toggle.mini {
+    display: none;
+  }
 }
 
 /* ---------- stage ---------- */

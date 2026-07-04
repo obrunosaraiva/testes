@@ -2,8 +2,13 @@ import { Canvas } from '@react-three/fiber'
 import { Scene } from './scene/Scene'
 import { LeftPanel, RightPanel } from './ui/Panel'
 import { PhraseCards } from './ui/PhraseCards'
+import { SessionBar } from './ui/SessionBar'
+import { useStore } from './store'
 
 export default function App() {
+  const role = useStore((s) => s.role)
+  const isGuest = role === 'guest'
+
   return (
     <div className="app">
       <header className="topbar">
@@ -11,7 +16,7 @@ export default function App() {
           <span className="logo">✦</span> Constelar
           <span className="tag">campo de constelação sistêmica</span>
         </div>
-        <div className="session-badge">Sessão · demonstração</div>
+        <SessionBar />
       </header>
 
       <div className="stage">
@@ -24,9 +29,9 @@ export default function App() {
           <Scene />
         </Canvas>
 
-        <LeftPanel />
+        {!isGuest && <LeftPanel />}
         <RightPanel />
-        <PhraseCards />
+        {!isGuest && <PhraseCards />}
       </div>
     </div>
   )

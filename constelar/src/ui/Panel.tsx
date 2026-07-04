@@ -162,16 +162,28 @@ export function RightPanel() {
   const selectedId = useStore((s) => s.selectedId)
   const updateDoll = useStore((s) => s.updateDoll)
   const removeDoll = useStore((s) => s.removeDoll)
+  const role = useStore((s) => s.role)
+  const canEdit = useStore((s) => s.role !== 'guest' || s.ambiance.allowGuestMove)
+  const isGuest = role === 'guest'
 
   const doll = dolls.find((d) => d.id === selectedId)
   if (!doll) {
     return (
       <aside className="panel panel-right empty">
         <p className="hint">
-          Clique num boneco para editá-lo.
-          <br />
-          Arraste para posicionar. A ponta clara mostra a direção do olhar.
+          {isGuest && !canEdit
+            ? 'O terapeuta está conduzindo. Acompanhe o campo.'
+            : 'Clique num boneco para editá-lo. Arraste para posicionar. A ponta clara mostra a direção do olhar.'}
         </p>
+      </aside>
+    )
+  }
+
+  if (!canEdit) {
+    return (
+      <aside className="panel panel-right">
+        <h2>{doll.label || 'Boneco'}</h2>
+        <p className="hint">Você pode observar. O terapeuta libera o movimento quando fizer sentido.</p>
       </aside>
     )
   }
@@ -227,9 +239,11 @@ export function RightPanel() {
         </div>
       </div>
 
-      <button className="btn-danger" onClick={() => removeDoll(doll.id)}>
-        Remover do campo
-      </button>
+      {!isGuest && (
+        <button className="btn-danger" onClick={() => removeDoll(doll.id)}>
+          Remover do campo
+        </button>
+      )}
     </aside>
   )
 }
