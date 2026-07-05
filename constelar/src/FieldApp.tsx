@@ -5,6 +5,7 @@ import { PhraseCards } from './ui/PhraseCards'
 import { SessionBar } from './ui/SessionBar'
 import { CallPanel } from './ui/CallPanel'
 import { Recorder } from './ui/Recorder'
+import { AmbientSound } from './ui/AmbientSound'
 import { LanguageSelector } from './ui/LanguageSelector'
 import { useStore } from './store'
 import { useT } from './i18n'
@@ -43,6 +44,7 @@ export default function FieldApp() {
         {!isGuest && <PhraseCards />}
         {!isGuest && <Recorder />}
         <CallPanel />
+        <AmbientSound />
       </div>
     </div>
   )
