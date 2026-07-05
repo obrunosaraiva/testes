@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useStore } from '../store'
 import { connect, newRoomId } from '../net'
+import { useT } from '../i18n'
 
 /** Controla a sessão online: terapeuta inicia a sala, cliente entra pelo link. */
 export function SessionBar() {
@@ -9,6 +10,7 @@ export function SessionBar() {
   const participants = useStore((s) => s.participants)
   const allowGuestMove = useStore((s) => s.ambiance.allowGuestMove)
   const setAmbiance = useStore((s) => s.setAmbiance)
+  const t = useT()
 
   const [copied, setCopied] = useState(false)
 
@@ -52,7 +54,11 @@ export function SessionBar() {
       <div className="session">
         <span className={`dot ${dot}`} />
         <span className="session-text">
-          {conn === 'online' ? 'Conectado à sala do terapeuta' : conn === 'connecting' ? 'Conectando…' : 'Sem conexão'}
+          {conn === 'online'
+            ? t('session.connectedGuest')
+            : conn === 'connecting'
+              ? t('session.connecting')
+              : t('session.offline')}
         </span>
       </div>
     )
@@ -63,7 +69,7 @@ export function SessionBar() {
     return (
       <div className="session">
         <button className="btn-session" onClick={startSession}>
-          ▶ Iniciar sessão online
+          {t('session.start')}
         </button>
       </div>
     )
@@ -74,10 +80,12 @@ export function SessionBar() {
     <div className="session">
       <span className={`dot ${dot}`} />
       <span className="session-text">
-        {participants > 1 ? `Cliente na sala · ${participants} conectados` : 'Aguardando o cliente…'}
+        {participants > 1
+          ? `${t('session.clientIn')} · ${t('session.connectedCount', { n: participants })}`
+          : t('session.waiting')}
       </span>
       <button className="btn-session" onClick={copyLink}>
-        {copied ? '✓ Copiado' : '🔗 Copiar link do cliente'}
+        {copied ? t('session.copied') : t('session.copyLink')}
       </button>
       <label className="toggle mini">
         <input
@@ -85,7 +93,7 @@ export function SessionBar() {
           checked={allowGuestMove}
           onChange={(e) => setAmbiance({ allowGuestMove: e.target.checked })}
         />
-        Cliente pode mover
+        {t('session.guestCanMove')}
       </label>
     </div>
   )

@@ -1,34 +1,22 @@
 import { useState } from 'react'
 import { useStore } from '../store'
 import { api, getToken } from '../api'
-
-/** Baralho de frases sistêmicas / frases de solução usadas na condução. */
-const PHRASES = [
-  'Eu honro você.',
-  'Você é minha mãe, eu sou o(a) filho(a).',
-  'Você é meu pai, eu sou o(a) filho(a).',
-  'Eu te vejo.',
-  'Você tem um lugar no meu coração.',
-  'Eu deixo você em paz.',
-  'Por favor, olhe por mim com bons olhos.',
-  'Eu recebo a vida de vocês, e faço algo bom com ela.',
-  'O que foi pesado, agora pode descansar.',
-  'Eu fico, você parte. No tempo certo, eu também vou.',
-  'Eu respeito o seu destino.',
-  'Agora eu assumo o meu lugar.',
-]
+import { useT, useLangStore, phrasesFor } from '../i18n'
 
 export function PhraseCards() {
   const currentPhrase = useStore((s) => s.currentPhrase)
   const setPhrase = useStore((s) => s.setPhrase)
   const dolls = useStore((s) => s.dolls)
   const clearField = useStore((s) => s.clearField)
+  const lang = useLangStore((s) => s.lang)
+  const t = useT()
   const [savedMsg, setSavedMsg] = useState<string | null>(null)
 
   const draw = () => {
     // sorteio sem depender de Math.random (varia pelo estado atual do campo)
+    const phrases = phrasesFor(lang)
     const seed = dolls.length + Date.now()
-    setPhrase(PHRASES[seed % PHRASES.length])
+    setPhrase(phrases[seed % phrases.length])
   }
 
   const snapshot = async () => {
@@ -47,9 +35,9 @@ export function PhraseCards() {
       try {
         const room = await api.room(code)
         await api.addSnapshot(room.id, url, 'imagem de solução')
-        setSavedMsg('✓ salva na sessão')
+        setSavedMsg(t('bar.saved'))
       } catch {
-        setSavedMsg('baixada (sessão não vinculada)')
+        setSavedMsg(t('bar.downloaded'))
       }
       setTimeout(() => setSavedMsg(null), 2600)
     }
@@ -67,13 +55,13 @@ export function PhraseCards() {
       )}
       <div className="bottombar-actions">
         <button className="btn-ghost" onClick={draw}>
-          🃏 Frase sistêmica
+          {t('bar.phrase')}
         </button>
         <button className="btn-ghost" onClick={snapshot}>
-          📸 {savedMsg || 'Imagem de solução'}
+          {savedMsg ? `📸 ${savedMsg}` : t('bar.snapshot')}
         </button>
         <button className="btn-ghost danger" onClick={clearField}>
-          Limpar campo
+          {t('bar.clear')}
         </button>
       </div>
     </div>

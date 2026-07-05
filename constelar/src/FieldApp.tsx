@@ -4,21 +4,27 @@ import { LeftPanel, RightPanel } from './ui/Panel'
 import { PhraseCards } from './ui/PhraseCards'
 import { SessionBar } from './ui/SessionBar'
 import { CallPanel } from './ui/CallPanel'
+import { LanguageSelector } from './ui/LanguageSelector'
 import { useStore } from './store'
+import { useT } from './i18n'
 
 /** A sala/campo de constelação 3D — acessada via ?sala=CÓDIGO. */
 export default function FieldApp() {
   const role = useStore((s) => s.role)
   const isGuest = role === 'guest'
+  const t = useT()
 
   return (
     <div className="app">
       <header className="topbar">
         <div className="brand">
           <span className="logo">✦</span> Constelar
-          <span className="tag">campo de constelação sistêmica</span>
+          <span className="tag">{t('app.subtitle')}</span>
         </div>
-        <SessionBar />
+        <div className="topbar-right">
+          <SessionBar />
+          <LanguageSelector />
+        </div>
       </header>
 
       <div className="stage">

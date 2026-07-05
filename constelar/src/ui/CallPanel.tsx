@@ -1,11 +1,13 @@
 import { useEffect, useRef, useState } from 'react'
 import { useStore } from '../store'
 import { RtcSession, type CallState } from '../webrtc'
+import { useT } from '../i18n'
 
 /** Widget de áudio/vídeo da sessão (WebRTC 1:1 terapeuta ↔ cliente). */
 export function CallPanel() {
   const role = useStore((s) => s.role)
   const conn = useStore((s) => s.conn)
+  const t = useT()
 
   const [state, setState] = useState<CallState>('idle')
   const [micOn, setMicOn] = useState(true)
@@ -51,7 +53,7 @@ export function CallPanel() {
       setMicOn(true)
       if (localVideoRef.current) localVideoRef.current.srcObject = local
     } catch {
-      setError('Não foi possível acessar microfone/câmera. Verifique as permissões.')
+      setError(t('call.mediaError'))
       setState('idle')
     }
   }
@@ -79,13 +81,13 @@ export function CallPanel() {
   if (state === 'idle') {
     return (
       <div className="call call-idle">
-        <span className="call-label">Áudio da sessão</span>
+        <span className="call-label">{t('call.audioLabel')}</span>
         <div className="call-actions">
           <button className="btn-call" onClick={() => join(false)}>
-            🎙️ Entrar com áudio
+            {t('call.joinAudio')}
           </button>
           <button className="btn-call ghost" onClick={() => join(true)}>
-            🎥 Com vídeo
+            {t('call.joinVideo')}
           </button>
         </div>
         {error && <span className="call-error">{error}</span>}
@@ -98,12 +100,12 @@ export function CallPanel() {
       <div className="call-tiles">
         <div className="tile">
           <video ref={remoteVideoRef} autoPlay playsInline className={hasVideo ? '' : 'hidden'} />
-          <span className="tile-name">{role === 'host' ? 'Cliente' : 'Terapeuta'}</span>
-          {state !== 'connected' && <span className="tile-status">conectando…</span>}
+          <span className="tile-name">{role === 'host' ? t('call.client') : t('call.therapist')}</span>
+          {state !== 'connected' && <span className="tile-status">{t('call.connecting')}</span>}
         </div>
         <div className="tile self">
           <video ref={localVideoRef} autoPlay playsInline muted className={camOn ? '' : 'hidden'} />
-          <span className="tile-name">Você</span>
+          <span className="tile-name">{t('call.you')}</span>
         </div>
       </div>
 
