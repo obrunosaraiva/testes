@@ -1,5 +1,7 @@
 import express from 'express'
-import { db, now } from './db.mjs'
+import { createReadStream, writeFileSync, statSync, existsSync } from 'node:fs'
+import { join } from 'node:path'
+import { db, now, recordingsDir } from './db.mjs'
 import { uid, hashPassword, verifyPassword, signToken, requireAuth } from './auth.mjs'
 
 export const api = express.Router()
@@ -207,6 +209,55 @@ api.get('/sessions/:id/snapshots', (req, res) => {
   const s = ownSession(req, req.params.id)
   if (!s) return res.status(404).json({ error: 'Sessão não encontrada' })
   res.json(db.prepare('SELECT * FROM snapshots WHERE session_id = ? ORDER BY created_at DESC').all(s.id))
+})
+
+// ---------- Gravações da sessão ----------
+// upload do vídeo (webm) como corpo bruto
+api.post(
+  '/sessions/:id/recordings',
+  express.raw({ type: ['video/webm', 'application/octet-stream'], limit: '400mb' }),
+  (req, res) => {
+    const s = ownSession(req, req.params.id)
+    if (!s) return res.status(404).json({ error: 'Sessão não encontrada' })
+    if (!req.body || !req.body.length) return res.status(400).json({ error: 'Vídeo vazio' })
+    const id = uid()
+    const filename = `${id}.webm`
+    writeFileSync(join(recordingsDir, filename), req.body)
+    const rec = {
+      id,
+      session_id: s.id,
+      filename,
+      duration: Number(req.query.duration || 0),
+      size: req.body.length,
+      consent: 1,
+      created_at: now(),
+    }
+    db.prepare(
+      'INSERT INTO recordings (id,session_id,filename,duration,size,consent,created_at) VALUES (?,?,?,?,?,?,?)'
+    ).run(rec.id, rec.session_id, rec.filename, rec.duration, rec.size, rec.consent, rec.created_at)
+    res.json(rec)
+  }
+)
+
+api.get('/sessions/:id/recordings', (req, res) => {
+  const s = ownSession(req, req.params.id)
+  if (!s) return res.status(404).json({ error: 'Sessão não encontrada' })
+  res.json(db.prepare('SELECT id,session_id,duration,size,created_at FROM recordings WHERE session_id = ? ORDER BY created_at DESC').all(s.id))
+})
+
+// streaming do arquivo da gravação (auth via ?token= para funcionar em <video>)
+api.get('/recordings/:id/file', (req, res) => {
+  const rec = db
+    .prepare(
+      'SELECT r.* FROM recordings r JOIN sessions s ON s.id = r.session_id WHERE r.id = ? AND s.therapist_id = ?'
+    )
+    .get(req.params.id, req.therapistId)
+  if (!rec) return res.status(404).json({ error: 'Gravação não encontrada' })
+  const path = join(recordingsDir, rec.filename)
+  if (!existsSync(path)) return res.status(404).json({ error: 'Arquivo ausente' })
+  res.setHeader('content-type', 'video/webm')
+  res.setHeader('content-length', statSync(path).size)
+  createReadStream(path).pipe(res)
 })
 
 // resolve o código da sala -> sessão (para o app do campo saber a que sessão pertence)

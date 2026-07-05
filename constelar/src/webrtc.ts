@@ -10,6 +10,10 @@ interface Handlers {
 
 const ICE_SERVERS: RTCIceServer[] = [{ urls: 'stun:stun.l.google.com:19302' }]
 
+// sessão ativa (para a gravação acessar os streams de áudio)
+let activeSession: RtcSession | null = null
+export const getActiveRtc = () => activeSession
+
 /**
  * Sessão de áudio/vídeo 1:1 (terapeuta ↔ cliente) usando WebRTC com o padrão
  * "perfect negotiation" — o host é impolido (impolite) e o cliente é polido (polite),
@@ -21,19 +25,22 @@ export class RtcSession {
   private makingOffer = false
   private ignoreOffer = false
   private localStream: MediaStream | null = null
+  private remoteStream: MediaStream | null = null
   private handlers: Handlers
 
   constructor(role: 'host' | 'guest', handlers: Handlers = {}) {
     this.polite = role === 'guest'
     this.handlers = handlers
     this.pc = new RTCPeerConnection({ iceServers: ICE_SERVERS })
+    activeSession = this
 
     this.pc.onicecandidate = ({ candidate }) => {
       if (candidate) sendRtc({ t: 'rtc:ice', candidate: candidate.toJSON() })
     }
 
     this.pc.ontrack = ({ streams }) => {
-      this.handlers.onRemoteStream?.(streams[0] ?? null)
+      this.remoteStream = streams[0] ?? null
+      this.handlers.onRemoteStream?.(this.remoteStream)
     }
 
     this.pc.onnegotiationneeded = async () => {
@@ -104,6 +111,17 @@ export class RtcSession {
     return this.localStream
   }
 
+  getRemoteStream() {
+    return this.remoteStream
+  }
+
+  /** streams com áudio para a gravação (voz do terapeuta + do cliente). */
+  audioStreams(): MediaStream[] {
+    return [this.localStream, this.remoteStream].filter(
+      (s): s is MediaStream => !!s && s.getAudioTracks().length > 0
+    )
+  }
+
   debugState() {
     return {
       connection: this.pc.connectionState,
@@ -117,6 +135,7 @@ export class RtcSession {
     this.localStream?.getTracks().forEach((t) => t.stop())
     this.pc.getSenders().forEach((s) => s.track?.stop())
     this.pc.close()
+    if (activeSession === this) activeSession = null
     this.handlers.onState?.('ended')
   }
 }

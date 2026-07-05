@@ -45,10 +45,11 @@ export function verifyToken(token) {
   }
 }
 
-/** Middleware Express: exige token válido; injeta req.therapistId. */
+/** Middleware Express: exige token válido; injeta req.therapistId.
+ * Aceita o token no header Authorization ou em ?token= (para servir arquivos em <video>). */
 export function requireAuth(req, res, next) {
   const header = req.headers.authorization || ''
-  const token = header.startsWith('Bearer ') ? header.slice(7) : null
+  const token = header.startsWith('Bearer ') ? header.slice(7) : req.query?.token || null
   const payload = verifyToken(token)
   if (!payload?.sub) return res.status(401).json({ error: 'Não autorizado' })
   req.therapistId = payload.sub

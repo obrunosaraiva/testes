@@ -255,9 +255,13 @@ function Sessions({ onOpenSession }: { onOpenSession: (id: string) => void }) {
 // ---------- Detalhe da sessão ----------
 function SessionDetail({ id, onBack }: { id: string; onBack: () => void }) {
   const [data, setData] = useState<Awaited<ReturnType<typeof api.session>> | null>(null)
+  const [recordings, setRecordings] = useState<Awaited<ReturnType<typeof api.recordings>>>([])
   const [note, setNote] = useState('')
 
-  const load = () => api.session(id).then(setData).catch(() => {})
+  const load = () => {
+    api.session(id).then(setData).catch(() => {})
+    api.recordings(id).then(setRecordings).catch(() => {})
+  }
   useEffect(() => { load() }, [id])
 
   if (!data) return <p className="muted">Carregando…</p>
@@ -342,6 +346,22 @@ function SessionDetail({ id, onBack }: { id: string; onBack: () => void }) {
                 </figure>
               ))}
             </div>
+          )}
+
+          <h2 style={{ marginTop: 24 }}>Gravações</h2>
+          {recordings.length === 0 ? (
+            <p className="muted">Nenhuma gravação. São feitas no campo, com consentimento.</p>
+          ) : (
+            <ul className="notes">
+              {recordings.map((r) => (
+                <li key={r.id}>
+                  <div className="muted small">
+                    {fmtDate(r.created_at)} · {Math.round(r.duration)}s · {(r.size / 1e6).toFixed(1)} MB
+                  </div>
+                  <video src={api.recordingUrl(r.id)} controls style={{ width: '100%', borderRadius: 8, marginTop: 6 }} />
+                </li>
+              ))}
+            </ul>
           )}
         </section>
       </div>

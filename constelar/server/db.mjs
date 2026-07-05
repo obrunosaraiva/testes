@@ -5,8 +5,10 @@ import { dirname, join } from 'node:path'
 import { mkdirSync } from 'node:fs'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
-const dataDir = join(__dirname, 'data')
+export const dataDir = join(__dirname, 'data')
+export const recordingsDir = join(dataDir, 'recordings')
 mkdirSync(dataDir, { recursive: true })
+mkdirSync(recordingsDir, { recursive: true })
 
 const dbPath = process.env.CONSTELAR_DB || join(dataDir, 'constelar.db')
 export const db = new DatabaseSync(dbPath)
@@ -61,6 +63,17 @@ db.exec(`
     created_at TEXT NOT NULL
   );
 
+  CREATE TABLE IF NOT EXISTS recordings (
+    id         TEXT PRIMARY KEY,
+    session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+    filename   TEXT NOT NULL,
+    duration   INTEGER DEFAULT 0,
+    size       INTEGER DEFAULT 0,
+    consent    INTEGER DEFAULT 1,
+    created_at TEXT NOT NULL
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_recordings_session ON recordings(session_id);
   CREATE INDEX IF NOT EXISTS idx_clients_therapist ON clients(therapist_id);
   CREATE INDEX IF NOT EXISTS idx_sessions_therapist ON sessions(therapist_id);
   CREATE INDEX IF NOT EXISTS idx_sessions_room ON sessions(room_code);

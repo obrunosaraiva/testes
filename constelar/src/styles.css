@@ -581,6 +581,84 @@ input[type='range'] {
   }
 }
 
+/* ---------- gravação ---------- */
+.recorder {
+  position: absolute;
+  bottom: 16px;
+  left: 16px;
+  z-index: 6;
+}
+
+.btn-rec {
+  background: var(--panel);
+  backdrop-filter: blur(14px);
+  border: 1px solid var(--panel-border);
+  color: var(--text);
+  padding: 10px 16px;
+  border-radius: 999px;
+  font-size: 13px;
+  cursor: pointer;
+}
+.btn-rec:hover {
+  border-color: var(--danger);
+}
+.btn-rec.recording {
+  background: var(--danger);
+  border-color: var(--danger);
+  color: #fff;
+  animation: recpulse 1.4s ease-in-out infinite;
+}
+@keyframes recpulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.72; }
+}
+
+/* modal de consentimento */
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: grid;
+  place-items: center;
+  z-index: 50;
+}
+.modal {
+  width: 100%;
+  max-width: 420px;
+  margin: 20px;
+  background: var(--panel);
+  backdrop-filter: blur(14px);
+  border: 1px solid var(--panel-border);
+  border-radius: 16px;
+  padding: 24px;
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.5);
+}
+.modal h3 {
+  margin: 0 0 10px;
+  color: var(--accent);
+}
+.modal p {
+  color: var(--text-dim);
+  font-size: 14px;
+  line-height: 1.6;
+}
+.consent-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  margin: 16px 0;
+  cursor: pointer;
+}
+.consent-check input {
+  accent-color: var(--accent);
+}
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
 /* ---------- doll label (in-scene) ---------- */
 .doll-label {
   background: rgba(20, 15, 11, 0.85);

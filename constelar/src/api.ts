@@ -60,4 +60,17 @@ export const api = {
     req<Snapshot>('POST', `/sessions/${sessionId}/snapshots`, { image, caption, moment }),
 
   room: (code: string) => req<{ id: string; room_code: string; type: string; status: string }>('GET', `/rooms/${code}`),
+
+  recordings: (sessionId: string) =>
+    req<{ id: string; duration: number; size: number; created_at: string }[]>('GET', `/sessions/${sessionId}/recordings`),
+  recordingUrl: (id: string) => `/api/recordings/${id}/file?token=${encodeURIComponent(getToken() || '')}`,
+  uploadRecording: async (sessionId: string, blob: Blob, duration: number) => {
+    const res = await fetch(`/api/sessions/${sessionId}/recordings?duration=${Math.round(duration)}`, {
+      method: 'POST',
+      headers: { 'content-type': 'video/webm', authorization: 'Bearer ' + (getToken() || '') },
+      body: blob,
+    })
+    if (!res.ok) throw new Error('Falha ao enviar gravação')
+    return res.json()
+  },
 }
