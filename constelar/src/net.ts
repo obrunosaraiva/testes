@@ -3,6 +3,22 @@ import type { NetMsg } from './store'
 
 let ws: WebSocket | null = null
 
+// --- canal de sinalização WebRTC (áudio/vídeo) ---
+// mensagens cujo tipo começa com "rtc:" não são estado do campo: vão para o handler de mídia.
+export type RtcMsg = { t: string; [k: string]: unknown }
+let rtcHandler: ((msg: RtcMsg) => void) | null = null
+// mensagens de sinalização que chegam antes de o par abrir a chamada ficam
+// em fila e são entregues assim que um handler é registrado (evita perder a 1ª oferta).
+const rtcBuffer: RtcMsg[] = []
+export function onRtc(fn: ((msg: RtcMsg) => void) | null) {
+  rtcHandler = fn
+  if (fn) while (rtcBuffer.length) fn(rtcBuffer.shift() as RtcMsg)
+  else rtcBuffer.length = 0
+}
+export function sendRtc(msg: RtcMsg) {
+  rawSend(msg as unknown as NetMsg)
+}
+
 // coalescência: durante o arraste, muitos doll:update por segundo —
 // mantemos só o último patch por boneco e enviamos 1x por animation frame.
 const pending = new Map<string, Record<string, unknown>>()
@@ -51,8 +67,11 @@ export function connect(roomId: string, role: 'host' | 'guest') {
   ws.onerror = () => setSession({ conn: 'offline' })
   ws.onmessage = (ev) => {
     try {
-      const msg = JSON.parse(ev.data) as NetMsg
-      useStore.getState().remoteApply(msg)
+      const msg = JSON.parse(ev.data) as { t: string }
+      if (msg.t.startsWith('rtc:')) {
+        if (rtcHandler) rtcHandler(msg as RtcMsg)
+        else rtcBuffer.push(msg as RtcMsg)
+      } else useStore.getState().remoteApply(msg as NetMsg)
     } catch {
       /* ignora mensagens malformadas */
     }

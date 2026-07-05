@@ -402,6 +402,151 @@ input[type='range'] {
   color: var(--danger);
 }
 
+/* ---------- widget de chamada (áudio/vídeo) ---------- */
+.call {
+  position: absolute;
+  top: 16px;
+  right: 272px;
+  z-index: 6;
+  background: var(--panel);
+  backdrop-filter: blur(14px);
+  border: 1px solid var(--panel-border);
+  border-radius: 14px;
+  padding: 12px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.4);
+  width: 200px;
+}
+
+.call-idle {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.call-label {
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.call-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.btn-call {
+  border: none;
+  border-radius: 9px;
+  padding: 9px 10px;
+  font-size: 13px;
+  cursor: pointer;
+  background: linear-gradient(180deg, var(--accent), var(--accent-2));
+  color: #2a1c10;
+  font-weight: 600;
+}
+
+.btn-call.ghost {
+  background: transparent;
+  border: 1px solid var(--panel-border);
+  color: var(--text);
+  font-weight: 400;
+}
+
+.btn-call.ghost:hover {
+  border-color: var(--accent);
+}
+
+.call-error {
+  font-size: 11px;
+  color: var(--danger);
+  line-height: 1.4;
+}
+
+.call-tiles {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.tile {
+  position: relative;
+  background: #120d09;
+  border-radius: 10px;
+  overflow: hidden;
+  aspect-ratio: 4 / 3;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.tile video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.tile video.hidden {
+  display: none;
+}
+
+.tile.self {
+  height: 70px;
+  aspect-ratio: auto;
+}
+
+.tile-name {
+  position: absolute;
+  bottom: 5px;
+  left: 7px;
+  font-size: 11px;
+  color: #f3e9db;
+  background: rgba(0, 0, 0, 0.5);
+  padding: 1px 7px;
+  border-radius: 6px;
+}
+
+.tile-status {
+  position: absolute;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.call-controls {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  margin-top: 10px;
+}
+
+.ctrl {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  border: 1px solid var(--panel-border);
+  background: rgba(255, 220, 180, 0.06);
+  cursor: pointer;
+  font-size: 16px;
+}
+
+.ctrl.off {
+  background: rgba(211, 101, 79, 0.18);
+  border-color: var(--danger);
+}
+
+.ctrl.hangup {
+  background: var(--danger);
+  border-color: var(--danger);
+  color: #fff;
+}
+
+@media (max-width: 780px) {
+  .call {
+    right: 16px;
+    top: 64px;
+    width: 150px;
+  }
+}
+
 /* ---------- doll label (in-scene) ---------- */
 .doll-label {
   background: rgba(20, 15, 11, 0.85);

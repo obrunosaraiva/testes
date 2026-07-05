@@ -3,6 +3,7 @@ import { Scene } from './scene/Scene'
 import { LeftPanel, RightPanel } from './ui/Panel'
 import { PhraseCards } from './ui/PhraseCards'
 import { SessionBar } from './ui/SessionBar'
+import { CallPanel } from './ui/CallPanel'
 import { useStore } from './store'
 
 export default function App() {
@@ -32,6 +33,7 @@ export default function App() {
         {!isGuest && <LeftPanel />}
         <RightPanel />
         {!isGuest && <PhraseCards />}
+        <CallPanel />
       </div>
     </div>
   )

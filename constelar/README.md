@@ -15,9 +15,11 @@ navegador (sem instalar nada).
   (ex.: "Mãe", "O excluído", "A doença").
 - **Manipulação**: arrastar para posicionar, girar a **direção do olhar** (elemento central da constelação),
   deitar o boneco, remover.
-- **Sessão online em tempo real** 🆕: o terapeuta inicia a sala e envia um **link**; o cliente entra pelo
+- **Sessão online em tempo real**: o terapeuta inicia a sala e envia um **link**; o cliente entra pelo
   navegador (sem instalar nada) e vê os bonecos, o campo e as frases se moverem ao vivo. O terapeuta
   controla se **o cliente pode mover** os bonecos ("terapeuta conduz").
+- **Áudio e vídeo na sala** 🆕 (WebRTC 1:1): falar durante a sessão, com microfone e câmera opcional
+  (mudo/desligar câmera), sem depender de Zoom por fora.
 - **Frases sistêmicas** (baralho de frases de solução).
 - **Imagem de solução**: captura em PNG do estado atual do campo.
 
@@ -56,11 +58,13 @@ Mensagens: `state` (snapshot ao entrar), `doll:add/update/remove`, `ambiance`, `
 ## Próximos passos (do roadmap do PRD)
 
 1. ✅ **Sincronização em tempo real** terapeuta ↔ cliente.
-2. **Áudio/vídeo** na sala (WebRTC) — falar durante a sessão.
+2. ✅ **Áudio/vídeo** na sala (WebRTC 1:1) — falar durante a sessão.
 3. **Backend**: contas, agenda, sala de espera, prontuário, snapshots persistidos, assinatura.
 4. **Editor de sala** avançado (móveis, texturas, branding) e cenários salvos.
 5. Acessórios e mais variedade de bonecos; âncoras de chão e papéis com nome; linhas de vínculo.
-6. **Robustez do tempo real**: reconexão automática, persistência da sala, autenticação do link.
+6. **Robustez do tempo real**: reconexão automática, persistência da sala, autenticação do link;
+   TURN server para chamadas atravessarem NAT/firewall (hoje só STUN).
+7. **Grupo**: chamada com mais de 2 participantes (SFU) para constelação em grupo.
 
 > ⚠️ Ferramenta de apoio a práticas integrativas/terapêuticas. Constelação familiar não é reconhecida
 > pelo CFP/CFM como prática de eficácia comprovada. Ver seção de riscos e LGPD no PRD.
