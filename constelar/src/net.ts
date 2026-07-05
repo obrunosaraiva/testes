@@ -48,23 +48,40 @@ export function newRoomId(): string {
   return Math.random().toString(36).slice(2, 8)
 }
 
-/** Conecta à sala. role: 'host' (terapeuta) ou 'guest' (cliente). */
-export function connect(roomId: string, role: 'host' | 'guest') {
+// estado de conexão para reconexão automática
+let current: { roomId: string; role: 'host' | 'guest' } | null = null
+let intentional = false
+let retries = 0
+let reconnectTimer: number | null = null
+
+function open() {
+  if (!current) return
+  const { roomId, role } = current
   const { setSession } = useStore.getState()
-  setSession({ role, roomId, conn: 'connecting' })
 
   const proto = location.protocol === 'https:' ? 'wss' : 'ws'
   ws = new WebSocket(`${proto}://${location.host}/ws?room=${encodeURIComponent(roomId)}&role=${role}`)
 
   ws.onopen = () => {
+    retries = 0
     setSession({ conn: 'online' })
     registerEmit(send)
+    // o servidor reenvia o estado completo ao (re)conectar — nada a fazer aqui
   }
   ws.onclose = () => {
-    setSession({ conn: 'offline' })
     registerEmit(null)
+    if (intentional || !current) {
+      setSession({ conn: 'offline' })
+      return
+    }
+    // reconexão com backoff exponencial (1s, 2s, 4s… até 15s)
+    setSession({ conn: 'connecting' })
+    const delay = Math.min(1000 * 2 ** retries, 15000)
+    retries++
+    if (reconnectTimer) clearTimeout(reconnectTimer)
+    reconnectTimer = window.setTimeout(open, delay)
   }
-  ws.onerror = () => setSession({ conn: 'offline' })
+  ws.onerror = () => ws?.close()
   ws.onmessage = (ev) => {
     try {
       const msg = JSON.parse(ev.data) as { t: string }
@@ -78,7 +95,19 @@ export function connect(roomId: string, role: 'host' | 'guest') {
   }
 }
 
+/** Conecta à sala. role: 'host' (terapeuta) ou 'guest' (cliente). Reconecta sozinho se cair. */
+export function connect(roomId: string, role: 'host' | 'guest') {
+  intentional = false
+  retries = 0
+  current = { roomId, role }
+  useStore.getState().setSession({ role, roomId, conn: 'connecting' })
+  open()
+}
+
 export function disconnect() {
+  intentional = true
+  current = null
+  if (reconnectTimer) clearTimeout(reconnectTimer)
   registerEmit(null)
   ws?.close()
   ws = null

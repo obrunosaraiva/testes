@@ -15,11 +15,17 @@ function defaultState() {
   }
 }
 
+const GRACE_MS = 60_000 // mantém a sala viva por 60s após o último sair (permite reconexão)
+
 function getRoom(id) {
   let room = rooms.get(id)
   if (!room) {
-    room = { state: defaultState(), clients: new Set() }
+    room = { state: defaultState(), clients: new Set(), reapTimer: null }
     rooms.set(id, room)
+  }
+  if (room.reapTimer) {
+    clearTimeout(room.reapTimer)
+    room.reapTimer = null
   }
   return room
 }
@@ -111,8 +117,12 @@ export function attachRealtime(server) {
 
     ws.on('close', () => {
       room.clients.delete(ws)
-      if (room.clients.size === 0) rooms.delete(roomId)
-      else sendPresence(room)
+      if (room.clients.size === 0) {
+        // não apaga na hora: dá carência para reconexão, preservando o estado da sala
+        room.reapTimer = setTimeout(() => rooms.delete(roomId), GRACE_MS)
+      } else {
+        sendPresence(room)
+      }
     })
   })
 
