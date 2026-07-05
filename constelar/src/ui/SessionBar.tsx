@@ -12,12 +12,13 @@ export function SessionBar() {
 
   const [copied, setCopied] = useState(false)
 
-  // se a URL tiver ?sala=..., entra automaticamente como cliente (guest)
+  // ?sala=CÓDIGO&host=1 → terapeuta (host); ?sala=CÓDIGO → cliente (guest)
   useEffect(() => {
     const params = new URLSearchParams(location.search)
     const sala = params.get('sala')
+    const wantHost = params.get('host') === '1'
     if (sala && useStore.getState().role === 'solo') {
-      connect(sala, 'guest')
+      connect(sala, wantHost ? 'host' : 'guest')
     }
   }, [])
 
@@ -31,7 +32,10 @@ export function SessionBar() {
 
   const copyLink = async () => {
     try {
-      await navigator.clipboard.writeText(location.href)
+      // link do cliente = mesma sala, mas sem o parâmetro host
+      const url = new URL(location.href)
+      url.searchParams.delete('host')
+      await navigator.clipboard.writeText(url.toString())
       setCopied(true)
       setTimeout(() => setCopied(false), 1800)
     } catch {

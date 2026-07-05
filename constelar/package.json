@@ -5,16 +5,17 @@
   "type": "module",
   "description": "Campo de constelação familiar sistêmica por teleterapia — sala virtual + bonecos 3D",
   "scripts": {
-    "dev": "concurrently -n web,ws -c cyan,magenta \"vite\" \"node server/index.mjs\"",
+    "dev": "concurrently -n web,api -c cyan,magenta \"vite\" \"node --experimental-sqlite server/index.mjs\"",
     "dev:web": "vite",
-    "dev:server": "node server/index.mjs",
-    "server": "node server/index.mjs",
+    "dev:server": "node --experimental-sqlite server/index.mjs",
+    "server": "node --experimental-sqlite server/index.mjs",
     "build": "tsc -b && vite build",
     "preview": "vite preview"
   },
   "dependencies": {
     "@react-three/drei": "^9.114.0",
     "@react-three/fiber": "^8.17.10",
+    "express": "^4.21.1",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "three": "^0.169.0",

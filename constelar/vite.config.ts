@@ -14,6 +14,11 @@ export default defineConfig({
         ws: true,
         changeOrigin: true,
       },
+      // encaminha a API REST para o servidor Constelar
+      '/api': {
+        target: 'http://localhost:8787',
+        changeOrigin: true,
+      },
     },
   },
 })

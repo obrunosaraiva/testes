@@ -1,4 +1,6 @@
+import { useState } from 'react'
 import { useStore } from '../store'
+import { api, getToken } from '../api'
 
 /** Baralho de frases sistêmicas / frases de solução usadas na condução. */
 const PHRASES = [
@@ -21,6 +23,7 @@ export function PhraseCards() {
   const setPhrase = useStore((s) => s.setPhrase)
   const dolls = useStore((s) => s.dolls)
   const clearField = useStore((s) => s.clearField)
+  const [savedMsg, setSavedMsg] = useState<string | null>(null)
 
   const draw = () => {
     // sorteio sem depender de Math.random (varia pelo estado atual do campo)
@@ -28,14 +31,28 @@ export function PhraseCards() {
     setPhrase(PHRASES[seed % PHRASES.length])
   }
 
-  const snapshot = () => {
+  const snapshot = async () => {
     const canvas = document.querySelector('canvas')
     if (!canvas) return
     const url = (canvas as HTMLCanvasElement).toDataURL('image/png')
+    // download local
     const a = document.createElement('a')
     a.href = url
     a.download = 'imagem-de-solucao.png'
     a.click()
+
+    // se o terapeuta está logado e a sala pertence a uma sessão, salva no prontuário
+    const code = new URLSearchParams(location.search).get('sala')
+    if (getToken() && code) {
+      try {
+        const room = await api.room(code)
+        await api.addSnapshot(room.id, url, 'imagem de solução')
+        setSavedMsg('✓ salva na sessão')
+      } catch {
+        setSavedMsg('baixada (sessão não vinculada)')
+      }
+      setTimeout(() => setSavedMsg(null), 2600)
+    }
   }
 
   return (
@@ -53,7 +70,7 @@ export function PhraseCards() {
           🃏 Frase sistêmica
         </button>
         <button className="btn-ghost" onClick={snapshot}>
-          📸 Imagem de solução
+          📸 {savedMsg || 'Imagem de solução'}
         </button>
         <button className="btn-ghost danger" onClick={clearField}>
           Limpar campo
