@@ -1,15 +1,46 @@
 import { useRef, useState } from 'react'
-import { OrbitControls, SoftShadows } from '@react-three/drei'
+import { OrbitControls, SoftShadows, Line } from '@react-three/drei'
 import type { ThreeEvent } from '@react-three/fiber'
 import * as THREE from 'three'
 import { useStore } from '../store'
 import { Room } from './Room'
 import { Field, FIELD_RADIUS } from './Field'
 import { Doll } from './Doll'
+import { Anchor } from './Anchor'
 import { Incense } from './Incense'
 
 const GROUND = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0)
 const HIT = new THREE.Vector3()
+
+type DragTarget = { kind: 'doll' | 'anchor'; id: string }
+
+/** Linhas de vínculo entre representantes. */
+function Links() {
+  const dolls = useStore((s) => s.dolls)
+  const links = useStore((s) => s.links)
+  return (
+    <>
+      {links.map((l) => {
+        const a = dolls.find((d) => d.id === l.a)
+        const b = dolls.find((d) => d.id === l.b)
+        if (!a || !b) return null
+        return (
+          <Line
+            key={l.id}
+            points={[
+              [a.x, 0.35, a.z],
+              [b.x, 0.35, b.z],
+            ]}
+            color="#ffb765"
+            lineWidth={2.5}
+            transparent
+            opacity={0.8}
+          />
+        )
+      })}
+    </>
+  )
+}
 
 function Lights({ mode }: { mode: 'warm' | 'neutral' | 'penumbra' }) {
   if (mode === 'neutral') {
@@ -42,29 +73,39 @@ function Lights({ mode }: { mode: 'warm' | 'neutral' | 'penumbra' }) {
 
 export function Scene() {
   const dolls = useStore((s) => s.dolls)
+  const anchors = useStore((s) => s.anchors)
   const selectedId = useStore((s) => s.selectedId)
+  const pendingLink = useStore((s) => s.pendingLink)
   const ambiance = useStore((s) => s.ambiance)
   const updateDoll = useStore((s) => s.updateDoll)
+  const updateAnchor = useStore((s) => s.updateAnchor)
   const select = useStore((s) => s.select)
 
-  const [dragging, setDragging] = useState<string | null>(null)
-  const draggingRef = useRef<string | null>(null)
+  const [dragging, setDragging] = useState<DragTarget | null>(null)
+  const draggingRef = useRef<DragTarget | null>(null)
 
-  const startDrag = (e: ThreeEvent<PointerEvent>, id: string) => {
+  const startDrag = (e: ThreeEvent<PointerEvent>, id: string, kind: 'doll' | 'anchor' = 'doll') => {
     e.stopPropagation()
+    const st = useStore.getState()
+    // modo de ligar vínculos: clicar em bonecos cria/remove um vínculo em vez de arrastar
+    if (kind === 'doll' && st.linkMode && st.canEdit()) {
+      st.pickForLink(id)
+      return
+    }
     select(id)
-    if (!useStore.getState().canEdit()) return // cliente sem permissão só observa/seleciona
-    draggingRef.current = id
-    setDragging(id)
+    if (!st.canEdit()) return // cliente sem permissão só observa/seleciona
+    const target: DragTarget = { kind, id }
+    draggingRef.current = target
+    setDragging(target)
     document.body.style.cursor = 'grabbing'
     ;(e.target as Element)?.setPointerCapture?.(e.pointerId)
   }
 
   const onMove = (e: ThreeEvent<PointerEvent>) => {
-    const id = draggingRef.current
-    if (!id) return
+    const target = draggingRef.current
+    if (!target) return
     e.ray.intersectPlane(GROUND, HIT)
-    // mantém o boneco dentro do campo
+    // mantém dentro do campo
     const r = Math.hypot(HIT.x, HIT.z)
     const max = FIELD_RADIUS - 0.3
     let { x, z } = HIT
@@ -72,7 +113,8 @@ export function Scene() {
       x = (HIT.x / r) * max
       z = (HIT.z / r) * max
     }
-    updateDoll(id, { x, z })
+    if (target.kind === 'doll') updateDoll(target.id, { x, z })
+    else updateAnchor(target.id, { x, z })
   }
 
   const endDrag = () => {
@@ -106,8 +148,19 @@ export function Scene() {
           <meshBasicMaterial transparent opacity={0} depthWrite={false} />
         </mesh>
 
+        {anchors.map((a) => (
+          <Anchor key={a.id} anchor={a} selected={a.id === selectedId} onPointerDown={startDrag} />
+        ))}
+
+        <Links />
+
         {dolls.map((d) => (
-          <Doll key={d.id} doll={d} selected={d.id === selectedId} onPointerDown={startDrag} />
+          <Doll
+            key={d.id}
+            doll={d}
+            selected={d.id === selectedId || d.id === pendingLink}
+            onPointerDown={startDrag}
+          />
         ))}
       </group>
 

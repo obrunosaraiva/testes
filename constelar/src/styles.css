@@ -672,6 +672,32 @@ input[type='range'] {
   font-family: 'Segoe UI', system-ui, sans-serif;
 }
 
+.anchor-label {
+  background: rgba(216, 199, 166, 0.92);
+  color: #2a1c10;
+  padding: 2px 8px;
+  border-radius: 5px;
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+  font-family: 'Segoe UI', system-ui, sans-serif;
+}
+
+.btn-ghost.full {
+  width: 100%;
+  text-align: center;
+  margin-bottom: 10px;
+}
+
+.link-toggle.active {
+  color: var(--accent);
+}
+
+.hint.small {
+  font-size: 12px;
+  margin-top: 6px;
+}
+
 /* ---------- responsivo ---------- */
 @media (max-width: 780px) {
   .panel {

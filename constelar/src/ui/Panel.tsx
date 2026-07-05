@@ -22,16 +22,25 @@ export function LeftPanel() {
   const ambiance = useStore((s) => s.ambiance)
   const setAmbiance = useStore((s) => s.setAmbiance)
   const addDoll = useStore((s) => s.addDoll)
+  const addAnchor = useStore((s) => s.addAnchor)
+  const linkMode = useStore((s) => s.linkMode)
+  const setLinkMode = useStore((s) => s.setLinkMode)
   const t = useT()
 
   const [label, setLabel] = useState('')
   const [gender, setGender] = useState<Gender>('feminino')
   const [age, setAge] = useState<Age>('adulto')
   const [color, setColor] = useState<string>(genderColor('feminino'))
+  const [anchorLabel, setAnchorLabel] = useState('')
 
   const handleAdd = () => {
     addDoll({ label: label.trim(), gender, age, color })
     setLabel('')
+  }
+
+  const handleAddAnchor = () => {
+    addAnchor({ label: anchorLabel.trim() })
+    setAnchorLabel('')
   }
 
   return (
@@ -146,6 +155,27 @@ export function LeftPanel() {
       <button className="btn-primary" onClick={handleAdd}>
         {t('doll.place')}
       </button>
+
+      <hr />
+
+      <div className="group">
+        <input
+          className="text-input"
+          placeholder={t('anchor.placeholder')}
+          value={anchorLabel}
+          onChange={(e) => setAnchorLabel(e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && handleAddAnchor()}
+        />
+      </div>
+      <button className="btn-ghost full" onClick={handleAddAnchor}>
+        {t('anchor.add')}
+      </button>
+
+      <label className={linkMode ? 'toggle link-toggle active' : 'toggle link-toggle'}>
+        <input type="checkbox" checked={linkMode} onChange={(e) => setLinkMode(e.target.checked)} />
+        {t('link.mode')}
+      </label>
+      {linkMode && <p className="hint small">{t('link.hint')}</p>}
     </aside>
   )
 }
@@ -153,15 +183,41 @@ export function LeftPanel() {
 /** Painel direito: editar o boneco selecionado (posição feita arrastando no campo). */
 export function RightPanel() {
   const dolls = useStore((s) => s.dolls)
+  const anchors = useStore((s) => s.anchors)
   const selectedId = useStore((s) => s.selectedId)
   const updateDoll = useStore((s) => s.updateDoll)
   const removeDoll = useStore((s) => s.removeDoll)
+  const updateAnchor = useStore((s) => s.updateAnchor)
+  const removeAnchor = useStore((s) => s.removeAnchor)
   const role = useStore((s) => s.role)
   const canEdit = useStore((s) => s.role !== 'guest' || s.ambiance.allowGuestMove)
   const isGuest = role === 'guest'
   const t = useT()
 
+  const anchor = anchors.find((a) => a.id === selectedId)
   const doll = dolls.find((d) => d.id === selectedId)
+
+  if (anchor && canEdit) {
+    return (
+      <aside className="panel panel-right">
+        <h2>{anchor.label || '⚓'}</h2>
+        <div className="group">
+          <label className="field-label">{t('doll.label')}</label>
+          <input
+            className="text-input"
+            value={anchor.label}
+            onChange={(e) => updateAnchor(anchor.id, { label: e.target.value })}
+          />
+        </div>
+        {!isGuest && (
+          <button className="btn-danger" onClick={() => removeAnchor(anchor.id)}>
+            {t('doll.remove')}
+          </button>
+        )}
+      </aside>
+    )
+  }
+
   if (!doll) {
     return (
       <aside className="panel panel-right empty">

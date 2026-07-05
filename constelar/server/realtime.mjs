@@ -8,6 +8,8 @@ const rooms = new Map()
 function defaultState() {
   return {
     dolls: [],
+    anchors: [],
+    links: [],
     ambiance: { light: 'warm', field: 'wood', incense: true, music: false, allowGuestMove: true },
     currentPhrase: null,
   }
@@ -32,6 +34,22 @@ function applyToState(state, msg) {
       break
     case 'doll:remove':
       state.dolls = state.dolls.filter((d) => d.id !== msg.id)
+      state.links = state.links.filter((l) => l.a !== msg.id && l.b !== msg.id)
+      break
+    case 'anchor:add':
+      if (!state.anchors.some((a) => a.id === msg.anchor.id)) state.anchors.push(msg.anchor)
+      break
+    case 'anchor:update':
+      state.anchors = state.anchors.map((a) => (a.id === msg.id ? { ...a, ...msg.patch } : a))
+      break
+    case 'anchor:remove':
+      state.anchors = state.anchors.filter((a) => a.id !== msg.id)
+      break
+    case 'link:add':
+      if (!state.links.some((l) => l.id === msg.link.id)) state.links.push(msg.link)
+      break
+    case 'link:remove':
+      state.links = state.links.filter((l) => l.id !== msg.id)
       break
     case 'ambiance':
       state.ambiance = { ...state.ambiance, ...msg.patch }
@@ -41,6 +59,8 @@ function applyToState(state, msg) {
       break
     case 'clear':
       state.dolls = []
+      state.anchors = []
+      state.links = []
       break
     default:
       break
@@ -66,7 +86,15 @@ export function attachRealtime(server) {
     const room = getRoom(roomId)
     room.clients.add(ws)
 
-    ws.send(JSON.stringify({ t: 'state', dolls: room.state.dolls, ambiance: room.state.ambiance }))
+    ws.send(
+      JSON.stringify({
+        t: 'state',
+        dolls: room.state.dolls,
+        ambiance: room.state.ambiance,
+        anchors: room.state.anchors,
+        links: room.state.links,
+      })
+    )
     if (room.state.currentPhrase) ws.send(JSON.stringify({ t: 'phrase', phrase: room.state.currentPhrase }))
     sendPresence(room)
 
