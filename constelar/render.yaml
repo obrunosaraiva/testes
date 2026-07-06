@@ -1,0 +1,19 @@
+# Blueprint de deploy no Render (https://render.com) — 1 serviço que serve tudo.
+# Como usar: no Render, "New +" → "Blueprint" → conecte o repositório e aponte para
+# a pasta constelar/ (root directory). O Render lê este arquivo e sobe o serviço.
+services:
+  - type: web
+    name: constelar-campo
+    runtime: docker
+    rootDir: constelar
+    plan: free
+    healthCheckPath: /health
+    envVars:
+      - key: CONSTELAR_SECRET
+        generateValue: true # segredo dos tokens de login (gerado automaticamente)
+    # Opcional (recomendado em produção): disco persistente para o SQLite e as gravações.
+    # O plano Free do Render não inclui disco — use um plano pago para persistir os dados.
+    # disk:
+    #   name: constelar-data
+    #   mountPath: /app/server/data
+    #   sizeGB: 1
