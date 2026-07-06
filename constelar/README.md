@@ -23,10 +23,17 @@ navegador (sem instalar nada).
 - **Frases sistêmicas** (baralho de frases de solução).
 - **Imagem de solução**: captura em PNG do estado atual do campo — e, se o terapeuta estiver logado,
   a imagem é salva automaticamente na sessão (aparece na galeria do painel).
-- **Painel do terapeuta** 🆕 (backend real): cadastro/login, **clientes**, **agenda de sessões**,
+- **Painel do terapeuta** (backend real): cadastro/login, **clientes**, **agenda de sessões**,
   **prontuário** (anotações privadas por sessão) e **galeria de imagens de solução**. Cada terapeuta
   só vê os próprios dados. A sala/campo abre a partir da sessão (`▶ Abrir campo` para o terapeuta,
   `🔗 link do cliente` para o consulente).
+- **Âncoras de chão / papéis com nome** e **linhas de vínculo** entre representantes (para conceitos como
+  "Dinheiro", "Pátria" e para tornar visíveis os emaranhamentos).
+- **Gravação da sessão** (só terapeuta, com **consentimento** obrigatório): grava o campo + as vozes em
+  `.webm`, baixa localmente e salva na sessão.
+- **Música/som ambiente** sintetizado (WebAudio) — trilha calma, sem arquivos com licença.
+- **Multi-idioma**: pt-BR, pt-PT, inglês, espanhol e alemão, com seletor e detecção pelo navegador.
+- **Reconexão automática** do tempo real (backoff) com carência da sala no servidor (não perde o estado).
 
 ## Rodar localmente
 
